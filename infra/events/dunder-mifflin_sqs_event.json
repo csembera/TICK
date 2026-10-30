@@ -1,0 +1,16 @@
+{
+  "Records": [
+    {
+      "messageId": "test-1",
+      "receiptHandle": "test",
+      "body": "{\"config_key\": \"configs/dunder-mifflin.json\", \"config\": {\"company_name\": \"Dunder Mifflin\", \"company_slug\": \"dunder-mifflin\", \"tier\": 1, \"ats\": \"workday\", \"tenant\": \"dundermifflin\", \"endpoint\": \"https://dundermifflin.wd1.myworkdayjobs.com/wday/cxs/dundermifflin/DunderMifflinCareers/jobs\", \"http_method\": \"POST\", \"request_body\": {\"appliedFacets\": {}, \"limit\": 20, \"offset\": 0, \"searchText\": \"\"}, \"pagination\": \"offset\", \"schema_map\": {\"posting_id\": \"bulletFields[0]\", \"title\": \"title\", \"location\": \"locationsText\", \"url\": \"externalPath\", \"team\": null, \"posted_on\": \"postedOn\"}, \"careers_url\": \"https://dundermifflin.wd1.myworkdayjobs.com/DunderMifflinCareers\", \"identity_notes\": \"Dunder Mifflin is a fictional paper company. Workday tenant 'dundermifflin' on wd1 instance with 'careers' site.\", \"date_trust\": \"high\", \"confidence\": 0.95, \"needs_human_review\": false, \"evidence\": [\"web_search: Found Workday URL dundermifflin.wd1.myworkdayjobs.com/DunderMifflinCareers\", \"fetch_page: https://dundermifflin.wd1.myworkdayjobs.com/DunderMifflinCareers returned 200, confirmed Workday CXS with tenant=dundermifflin\", \"fingerprint: Workday detected, tenant candidates: dundermifflin, wd1, careers\", \"probe_endpoint: https://dundermifflin.wd1.myworkdayjobs.com/wday/cxs/dundermifflin/DunderMifflinCareers/jobs returned 200 with 140 jobs, sample posting_id=JR4295\"], \"evaluated_on\": \"2025-01-10\"}}",
+      "attributes": {
+        "ApproximateReceiveCount": "1"
+      },
+      "messageAttributes": {},
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:000000000000:tick-collector-collect",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

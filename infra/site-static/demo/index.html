@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo | TICK</title>
+<meta name="description" content="TICK tracks hiring signals across 1 account — 39 open postings, 1 reporting.">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#080d12">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TICK">
+<meta property="og:title" content="TICK — accounts">
+<meta property="og:description" content="TICK tracks hiring signals across 1 account — 39 open postings, 1 reporting.">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cstyle%3E.p%7Bstroke:%23456e99%7D@media(prefers-color-scheme:dark)%7B.p%7Bstroke:%2386aace%7D%7D%3C/style%3E%3Cpath class='p' d='M2 19h6.5l4-12 4.5 17 3.5-10H30' fill='none' stroke-width='3' stroke-linejoin='miter' stroke-linecap='square'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&amp;family=Barlow+Condensed:wght@400;600&amp;display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --color-bg:#f2f2f3;--color-surface:#e9e9ea;--color-text:#1d1f20;
+  --color-accent:#5980a6;--color-divider:color-mix(in srgb,#1d1f20 16%,transparent);
+  --color-accent-100:#eef6ff;--color-accent-700:#416180;--color-accent-800:#2c455d;--color-accent-900:#1d2d3d;
+  --color-neutral-100:#f5f5f8;--color-neutral-500:#98989b;--color-neutral-800:#424244;
+  --font-heading:"Barlow Condensed",system-ui,sans-serif;--font-body:"Barlow",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+/* the UA rule for [hidden] is display:none, but any author display wins over it —
+   .pager's display:flex kept the pager on screen after JS had hidden it */
+[hidden]{display:none!important}
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:15px;line-height:1.55}
+h1,h2,h3,h4,h5,h6{font-family:var(--font-heading);font-weight:600;line-height:1.12;letter-spacing:-.015em;margin:0}
+h6{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+a{color:var(--color-accent);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+.text-muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.skip-link{position:absolute;left:8px;top:-48px;z-index:10;padding:9px 14px;background:var(--color-accent-900);
+  color:#fff;text-decoration:none;font-family:var(--font-heading);font-weight:600;font-size:14px;transition:top .12s}
+.skip-link:focus{top:8px}
+/* page title block: an eyebrow line above the h1, so the heading order stays h1 -> h2 */
+.eyebrow{font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.08em;
+  text-transform:uppercase;line-height:1.12;margin:0}
+.section-label{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px 60px}
+.wrap.narrow{max-width:940px}
+/* menu bar: cloned from /tick (static), colors pinned to that page's palette */
+.nav{display:flex;align-items:center;gap:28px;padding:16px 32px;
+  background:#080d12;border-bottom:1px solid rgba(158,186,214,.14);margin-bottom:0;flex-wrap:wrap}
+.nav-brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-heading);font-weight:700;font-size:25px;letter-spacing:.14em;color:#eef2f5}
+.nav-brand svg{display:block;width:26px;height:26px;flex:none;color:#86aace}
+.nav-tabs{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.nav-tabs a{color:#9aa9b8;text-decoration:none;font-size:18px;padding-bottom:2px}
+.nav-tabs a:hover{color:#eef2f5}
+.nav-tabs a[aria-current='page']{color:#eef2f5;border-bottom:2px solid #86aace}
+.nav-auth{margin-left:auto;display:flex;align-items:center;gap:20px}
+.nav-login{font-family:var(--font-body);font-size:18px;color:#9aa9b8;background:none;border:0;padding:6px 2px;cursor:pointer;text-decoration:none;display:inline-block}
+.nav-login:hover{color:#eef2f5}
+.nav-cta{font-family:var(--font-heading);font-weight:600;font-size:18px;letter-spacing:.03em;text-decoration:none;
+  background:#456e99;border:1px solid #456e99;border-radius:999px;padding:9px 20px;color:#fff}
+.nav-cta:hover{background:#86aace;border-color:#86aace;color:#05061a}
+.nav :focus-visible{outline-color:#eef2f5}
+.nav :focus-visible{outline-color:#fff}
+.crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:color-mix(in srgb,var(--color-text) 50%,transparent);margin:18px 0 12px}
+.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--color-divider)}
+.blueprint{position:relative;border:1px solid var(--color-divider)}
+.blueprint>.corner{position:absolute;width:11px;height:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.blueprint>.corner::before,.blueprint>.corner::after{content:"";position:absolute;background:currentColor}
+.blueprint>.corner::before{left:5px;top:0;width:1px;height:100%}
+.blueprint>.corner::after{top:5px;left:0;width:100%;height:1px}
+.blueprint>.corner.tl{top:-6px;left:-6px}.blueprint>.corner.tr{top:-6px;right:-6px}
+.blueprint>.corner.bl{bottom:-6px;left:-6px}.blueprint>.corner.br{bottom:-6px;right:-6px}
+.card{padding:15px 16px}
+.tag{display:inline-flex;align-items:center;font-size:11px;letter-spacing:.02em;padding:3px 10px}
+.row-flags{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.tag-flag{font-size:10px;padding:2px 8px}
+.tag-accent{background:var(--color-accent-100);color:var(--color-accent-800)}
+.tag-neutral{background:var(--color-neutral-100);color:var(--color-neutral-800)}
+.tag-outline{border:1px solid var(--color-accent);color:var(--color-accent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;text-decoration:none;font-family:var(--font-heading);font-weight:600;font-size:14px;padding:8px 14px;border:1px solid var(--color-divider);background:transparent;color:var(--color-text)}
+.btn-primary{background:var(--color-accent);color:var(--color-bg);border-color:var(--color-accent)}
+.btn-primary:hover{background:var(--color-accent-700)}
+.btn-secondary:hover{background:color-mix(in srgb,var(--color-text) 7%,transparent)}
+.table{width:100%;border-collapse:collapse;font-size:13.5px}
+.table th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 60%,transparent);padding:8px;border-bottom:1px solid var(--color-divider)}
+.table td{padding:8px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent);vertical-align:top}
+.table tbody tr:hover{background:color-mix(in srgb,var(--color-text) 4%,transparent)}
+.stack-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.stack-row{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.stat-row{display:flex;border-top:1px solid var(--color-divider);margin-top:12px}
+.stat{flex:1;padding:9px 0 0}
+.stat b{display:block;font-family:var(--font-heading);font-weight:600;font-size:24px;line-height:1}
+.stat span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.right-col{display:flex;flex-direction:column;gap:14px}
+.grid{display:grid;grid-template-columns:7fr 4fr;gap:24px;margin-top:24px;align-items:start}
+/* a grid item defaults to min-width:auto, so it refuses to shrink below the
+   widest thing inside it — the roles table then pushed the whole page sideways
+   instead of scrolling inside its own overflow-x container */
+.grid>*,.right-col>*{min-width:0}
+.grid.narrative{grid-template-columns:1fr 268px}
+.cite{color:var(--color-accent-700);font-size:11px}
+.prose p{margin:0 0 14px;font-size:15.5px;line-height:1.7;max-width:62ch}
+.bar-track{height:6px;background:color-mix(in srgb,var(--color-text) 8%,transparent)}
+.bar-fill{height:100%;background:var(--color-accent)}
+.crumb a{color:inherit;text-decoration:none}
+.crumb a:hover{color:var(--color-accent)}
+/* min() keeps a 330px track from overflowing a 320px phone */
+.acct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:20px;margin-top:24px;align-items:start}
+.acct-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.acct-name{font-family:var(--font-heading);font-weight:600;font-size:19px;line-height:1.15}
+.acct-meta{font-size:11.5px;letter-spacing:.02em;margin-top:2px;overflow-wrap:anywhere}
+.acct-grid>.card{display:flex;flex-direction:column}
+/* inset rather than a real border: a 3px left border would shift the card's
+   contents 2px and pull the blueprint corner marks out of alignment */
+.acct-grid>.card.is-reporting{box-shadow:inset 3px 0 0 var(--color-accent)}
+.acct-grid .stat b{color:var(--color-accent)}
+.acct-grid .is-reporting .acct-name{color:var(--color-accent-900)}
+.tag-solid{background:var(--color-accent);color:var(--color-bg)}
+.acct-lede b{color:var(--color-accent-800);font-weight:600}
+.acct-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:13px}
+.btn-sm{font-size:13px;padding:6px 11px}
+.acct-note{font-size:11.5px;line-height:1.5;margin:13px 0 0}
+.chart-wrap{position:relative;margin:10px 0 4px}
+.ch-svg{display:block;width:100%;height:auto;overflow:visible}
+.ch-grid{stroke:color-mix(in srgb,var(--color-text) 13%,transparent);stroke-width:1;vector-effect:non-scaling-stroke}
+.ch-line{fill:none;stroke:var(--color-accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.ch-area{fill:var(--color-accent);opacity:.10}
+.ch-hot{fill:var(--color-accent);stroke:var(--color-bg);stroke-width:2}
+.ch-hair{stroke:color-mix(in srgb,var(--color-text) 32%,transparent);stroke-width:1;vector-effect:non-scaling-stroke}
+.ch-tick{fill:color-mix(in srgb,var(--color-text) 55%,transparent);font-family:var(--font-body);font-size:10px;font-variant-numeric:tabular-nums}
+.ch-hit{cursor:crosshair}
+.ch-hit:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+.spark{display:block;width:100%;height:auto;margin:8px 0 6px;overflow:visible}
+.chart-tip{position:absolute;top:0;pointer-events:none;background:var(--color-bg);
+  border:1px solid var(--color-divider);padding:5px 8px;font-size:11.5px;line-height:1.35;white-space:nowrap;z-index:2}
+.chart-tip b{display:block;font-family:var(--font-heading);font-size:14px;color:var(--color-text)}
+.chart-tip span{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.chart-tbl{margin-top:2px}
+.chart-tbl summary{font-size:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent);cursor:pointer}
+.chart-tbl table{width:100%;border-collapse:collapse;margin-top:7px;font-size:11.5px}
+.chart-tbl th,.chart-tbl td{text-align:left;padding:2px 0;border-bottom:1px solid var(--color-divider)}
+.chart-tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+.acct-add{border-style:dashed}
+.acct-add .acct-name{font-size:17px}
+.acct-add label,.acct-add .acct-cmd-label{display:block;font-size:11.5px;letter-spacing:.02em;margin:11px 0 4px;
+  color:color-mix(in srgb,var(--color-text) 70%,transparent)}
+.acct-add input{font-family:var(--font-body);font-size:13px;padding:6px 9px;width:100%;
+  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
+.acct-add input:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
+.acct-add .acct-cmd-label{margin-bottom:0}
+.acct-add code{display:block;font-size:11.5px;line-height:1.5;padding:9px 10px;margin-top:12px;
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  overflow-x:auto;white-space:pre;background:color-mix(in srgb,var(--color-text) 5%,transparent)}
+.tbl-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.tbl-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tbl-controls input[type=search]{font-family:var(--font-body);font-size:13px;padding:6px 10px;width:230px;max-width:100%;
+  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
+.tbl-controls input[type=search]:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 70%,transparent)}
+.tbl-empty{margin:0;padding:14px;font-size:12.5px}
+.pager{display:flex;align-items:center;gap:12px;margin-top:11px;flex-wrap:wrap}
+.pager #page-status{font-size:12px;font-variant-numeric:tabular-nums}
+.pager button[disabled]{opacity:.4;cursor:default}
+.site-foot{border-top:1px solid var(--color-divider);margin-top:38px;padding-top:14px;
+  display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:11.5px;line-height:1.5}
+@media (max-width:980px){.grid,.grid.narrative{grid-template-columns:1fr}.stack-grid{grid-template-columns:1fr}}
+@media (max-width:620px){
+  .wrap{padding:0 16px 44px}
+  .nav{gap:16px;padding:12px 20px}
+  .nav-tabs{display:none}
+  .nav-auth{gap:14px}
+  .tbl-controls input[type=search]{width:100%}
+  .hdr h1{font-size:26px!important}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+@media print{
+  .nav,.skip-link,.crumb,.btn,.tbl-controls,.pager,.chart-tbl{display:none!important}
+  body{background:#fff;font-size:11.5pt}
+  .wrap{max-width:none;padding:0}
+  .grid,.grid.narrative{grid-template-columns:1fr;gap:14px}
+  .blueprint{border-color:#bbb}
+  .prose p{max-width:none}
+  a{color:inherit;text-decoration:none}
+  .card,.blueprint{break-inside:avoid}
+  tr,.site-foot{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="nav"><a class="nav-brand" href="/" style="text-decoration:none"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M2 19h6.5l4-12 4.5 17 3.5-10H30" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/></svg><span>TICK</span></a><div class="nav-tabs"><a href="/demo/" aria-current="page">Accounts</a><a href="/docs">Docs</a></div>
+  <div class="nav-auth">
+    <a class="nav-login" href="/login">Log in</a>
+    <a class="nav-cta" href="/#access">Get started</a>
+  </div>
+</div>
+<div class="wrap">
+  <div class="crumb"><span style="color:var(--color-text)">Accounts</span></div>
+  <main id="main">
+  <div class="hdr">
+    <div><p class="eyebrow text-muted">TICK</p><h1 style="font-size:34px;margin:3px 0">Accounts</h1>
+      <p class="text-muted acct-lede" style="margin:6px 0 0;font-size:13px">1 account &middot; <b>1 reporting</b> &middot; <b>39</b> open postings tracked &middot; last crawl 3 Sep 2026, 23:14 UTC</p></div>
+  </div>
+  <div class="acct-grid"><div class="card blueprint is-reporting"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="acct-head"><div><h2 class="acct-name">Dunder Mifflin Paper Company, Inc.</h2><div class="acct-meta text-muted">workday &middot; tier 1</div></div><span class="tag tag-solid" style="white-space:nowrap">Reporting</span></div><div class="stat-row"><div class="stat"><b>39</b><span>Open roles</span></div><div class="stat"><b>+1</b><span>vs 2026-08-27</span></div><div class="stat"><b>19</b><span>Tech roles</span></div></div><div class="acct-foot"><a class="btn btn-primary btn-sm" href="/demo/dunder-mifflin/dashboard">Dashboard</a><a class="btn btn-secondary btn-sm" href="/demo/dunder-mifflin/brief">Brief</a><span class="text-muted" style="margin-left:auto;font-size:11.5px">Crawled 2026-09-03</span></div></div><div class="card blueprint acct-add"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div class="acct-head"><div><h2 class="acct-name">Track another account</h2><div class="acct-meta text-muted">Want to try yourself?</div></div><span class="tag tag-solid" style="white-space:nowrap">Join beta</span></div><div style="border-top:1px solid var(--color-divider);margin-top:12px"></div><form id="acct-form" novalidate><label for="acct-name-in">Name</label><input id="acct-name-in" type="text" placeholder="Your name" autocomplete="name" spellcheck="false" required><label for="acct-email-in">Email</label><input id="acct-email-in" type="email" placeholder="email@address.com" autocomplete="email" spellcheck="false" required><label for="acct-company-in">Company to track</label><input id="acct-company-in" type="text" placeholder="Acme" autocomplete="organization" spellcheck="false" required><div class="acct-foot"><button class="btn btn-primary btn-sm" type="submit" id="acct-submit">Request access</button><span id="acct-status" role="status" aria-live="polite" class="text-muted" style="font-size:11.5px;margin-left:auto"></span></div></form></div></div>
+  </main>
+  <footer class="site-foot text-muted"><span>Generated 3 Sep 2026, 23:14 UTC by TICK</span><span>Internal use &mdash; derived from public job postings. Verify before acting.</span></footer>
+</div>
+<script>
+(function () {
+  // Mirrors Pulp's WaitlistForm: POST {email, name, company, source} to the same
+  // join-request endpoint. Only `email` is part of Pulp's contract; the rest ride
+  // along, and an opaque response cannot confirm they were stored.
+  // The demo is served from sembasolutions.com but the API lives on
+  // pulp.sembasolutions.com, which returns no Access-Control-Allow-Origin - so
+  // this uses mode:'no-cors'. That forbids a JSON content-type, but the handler
+  // calls JSON.parse(event.body) without inspecting Content-Type, so a
+  // text/plain body parses fine. The response is opaque by definition, so - as
+  // Pulp itself does - any failure is treated the same as success.
+  var ENDPOINT = 'https://pulp.sembasolutions.com/api/auth/join-request';
+  var form = document.getElementById('acct-form');
+  var name = document.getElementById('acct-name-in');
+  var mail = document.getElementById('acct-email-in');
+  var firm = document.getElementById('acct-company-in');
+  var btn  = document.getElementById('acct-submit');
+  var out  = document.getElementById('acct-status');
+  if (!form || !name || !mail || !firm || !btn || !out) return;
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var person = name.value.trim();
+    if (!person) {
+      out.textContent = 'Enter your name.';
+      name.focus();
+      return;
+    }
+    var email = mail.value.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      out.textContent = 'Enter a valid email address.';
+      mail.focus();
+      return;
+    }
+    var company = firm.value.trim();
+    if (!company) {
+      out.textContent = 'Name the company you want TICK to track.';
+      firm.focus();
+      return;
+    }
+    btn.disabled = true; name.disabled = true; mail.disabled = true; firm.disabled = true;
+    out.textContent = 'Sending…';
+    fetch(ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify({ email: email, name: person, company: company, source: 'tick-demo' })
+    })['then'](function () {
+      // no-cors gives an opaque response, so this only means "the request left
+      // the browser" - not that the server recorded it. That is the same
+      // guarantee Pulp's own form offers.
+      btn.textContent = 'Request received';
+      out.textContent = 'You’re on the list ✓';
+    })['catch'](function () {
+      // A rejection IS meaningful: CSP block, DNS failure, offline, request
+      // blocked by an extension. Never report success for one of these - that
+      // is how a CSP block masqueraded as a working form.
+      btn.disabled = false; name.disabled = false; mail.disabled = false; firm.disabled = false;
+      out.textContent = 'Couldn’t send — please try again.';
+    });
+  });
+})();
+</script>
+</body>
+</html>

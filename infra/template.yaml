@@ -1,0 +1,582 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TICK — daily job-posting collection pipeline plus the site it feeds.
+  EventBridge Scheduler -> Dispatcher Lambda -> SQS (1 msg/company) ->
+  Collector Lambda (batch size 1) -> S3 lake (raw/curated/derived).
+  Failures retry 3x then land in the DLQ (the "re-run evaluator" signal).
+  A second schedule, half an hour later, runs the Publisher Lambda: it
+  renders the lake into static HTML in the site bucket, which CloudFront
+  serves behind Cognito sign-in (existing pool, group-gated) — except the
+  public marketing pages at /, /docs and /demo, which are hand-authored,
+  carry no lake data and are deployed separately. The lake itself is never
+  public.
+
+Parameters:
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 3 * * ? *)   # daily 03:00 UTC ≈ 11pm ET
+    Description: When the dispatcher fires
+  ScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Optional email for DLQ alarms (empty = no subscription)
+  PublishScheduleExpression:
+    Type: String
+    Default: cron(30 3 * * ? *)   # 30 min after the collectors start
+    Description: When the site is re-rendered from the lake
+  SiteDomainName:
+    Type: String
+    Default: tick.sembasolutions.com
+    Description: >-
+      Custom domain for the site. Leave empty to serve only on the CloudFront
+      domain — that is also the way back if certificate validation ever wedges.
+  SiteHostedZoneId:
+    Type: String
+    Default: Z09625732CWT1QHUYO9J
+    Description: Route 53 public hosted zone holding SiteDomainName, in this account
+  UserPoolId:
+    Type: String
+    Default: us-east-1_7nie1ydof
+    Description: >-
+      Existing Cognito user pool that fronts the site. Owned by PulpDataStack —
+      this stack only adds its own app client, group and hosted-UI domain to it,
+      and never modifies pulp's client.
+  ViewerGroupName:
+    Type: String
+    Default: tick-viewers
+    Description: Only members of this group may view the site
+  SessionSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    MaxLength: 128
+    AllowedPattern: '^[A-Za-z0-9._~+/=-]{32,128}$'
+    Description: >-
+      HMAC key for the session cookie, shared by the auth Lambda and the
+      CloudFront Function. Required on every deploy; rotating it signs every
+      live session out. Generate with: openssl rand -hex 32 (the character set
+      is constrained because the value is embedded in the CloudFront Function's
+      source).
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+  HasSiteDomain: !Not [!Equals [!Ref SiteDomainName, '']]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    MemorySize: 256
+
+Resources:
+  # ------------------------------------------------------------------ S3 lake
+  # Holds every tracked account's configs and crawl history. Retained so no stack
+  # delete or replacement can take it; remove by hand if TICK is ever retired.
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  # ------------------------------------------------------------------ queues
+  CollectQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-collect
+      VisibilityTimeout: 1800         # 6x collector timeout per AWS guidance
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CollectDLQ.Arn
+        maxReceiveCount: 3
+
+  CollectDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-collect-dlq
+      MessageRetentionPeriod: 1209600  # 14 days to triage / re-run evaluator
+
+  # -------------------------------------------------------------- dispatcher
+  DispatcherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-dispatcher
+      CodeUri: src/dispatcher/
+      Handler: app.handler
+      Timeout: 60
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref DataBucket
+          QUEUE_URL: !Ref CollectQueue
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CollectQueue.QueueName
+      Events:
+        Daily:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref ScheduleExpression
+            State: !Ref ScheduleState
+
+  # --------------------------------------------------------------- collector
+  CollectorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-collector
+      CodeUri: src/collector/
+      Handler: app.handler
+      Timeout: 300                    # board page + ~140 per-posting detail GETs
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref DataBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref DataBucket
+      Events:
+        FromQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CollectQueue.Arn
+            BatchSize: 1                  # one invocation = one company
+            ScalingConfig:
+              MaximumConcurrency: 2       # be polite to ATS endpoints
+
+  # ------------------------------------------------------------------ cognito
+  # Added to the existing pool, never modifying it: a dedicated app client, a
+  # group that gates the site, and the hosted-UI domain the login page needs.
+  # The domain is the one pool-level singleton here — if PulpDataStack ever
+  # adds its own, that deploy conflicts with this one.
+  SiteUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      Domain: !Sub tick-site-${AWS::AccountId}
+
+  SiteViewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      GroupName: !Ref ViewerGroupName
+      Description: May view the TICK site
+
+  # Confidential client: the code exchange happens in the auth Lambda, never in
+  # a browser, so it carries a secret. The callback can only be known once the
+  # distribution exists, which is why the client depends on it and the Lambda
+  # reads its id back through SSM instead.
+  SiteUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ${AWS::StackName}-site
+      UserPoolId: !Ref UserPoolId
+      GenerateSecret: true
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      # Both hosts stay registered: the CloudFront domain keeps working, and
+      # anyone arriving there is carried to the canonical domain by the login
+      # round trip, because that is the host the session cookie lands on.
+      CallbackURLs: !If
+        - HasSiteDomain
+        - - !Sub https://${SiteDomainName}/auth/callback
+          - !Sub https://${SiteDistribution.DomainName}/auth/callback
+        - - !Sub https://${SiteDistribution.DomainName}/auth/callback
+      LogoutURLs: !If
+        - HasSiteDomain
+        - - !Sub https://${SiteDomainName}/
+          - !Sub https://${SiteDistribution.DomainName}/
+        - - !Sub https://${SiteDistribution.DomainName}/
+      PreventUserExistenceErrors: ENABLED
+
+  # Breaks the build-time cycle: the Lambda is an origin of the distribution,
+  # so it cannot reference the distribution (or anything downstream of it) at
+  # build time. It reads both values here at cold start instead.
+  AuthConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /tick/${AWS::StackName}/auth-config
+      Type: String
+      # site_url is the redirect_uri the Lambda sends to Cognito, so it must be
+      # the canonical host — a mismatch here fails the code exchange outright.
+      Value: !If
+        - HasSiteDomain
+        - !Sub '{"client_id":"${SiteUserPoolClient}","site_url":"https://${SiteDomainName}"}'
+        - !Sub '{"client_id":"${SiteUserPoolClient}","site_url":"https://${SiteDistribution.DomainName}"}'
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-auth
+      CodeUri: src/auth/
+      Handler: app.handler
+      Timeout: 15
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPoolId
+          COGNITO_DOMAIN: !Ref SiteUserPoolDomain
+          VIEWER_GROUP: !Ref ViewerGroupName
+          SESSION_SECRET: !Ref SessionSecret
+          CONFIG_PARAM: !Sub /tick/${AWS::StackName}/auth-config
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tick/${AWS::StackName}/auth-config
+            - Effect: Allow
+              Action: cognito-idp:DescribeUserPoolClient
+              Resource: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}
+
+  AuthFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt AuthFunction.Arn
+      AuthType: AWS_IAM          # only CloudFront may invoke it, signed via OAC
+
+  # OAC needs BOTH grants. With only InvokeFunctionUrl, Lambda rejects
+  # CloudFront's signed request before the function runs — a 403
+  # AccessDeniedException at the edge and no log stream at all.
+  AuthFunctionCloudFrontPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AuthFunction.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: cloudfront.amazonaws.com
+      FunctionUrlAuthType: AWS_IAM
+      SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}
+
+  AuthFunctionCloudFrontInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AuthFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: cloudfront.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}
+
+  AuthOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-auth-oac
+        OriginAccessControlOriginType: lambda
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ----------------------------------------------------------------- dns/tls
+  # CloudFront only reads certificates from us-east-1; this stack deploys there,
+  # so a local resource is fine. CloudFormation writes the validation record
+  # into the hosted zone itself and blocks until ACM issues — usually a few
+  # minutes. If the zone id is wrong the deploy hangs here rather than failing
+  # fast, so that is the first thing to check if it stalls.
+  SiteCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: HasSiteDomain
+    Properties:
+      DomainName: !Ref SiteDomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref SiteDomainName
+          HostedZoneId: !Ref SiteHostedZoneId
+
+  SiteDnsRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Condition: HasSiteDomain
+    Properties:
+      HostedZoneId: !Ref SiteHostedZoneId
+      RecordSets:
+        - Name: !Ref SiteDomainName
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt SiteDistribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2   # fixed, global id for CloudFront alias targets
+            EvaluateTargetHealth: false
+        - Name: !Ref SiteDomainName
+          Type: AAAA                        # the distribution answers on IPv6 too
+          AliasTarget:
+            DNSName: !GetAtt SiteDistribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+            EvaluateTargetHealth: false
+
+  # -------------------------------------------------------------------- site
+  # Private bucket + CloudFront (OAC) + a viewer-request function that enforces
+  # a session check. Nothing in either bucket is publicly readable: CloudFront
+  # is the only principal allowed to GET site objects, and it only serves a
+  # request that already carried a valid session cookie.
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  SiteOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-site-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Runs on every page request. It resolves extensionless URIs to the index
+  # object behind them, lets the public marketing pages through, and for
+  # everything else does the cheapest check that is still a real one: one HMAC
+  # over the session cookie the auth Lambda minted. An
+  # edge function cannot verify an RS256 JWT or call Cognito, which is exactly
+  # why the OIDC exchange lives in the Lambda and only its result is checked
+  # here. The signing key is embedded in this source, readable by anyone
+  # holding cloudfront:GetFunction — it authenticates viewers, it is not a
+  # secret from account principals.
+  SiteAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub ${AWS::StackName}-site-auth
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Session-cookie check for the TICK site
+        Runtime: cloudfront-js-2.0
+      FunctionCode: !Sub |
+        import crypto from 'crypto';
+
+        var SECRET = '${SessionSecret}';
+
+        // S3 has no directory semantics, so an extensionless URI has to be
+        // pointed at the object that backs it before anything else happens.
+        // DefaultRootObject only covers "/", and only on the default cache
+        // behavior — not enough once /docs and /demo exist.
+        function resolve(uri) {
+          if (uri.endsWith('/')) { return uri + 'index.html'; }
+          var tail = uri.substring(uri.lastIndexOf('/') + 1);
+          return tail.indexOf('.') === -1 ? uri + '/index.html' : uri;
+        }
+
+        // The public half of the site: the marketing page, the docs, the demo.
+        // Matched on the RESOLVED uri, so /docs, /docs/ and /docs/index.html
+        // are one decision. Anything not listed needs a session — the default
+        // is deny, so a page added later stays private until someone opens it
+        // on purpose.
+        function isPublic(uri) {
+          return uri === '/index.html'
+              || uri === '/og-image.png'
+              || uri.indexOf('/docs/') === 0
+              || uri.indexOf('/demo/') === 0;
+        }
+
+        function handler(event) {
+          var request = event.request;
+          // Keep what the viewer actually asked for: the login round trip sends
+          // them back to "/login", not to the "/login/index.html" it resolves to.
+          var asked = request.uri;
+          request.uri = resolve(request.uri);
+
+          if (isPublic(request.uri)) {
+            return request;
+          }
+
+          var jar = request.cookies || {};
+          var session = jar.tick_session ? jar.tick_session.value : '';
+          var split = session.lastIndexOf('.');
+
+          if (split > 0) {
+            var payload = session.substring(0, split);
+            var signature = session.substring(split + 1);
+            var expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
+            if (expected === signature) {
+              var expiry = parseInt(payload.substring(payload.lastIndexOf(':') + 1), 10);
+              if (expiry * 1000 > Date.now()) {
+                return request;
+              }
+            }
+          }
+
+          return {
+            statusCode: 302,
+            statusDescription: 'Found',
+            headers: {
+              location: { value: '/auth/login?next=' + encodeURIComponent(asked) },
+              'cache-control': { value: 'no-store' }
+            }
+          };
+        }
+
+  SiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub ${AWS::StackName} site
+        Enabled: true
+        Aliases: !If [HasSiteDomain, [!Ref SiteDomainName], !Ref 'AWS::NoValue']
+        ViewerCertificate: !If
+          - HasSiteDomain
+          - AcmCertificateArn: !Ref SiteCertificate
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - !Ref 'AWS::NoValue' 
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+        Origins:
+          - Id: site-bucket
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt SiteOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          - Id: auth-lambda
+            DomainName: !Select [2, !Split ["/", !GetAtt AuthFunctionUrl.FunctionUrl]]
+            OriginAccessControlId: !GetAtt AuthOriginAccessControl.Id
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        CacheBehaviors:
+          # The login endpoints must stay reachable without a session, so the
+          # viewer-request check is deliberately absent here — attaching it
+          # would redirect the login page to itself.
+          - PathPattern: /auth/*
+            TargetOriginId: auth-lambda
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
+        DefaultCacheBehavior:
+          TargetOriginId: site-bucket
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          # CachingOptimized — honours the max-age=300 the publisher stamps on
+          # every page, so a day-old edge copy can never outlive a publish.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SiteAuthFunction.FunctionARN
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${SiteBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}
+
+  # --------------------------------------------------------------- publisher
+  PublisherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-publisher
+      CodeUri: src/publisher/
+      Handler: app.handler
+      Timeout: 300
+      MemorySize: 512            # holds one company's curated postings while rendering
+      Environment:
+        Variables:
+          DATA_BUCKET: !Ref DataBucket
+          SITE_BUCKET: !Ref SiteBucket
+          DISTRIBUTION_ID: !Ref SiteDistribution
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataBucket
+        - S3CrudPolicy:
+            BucketName: !Ref SiteBucket
+        - Statement:
+            - Effect: Allow
+              Action: cloudfront:CreateInvalidation
+              Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}
+      Events:
+        AfterDailyCollection:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref PublishScheduleExpression
+            State: !Ref ScheduleState
+
+  # ---------------------------------------------------------------- alerting
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlertEmail
+    Properties:
+      TopicName: !Sub ${AWS::StackName}-alerts
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  DLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-collect-failures
+      AlarmDescription: >-
+        A company's collection failed 3x — its message is in the DLQ.
+        Re-run the evaluator for that company_slug.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt CollectDLQ.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlertEmail
+        - [!Ref AlertTopic]
+        - []
+
+Outputs:
+  DataBucketName:
+    Value: !Ref DataBucket
+    Description: Upload SourceConfigs to s3://<bucket>/configs/<slug>.json
+  CollectQueueUrl:
+    Value: !Ref CollectQueue
+  CollectDLQUrl:
+    Value: !Ref CollectDLQ
+  DispatcherFunctionName:
+    Value: !Ref DispatcherFunction
+  SiteUrl:
+    Value: !If [HasSiteDomain, !Sub 'https://${SiteDomainName}', !Sub 'https://${SiteDistribution.DomainName}']
+    Description: The hosted site — sign in with a Cognito user in the viewer group
+  SiteCloudFrontUrl:
+    Value: !Sub https://${SiteDistribution.DomainName}
+    Description: The distribution's own domain, still valid
+  SiteLoginDomain:
+    Value: !Sub https://${SiteUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
+    Description: Cognito hosted UI serving the login page
+  ViewerGroup:
+    Value: !Ref SiteViewerGroup
+    Description: >-
+      Grant access with: aws cognito-idp admin-add-user-to-group
+      --user-pool-id <UserPoolId> --group-name <this> --username <email>
+  SiteBucketName:
+    Value: !Ref SiteBucket
+  SiteDistributionId:
+    Value: !Ref SiteDistribution
+  PublisherFunctionName:
+    Value: !Ref PublisherFunction
+    Description: Invoke to republish the site immediately

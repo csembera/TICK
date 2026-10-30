@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home | TICK</title>
+<meta name="description" content="TICK watches the job boards of the companies you sell to and turns what they post into a dashboard and a weekly brief — so a new program reaches you while it is still being staffed.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#080d12">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TICK">
+<meta property="og:url" content="https://tick.sembasolutions.com/">
+<meta property="og:title" content="TICK — Targeted Intelligence Companion Kit">
+<meta property="og:description" content="Hiring is the first public signal of what a company is building. TICK reads it for your accounts, every night.">
+<meta property="og:image" content="https://tick.sembasolutions.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TICK — Targeted Intelligence Companion Kit">
+<meta name="twitter:description" content="Hiring is the first public signal of what a company is building. TICK reads it for your accounts, every night.">
+<meta name="twitter:image" content="https://tick.sembasolutions.com/og-image.png">
+<link rel="canonical" href="https://tick.sembasolutions.com/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cstyle%3E.p%7Bstroke:%23456e99%7D@media(prefers-color-scheme:dark)%7B.p%7Bstroke:%2386aace%7D%7D%3C/style%3E%3Cpath class='p' d='M2 19h6.5l4-12 4.5 17 3.5-10H30' fill='none' stroke-width='3' stroke-linejoin='miter' stroke-linecap='square'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Condensed:wght@500;600;700&amp;display=swap">
+<style>
+:root{
+  --bg:#080d12;
+  --bg-2:#0d141b;
+  --ink:#eef2f5;
+  --ink-2:#9aa9b8;
+  --ink-3:#66788a;
+  --line:rgba(158,186,214,.14);
+  --line-2:rgba(158,186,214,.28);
+  --accent:#86aace;
+  --accent-hi:#b9d4ef;
+  --accent-deep:#456e99;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;line-height:1.02;letter-spacing:-.015em;margin:0;text-wrap:balance}
+p{margin:0}
+a{color:var(--accent);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.wrap{max-width:1200px;margin-inline:auto;padding-inline:32px}
+.skip-link{position:absolute;left:-9999px}
+.skip-link:focus{left:16px;top:12px;z-index:60;background:var(--bg-2);color:var(--ink);padding:10px 14px;border:1px solid var(--accent)}
+
+/* ── nav: transparent over the hero, solid once you scroll ─────────── */
+.nav{position:fixed;inset:0 0 auto;z-index:50;display:flex;align-items:center;gap:28px;padding:16px 32px;
+  background:transparent;border-bottom:1px solid transparent;transition:background .25s ease,border-color .25s ease}
+.nav.is-stuck{background:rgba(8,13,18,.86);backdrop-filter:blur(10px);border-bottom-color:var(--line)}
+.nav-brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:25px;letter-spacing:.14em;color:var(--ink);text-decoration:none}
+.nav-brand svg{display:block;width:26px;height:26px;flex:none}
+.nav-main{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.nav-main a{color:var(--ink-2);text-decoration:none;font-size:18px}
+.nav-main a:hover{color:var(--ink)}
+.nav-auth{margin-left:auto;display:flex;align-items:center;gap:20px}
+.nav-login{font-family:var(--f-body);font-size:18px;color:var(--ink-2);background:none;border:0;padding:6px 2px;cursor:pointer;text-decoration:none;display:inline-block}
+.nav-login:hover{color:var(--ink)}
+.nav-cta{font-family:var(--f-display);font-weight:600;font-size:18px;letter-spacing:.03em;text-decoration:none;
+  background:var(--accent-deep);border:1px solid var(--accent-deep);border-radius:999px;padding:9px 20px;color:#fff}
+.nav-cta:hover{background:var(--accent);border-color:var(--accent);color:#05061a}
+
+/* ── hero: full viewport, blueprint grid ───────────────────────────── */
+.hero{position:relative;min-height:100vh;min-height:100svh;display:grid;align-items:center;overflow:hidden;background:var(--bg)}
+.hero::before{content:"";position:absolute;inset:-2px;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:72px 72px;
+  -webkit-mask-image:radial-gradient(120% 90% at 50% 38%,#000 35%,transparent 78%);
+  mask-image:radial-gradient(120% 90% at 50% 38%,#000 35%,transparent 78%)}
+.hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(90% 60% at 50% 30%,rgba(134,170,206,.10),transparent 70%)}
+.hero-in{position:relative;z-index:1;width:100%;padding-block:140px 120px;text-align:center}
+.kicker{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);
+  display:inline-flex;align-items:center;gap:12px}
+.kicker::before,.kicker::after{content:"";width:34px;height:1px;background:var(--line-2)}
+.hero h1{font-size:clamp(44px,8.6vw,112px);margin-top:26px;letter-spacing:-.02em}
+.hero h1 .word{color:var(--accent);letter-spacing:.02em}
+.hero .sub{font-size:clamp(17px,2vw,21px);color:var(--ink-2);margin:26px auto 0;max-width:60ch}
+.hero .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:38px}
+.btn{display:inline-flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:600;font-size:17px;
+  letter-spacing:.04em;padding:13px 26px;text-decoration:none;border-radius:999px;border:1px solid var(--accent);transition:.2s}
+.btn-primary{background:var(--accent);color:#08131f}
+.btn-primary:hover{background:var(--accent-hi);border-color:var(--accent-hi)}
+.btn-ghost{background:transparent;color:var(--ink);border-color:var(--line-2)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent-hi)}
+.scroll-cue{position:absolute;left:50%;bottom:34px;transform:translateX(-50%);z-index:1;display:grid;justify-items:center;gap:10px;
+  font-family:var(--f-display);font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-3);text-decoration:none}
+.scroll-cue:hover{color:var(--accent)}
+.scroll-cue svg{animation:nudge 2.4s ease-in-out infinite}
+@keyframes nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+@media (prefers-reduced-motion:reduce){.scroll-cue svg{animation:none}}
+
+/* ── numbered sections ─────────────────────────────────────────────── */
+section{padding-block:clamp(72px,11vw,132px);border-top:1px solid var(--line)}
+.sec-head{display:grid;gap:18px;max-width:64ch}
+.num{font-family:var(--f-display);font-weight:600;font-size:14px;letter-spacing:.24em;color:var(--accent)}
+.sec-head h2{font-size:clamp(32px,5vw,60px)}
+.sec-head p{color:var(--ink-2);font-size:clamp(16.5px,1.6vw,19px);max-width:56ch}
+
+.statement{font-family:var(--f-display);font-weight:500;font-size:clamp(26px,3.6vw,44px);line-height:1.12;max-width:20ch;color:var(--ink)}
+.two-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:center}
+.two-col p{color:var(--ink-2);font-size:17.5px}
+.two-col p+p{margin-top:18px}
+
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:56px}
+.card{background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:30px 28px 34px;transition:border-color .2s,transform .2s}
+.card:hover{border-color:var(--line-2);transform:translateY(-3px)}
+.card .lbl{font-family:var(--f-display);font-weight:600;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+.card h3{font-size:26px;margin:14px 0 10px}
+.card p{color:var(--ink-2);font-size:15.5px}
+
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:56px}
+.step{border-top:2px solid var(--accent-deep);padding-top:22px}
+.step b{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.2em;color:var(--accent);display:block;margin-bottom:10px}
+.step h3{font-size:24px;margin-bottom:10px}
+.step p{color:var(--ink-2);font-size:15.5px}
+
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:48px;margin-top:56px}
+.fact h3{font-size:22px;margin-bottom:10px}
+.fact p{color:var(--ink-2);font-size:15.5px}
+
+/* ── request access ────────────────────────────────────────────────── */
+.access{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:64px;align-items:center}
+.access .copy{max-width:46ch}
+.access .num{margin-bottom:16px}
+form{display:grid;gap:6px}
+label{font-family:var(--f-display);font-weight:600;font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);margin-top:16px}
+input{font-family:var(--f-body);font-size:16px;padding:13px 15px;border:1px solid var(--line-2);border-radius:10px;
+  background:var(--bg-2);color:var(--ink)}
+input::placeholder{color:var(--ink-3)}
+input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.form-foot{display:grid;justify-items:center;gap:12px;margin-top:28px}
+.form-foot button{width:100%;justify-self:stretch;font-family:var(--f-display);font-weight:600;font-size:17px;letter-spacing:.04em;padding:14px 28px;border-radius:999px;
+  border:1px solid var(--accent);background:var(--accent);color:#08131f;cursor:pointer;transition:.2s}
+.form-foot button:hover:not(:disabled){background:var(--accent-hi);border-color:var(--accent-hi)}
+.form-foot button:disabled{opacity:.65;cursor:default}
+.status{font-size:14px;color:var(--ink-2)}
+
+footer.site{border-top:1px solid var(--line);padding-block:32px 56px;display:flex;flex-wrap:wrap;gap:16px 32px;
+  justify-content:space-between;align-items:baseline;color:var(--ink-3);font-size:14.5px}
+footer.site nav{display:flex;gap:26px;flex-wrap:wrap}
+footer.site a{color:var(--ink-2);text-decoration:none}
+footer.site a:hover{color:var(--ink)}
+
+@media (max-width:900px){
+  .access{grid-template-columns:1fr;gap:34px}
+  .cards,.steps,.facts{grid-template-columns:1fr;gap:20px}
+}
+@media (max-width:620px){
+  .wrap{padding-inline:20px}
+  .nav{padding:12px 20px;gap:16px}
+  .nav-main{display:none}
+  .nav-auth{gap:14px}
+  .hero-in{padding-block:120px 110px}
+  .scroll-cue{bottom:22px}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#what">Skip to content</a>
+
+<header class="nav" id="nav">
+  <a class="nav-brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M2 19h6.5l4-12 4.5 17 3.5-10H30" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/></svg><span>TICK</span></a>
+  <nav class="nav-main" aria-label="TICK">
+    <a href="/demo">Demo</a>
+    <a href="/docs">Docs</a>
+  </nav>
+  <div class="nav-auth">
+    <a class="nav-login" href="/login">Log in</a>
+    <a class="nav-cta" href="#access">Get started</a>
+  </div>
+</header>
+
+<main>
+  <!-- ─────────────────────────────────────────────── hero -->
+  <div class="hero">
+    <div class="wrap hero-in">
+      <p class="kicker">Targeted Intelligence Companion Kit</p>
+      <h1>See what makes your accounts <span class="word">TICK</span>.</h1>
+      <p class="sub">Hiring is the first public signal of what a company is building. TICK tracks it for the accounts you care about — every night.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#access">Get started</a>
+        <a class="btn btn-ghost" href="/demo">See a demo</a>
+      </div>
+    </div>
+    <a class="scroll-cue" href="#what" aria-label="Scroll to content">
+      <span>Scroll</span>
+      <svg width="16" height="22" viewBox="0 0 16 22" fill="none" aria-hidden="true">
+        <path d="M8 1v18m0 0 6-6m-6 6-6-6" stroke="currentColor" stroke-width="1.6"/>
+      </svg>
+    </a>
+  </div>
+
+  
+
+  <!-- ─────────────────────────────────────────────── 02 what you get -->
+  <section id="what" aria-labelledby="what-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="num">What you get</p>
+        <h2 id="what-h">One page per account, kept current</h2>
+        <p>Pick the companies you care about. TICK tracks them from then on, and gives you three ways to look at what it finds.</p>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <span class="lbl">Your accounts</span>
+          <h3>The whole list at a glance</h3>
+          <p>Every company you track on one page, with how many roles are open, what changed this week and how many of those roles are technical — so you know where to spend your attention.</p>
+        </div>
+        <div class="card">
+          <span class="lbl">Hiring dashboard</span>
+          <h3>What they're building</h3>
+          <p>The technology an account is hiring for, separated into what is newly adopted and what they have run for years, beside every open role and how the board has moved over time.</p>
+        </div>
+        <div class="card">
+          <span class="lbl">Weekly brief</span>
+          <h3>The week in a page</h3>
+          <p>Every Sunday night, an AI agent reads the week's changes for each account and writes a brief on what moved. Movement in leadership, new initiatives the company is staffing for, technologies showing up for the first time, and what to do about them.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  
+
+  
+
+  <!-- ─────────────────────────────────────────────── access -->
+  <section id="access" aria-labelledby="access-h">
+    <div class="wrap access">
+      <div class="copy">
+        <p class="num">Get started</p>
+        <h2 id="access-h" style="font-size:clamp(32px,5vw,60px);margin-top:18px">Start with one company</h2>
+        <p style="color:var(--ink-2);font-size:18px;margin-top:18px">TICK is in beta and we are onboarding a select number of test users. Tell us the company you want to watch, and look forward to getting your first brief.</p>
+        <p style="color:var(--ink-3);font-size:14px;margin-top:22px">We set the company up the same night, and your first brief lands the following Monday. Want to look around first? The <a href="/demo">demo</a> is open, built on fictional data.</p>
+      </div>
+      <div class="fields">
+        <form id="access-form" novalidate>
+          <label for="name-in">Name</label>
+          <input id="name-in" type="text" placeholder="Your name" autocomplete="name" spellcheck="false" required>
+          <label for="email-in">Email</label>
+          <input id="email-in" type="email" placeholder="email@address.com" autocomplete="email" spellcheck="false" required>
+          <label for="company-in">Company to track</label>
+          <input id="company-in" type="text" placeholder="Acme" autocomplete="organization" spellcheck="false" required>
+          <div class="form-foot">
+            <button type="submit" id="access-submit">Submit</button>
+            <span class="status" id="access-status" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      
+      </div>
+
+    </div>
+  </section>
+
+  <div class="wrap">
+    <footer class="site">
+      <span>By <a href="https://sembasolutions.com">Semba Solutions</a></span>
+    </footer>
+  </div>
+</main>
+
+<script>
+(function () {
+  // The nav sits transparent over the hero and picks up a background as soon as
+  // the page scrolls — the only chrome that reacts to scroll position.
+  var nav = document.getElementById('nav');
+  function sync() { nav.classList.toggle('is-stuck', window.scrollY > 24); }
+  sync();
+  window.addEventListener('scroll', sync, { passive: true });
+})();
+
+(function () {
+  // Same join-request endpoint as /tick-demo and Pulp's own form: POST
+  // {email, name, company, source}. The API lives on pulp.sembasolutions.com and
+  // sends no Access-Control-Allow-Origin, so this is mode:'no-cors' — the body
+  // parses server-side without a JSON content-type, and the response is opaque,
+  // so a resolved fetch only means the request left the browser. A rejection,
+  // though, is real (CSP block, offline, extension) and is never reported as
+  // success.
+  var ENDPOINT = 'https://pulp.sembasolutions.com/api/auth/join-request';
+  var form = document.getElementById('access-form');
+  var name = document.getElementById('name-in');
+  var mail = document.getElementById('email-in');
+  var firm = document.getElementById('company-in');
+  var btn  = document.getElementById('access-submit');
+  var out  = document.getElementById('access-status');
+  if (!form || !name || !mail || !firm || !btn || !out) return;
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var person = name.value.trim();
+    if (!person) { out.textContent = 'Enter your name.'; name.focus(); return; }
+    var email = mail.value.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      out.textContent = 'Enter a valid email address.'; mail.focus(); return;
+    }
+    var company = firm.value.trim();
+    if (!company) { out.textContent = 'Name the company you want TICK to track.'; firm.focus(); return; }
+
+    btn.disabled = true; name.disabled = true; mail.disabled = true; firm.disabled = true;
+    out.textContent = 'Sending…';
+    fetch(ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify({ email: email, name: person, company: company, source: 'tick' })
+    })['then'](function () {
+      btn.textContent = 'Request received';
+      out.textContent = 'You’re on the list ✓';
+    })['catch'](function () {
+      btn.disabled = false; name.disabled = false; mail.disabled = false; firm.disabled = false;
+      out.textContent = 'Couldn’t send — please try again.';
+    });
+  });
+})();
+</script>
+</body>
+</html>

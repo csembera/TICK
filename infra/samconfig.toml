@@ -1,0 +1,21 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "tick-collector"
+region = "us-east-1"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+region = "us-east-1"
+s3_prefix = "tick-collector"
+parameter_overrides = "ScheduleExpression=\"cron(0 3 * * ? *)\" ScheduleState=\"ENABLED\" AlertEmail=\"canyon.work01@gmail.com\""
+image_repositories = []
+
+[default.validate.parameters]
+lint = true

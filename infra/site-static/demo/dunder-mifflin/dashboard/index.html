@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dunder Mifflin Paper Company, Inc. | TICK</title>
+<meta name="description" content="Hiring signals for Dunder Mifflin Paper Company, Inc.: 39 open postings captured 2026-09-03, compared with 2026-08-27.">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#080d12">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TICK">
+<meta property="og:title" content="Dunder Mifflin Paper Company, Inc. — TICK dashboard">
+<meta property="og:description" content="Hiring signals for Dunder Mifflin Paper Company, Inc.: 39 open postings captured 2026-09-03, compared with 2026-08-27.">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cstyle%3E.p%7Bstroke:%23456e99%7D@media(prefers-color-scheme:dark)%7B.p%7Bstroke:%2386aace%7D%7D%3C/style%3E%3Cpath class='p' d='M2 19h6.5l4-12 4.5 17 3.5-10H30' fill='none' stroke-width='3' stroke-linejoin='miter' stroke-linecap='square'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&amp;family=Barlow+Condensed:wght@400;600&amp;display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --color-bg:#f2f2f3;--color-surface:#e9e9ea;--color-text:#1d1f20;
+  --color-accent:#5980a6;--color-divider:color-mix(in srgb,#1d1f20 16%,transparent);
+  --color-accent-100:#eef6ff;--color-accent-700:#416180;--color-accent-800:#2c455d;--color-accent-900:#1d2d3d;
+  --color-neutral-100:#f5f5f8;--color-neutral-500:#98989b;--color-neutral-800:#424244;
+  --font-heading:"Barlow Condensed",system-ui,sans-serif;--font-body:"Barlow",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+/* the UA rule for [hidden] is display:none, but any author display wins over it —
+   .pager's display:flex kept the pager on screen after JS had hidden it */
+[hidden]{display:none!important}
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:15px;line-height:1.55}
+h1,h2,h3,h4,h5,h6{font-family:var(--font-heading);font-weight:600;line-height:1.12;letter-spacing:-.015em;margin:0}
+h6{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+a{color:var(--color-accent);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+.text-muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.skip-link{position:absolute;left:8px;top:-48px;z-index:10;padding:9px 14px;background:var(--color-accent-900);
+  color:#fff;text-decoration:none;font-family:var(--font-heading);font-weight:600;font-size:14px;transition:top .12s}
+.skip-link:focus{top:8px}
+/* page title block: an eyebrow line above the h1, so the heading order stays h1 -> h2 */
+.eyebrow{font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.08em;
+  text-transform:uppercase;line-height:1.12;margin:0}
+.section-label{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px 60px}
+.wrap.narrow{max-width:940px}
+/* menu bar: cloned from /tick (static), colors pinned to that page's palette */
+.nav{display:flex;align-items:center;gap:28px;padding:16px 32px;
+  background:#080d12;border-bottom:1px solid rgba(158,186,214,.14);margin-bottom:0;flex-wrap:wrap}
+.nav-brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-heading);font-weight:700;font-size:25px;letter-spacing:.14em;color:#eef2f5}
+.nav-brand svg{display:block;width:26px;height:26px;flex:none;color:#86aace}
+.nav-tabs{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.nav-tabs a{color:#9aa9b8;text-decoration:none;font-size:18px;padding-bottom:2px}
+.nav-tabs a:hover{color:#eef2f5}
+.nav-tabs a[aria-current='page']{color:#eef2f5;border-bottom:2px solid #86aace}
+.nav-auth{margin-left:auto;display:flex;align-items:center;gap:20px}
+.nav-login{font-family:var(--font-body);font-size:18px;color:#9aa9b8;background:none;border:0;padding:6px 2px;cursor:pointer;text-decoration:none;display:inline-block}
+.nav-login:hover{color:#eef2f5}
+.nav-cta{font-family:var(--font-heading);font-weight:600;font-size:18px;letter-spacing:.03em;text-decoration:none;
+  background:#456e99;border:1px solid #456e99;border-radius:999px;padding:9px 20px;color:#fff}
+.nav-cta:hover{background:#86aace;border-color:#86aace;color:#05061a}
+.nav :focus-visible{outline-color:#eef2f5}
+.nav :focus-visible{outline-color:#fff}
+.crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:color-mix(in srgb,var(--color-text) 50%,transparent);margin:18px 0 12px}
+.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--color-divider)}
+.blueprint{position:relative;border:1px solid var(--color-divider)}
+.blueprint>.corner{position:absolute;width:11px;height:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.blueprint>.corner::before,.blueprint>.corner::after{content:"";position:absolute;background:currentColor}
+.blueprint>.corner::before{left:5px;top:0;width:1px;height:100%}
+.blueprint>.corner::after{top:5px;left:0;width:100%;height:1px}
+.blueprint>.corner.tl{top:-6px;left:-6px}.blueprint>.corner.tr{top:-6px;right:-6px}
+.blueprint>.corner.bl{bottom:-6px;left:-6px}.blueprint>.corner.br{bottom:-6px;right:-6px}
+.card{padding:15px 16px}
+.tag{display:inline-flex;align-items:center;font-size:11px;letter-spacing:.02em;padding:3px 10px}
+.row-flags{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.tag-flag{font-size:10px;padding:2px 8px}
+.tag-accent{background:var(--color-accent-100);color:var(--color-accent-800)}
+.tag-neutral{background:var(--color-neutral-100);color:var(--color-neutral-800)}
+.tag-outline{border:1px solid var(--color-accent);color:var(--color-accent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;text-decoration:none;font-family:var(--font-heading);font-weight:600;font-size:14px;padding:8px 14px;border:1px solid var(--color-divider);background:transparent;color:var(--color-text)}
+.btn-primary{background:var(--color-accent);color:var(--color-bg);border-color:var(--color-accent)}
+.btn-primary:hover{background:var(--color-accent-700)}
+.btn-secondary:hover{background:color-mix(in srgb,var(--color-text) 7%,transparent)}
+.table{width:100%;border-collapse:collapse;font-size:13.5px}
+.table th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 60%,transparent);padding:8px;border-bottom:1px solid var(--color-divider)}
+.table td{padding:8px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent);vertical-align:top}
+.table tbody tr:hover{background:color-mix(in srgb,var(--color-text) 4%,transparent)}
+.stack-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.stack-row{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.stat-row{display:flex;border-top:1px solid var(--color-divider);margin-top:12px}
+.stat{flex:1;padding:9px 0 0}
+.stat b{display:block;font-family:var(--font-heading);font-weight:600;font-size:24px;line-height:1}
+.stat span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.right-col{display:flex;flex-direction:column;gap:14px}
+.grid{display:grid;grid-template-columns:7fr 4fr;gap:24px;margin-top:24px;align-items:start}
+/* a grid item defaults to min-width:auto, so it refuses to shrink below the
+   widest thing inside it — the roles table then pushed the whole page sideways
+   instead of scrolling inside its own overflow-x container */
+.grid>*,.right-col>*{min-width:0}
+.grid.narrative{grid-template-columns:1fr 268px}
+.cite{color:var(--color-accent-700);font-size:11px}
+.prose p{margin:0 0 14px;font-size:15.5px;line-height:1.7;max-width:62ch}
+.bar-track{height:6px;background:color-mix(in srgb,var(--color-text) 8%,transparent)}
+.bar-fill{height:100%;background:var(--color-accent)}
+.crumb a{color:inherit;text-decoration:none}
+.crumb a:hover{color:var(--color-accent)}
+/* min() keeps a 330px track from overflowing a 320px phone */
+.acct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:20px;margin-top:24px;align-items:start}
+.acct-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.acct-name{font-family:var(--font-heading);font-weight:600;font-size:19px;line-height:1.15}
+.acct-meta{font-size:11.5px;letter-spacing:.02em;margin-top:2px;overflow-wrap:anywhere}
+.acct-grid>.card{display:flex;flex-direction:column}
+/* inset rather than a real border: a 3px left border would shift the card's
+   contents 2px and pull the blueprint corner marks out of alignment */
+.acct-grid>.card.is-reporting{box-shadow:inset 3px 0 0 var(--color-accent)}
+.acct-grid .stat b{color:var(--color-accent)}
+.acct-grid .is-reporting .acct-name{color:var(--color-accent-900)}
+.tag-solid{background:var(--color-accent);color:var(--color-bg)}
+.acct-lede b{color:var(--color-accent-800);font-weight:600}
+.acct-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:13px}
+.btn-sm{font-size:13px;padding:6px 11px}
+.acct-note{font-size:11.5px;line-height:1.5;margin:13px 0 0}
+.chart-wrap{position:relative;margin:10px 0 4px}
+.ch-svg{display:block;width:100%;height:auto;overflow:visible}
+.ch-grid{stroke:color-mix(in srgb,var(--color-text) 13%,transparent);stroke-width:1;vector-effect:non-scaling-stroke}
+.ch-line{fill:none;stroke:var(--color-accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.ch-area{fill:var(--color-accent);opacity:.10}
+.ch-hot{fill:var(--color-accent);stroke:var(--color-bg);stroke-width:2}
+.ch-hair{stroke:color-mix(in srgb,var(--color-text) 32%,transparent);stroke-width:1;vector-effect:non-scaling-stroke}
+.ch-tick{fill:color-mix(in srgb,var(--color-text) 55%,transparent);font-family:var(--font-body);font-size:10px;font-variant-numeric:tabular-nums}
+.ch-hit{cursor:crosshair}
+.ch-hit:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+.spark{display:block;width:100%;height:auto;margin:8px 0 6px;overflow:visible}
+.chart-tip{position:absolute;top:0;pointer-events:none;background:var(--color-bg);
+  border:1px solid var(--color-divider);padding:5px 8px;font-size:11.5px;line-height:1.35;white-space:nowrap;z-index:2}
+.chart-tip b{display:block;font-family:var(--font-heading);font-size:14px;color:var(--color-text)}
+.chart-tip span{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.chart-tbl{margin-top:2px}
+.chart-tbl summary{font-size:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent);cursor:pointer}
+.chart-tbl table{width:100%;border-collapse:collapse;margin-top:7px;font-size:11.5px}
+.chart-tbl th,.chart-tbl td{text-align:left;padding:2px 0;border-bottom:1px solid var(--color-divider)}
+.chart-tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+.acct-add{border-style:dashed}
+.acct-add .acct-name{font-size:17px}
+.acct-add label,.acct-add .acct-cmd-label{display:block;font-size:11.5px;letter-spacing:.02em;margin:11px 0 4px;
+  color:color-mix(in srgb,var(--color-text) 70%,transparent)}
+.acct-add input{font-family:var(--font-body);font-size:13px;padding:6px 9px;width:100%;
+  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
+.acct-add input:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
+.acct-add .acct-cmd-label{margin-bottom:0}
+.acct-add code{display:block;font-size:11.5px;line-height:1.5;padding:9px 10px;margin-top:12px;
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  overflow-x:auto;white-space:pre;background:color-mix(in srgb,var(--color-text) 5%,transparent)}
+.tbl-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.tbl-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tbl-controls input[type=search]{font-family:var(--font-body);font-size:13px;padding:6px 10px;width:230px;max-width:100%;
+  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
+.tbl-controls input[type=search]:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 70%,transparent)}
+.tbl-empty{margin:0;padding:14px;font-size:12.5px}
+.pager{display:flex;align-items:center;gap:12px;margin-top:11px;flex-wrap:wrap}
+.pager #page-status{font-size:12px;font-variant-numeric:tabular-nums}
+.pager button[disabled]{opacity:.4;cursor:default}
+.site-foot{border-top:1px solid var(--color-divider);margin-top:38px;padding-top:14px;
+  display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:11.5px;line-height:1.5}
+@media (max-width:980px){.grid,.grid.narrative{grid-template-columns:1fr}.stack-grid{grid-template-columns:1fr}}
+@media (max-width:620px){
+  .wrap{padding:0 16px 44px}
+  .nav{gap:16px;padding:12px 20px}
+  .nav-tabs{display:none}
+  .nav-auth{gap:14px}
+  .tbl-controls input[type=search]{width:100%}
+  .hdr h1{font-size:26px!important}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+@media print{
+  .nav,.skip-link,.crumb,.btn,.tbl-controls,.pager,.chart-tbl{display:none!important}
+  body{background:#fff;font-size:11.5pt}
+  .wrap{max-width:none;padding:0}
+  .grid,.grid.narrative{grid-template-columns:1fr;gap:14px}
+  .blueprint{border-color:#bbb}
+  .prose p{max-width:none}
+  a{color:inherit;text-decoration:none}
+  .card,.blueprint{break-inside:avoid}
+  tr,.site-foot{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="nav"><a class="nav-brand" href="/" style="text-decoration:none"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M2 19h6.5l4-12 4.5 17 3.5-10H30" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/></svg><span>TICK</span></a><div class="nav-tabs"><a href="/demo/">Accounts</a><a href="/demo/dunder-mifflin/dashboard" aria-current="page">Dashboard</a><a href="/demo/dunder-mifflin/brief">Brief</a><a href="/docs">Docs</a></div>
+  <div class="nav-auth">
+    <a class="nav-login" href="/login">Log in</a>
+    <a class="nav-cta" href="/#access">Get started</a>
+  </div>
+</div>
+<div class="wrap">
+  <div class="crumb"><a href="/demo/">Accounts</a><span>/</span><span>Dunder Mifflin Paper Company, Inc.</span><span>/</span><span style="color:var(--color-text)">Dashboard</span></div>
+  <main id="main">
+  <div class="hdr">
+    <div><p class="eyebrow text-muted">Dunder Mifflin Paper Company, Inc.</p><h1 style="font-size:34px;margin:3px 0">Dashboard</h1>
+      <p class="text-muted" style="margin:6px 0 0;font-size:13px;max-width:70ch">Built from 39 open postings captured 2026-09-03,
+        measured against the crawl 7 days earlier (2026-08-27). Every row links back to the posting it came from.</p></div>
+  </div>
+
+  <div class="grid">
+    <div style="display:flex;flex-direction:column;gap:24px">
+      <div>
+        <h2 class="section-label text-muted" style="margin-bottom:12px">Tech stack, as evidenced by hiring</h2>
+        <div class="stack-grid"><div class="card blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-family:var(--font-heading);font-weight:600;font-size:14px;letter-spacing:.06em;text-transform:uppercase">Adopting</span></div><div style="display:flex;flex-direction:column;gap:8px"><div class="stack-row"><span>kubernetes</span><span class="text-muted" style="font-size:11.5px">6 specs &middot; since Apr &rsquo;26</span></div><div class="stack-row"><span>ci/cd</span><span class="text-muted" style="font-size:11.5px">5 specs &middot; since Apr &rsquo;26</span></div><div class="stack-row"><span>machine learning</span><span class="text-muted" style="font-size:11.5px">5 specs &middot; since Apr &rsquo;26</span></div><div class="stack-row"><span>power bi</span><span class="text-muted" style="font-size:11.5px">3 specs &middot; since May &rsquo;26</span></div><div class="stack-row"><span>scalability</span><span class="text-muted" style="font-size:11.5px">3 specs &middot; since May &rsquo;26</span></div><div class="stack-row"><span>airflow</span><span class="text-muted" style="font-size:11.5px">2 specs &middot; since Apr &rsquo;26</span></div><div class="stack-row"><span>cloud-native</span><span class="text-muted" style="font-size:11.5px">2 specs &middot; since May &rsquo;26</span></div><div class="stack-row"><span>data engineering</span><span class="text-muted" style="font-size:11.5px">2 specs &middot; since Apr &rsquo;26</span></div></div><p style="margin:11px 0 0;font-size:11.5px;line-height:1.5" class="text-muted">First seen in a posting after 2026-03-04 &mdash; inside the last 6 months, so these read as new bets rather than standing stack.</p></div><div class="card blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-family:var(--font-heading);font-weight:600;font-size:14px;letter-spacing:.06em;text-transform:uppercase">Established</span></div><div style="display:flex;flex-direction:column;gap:8px"><div class="stack-row"><span>aws</span><span class="text-muted" style="font-size:11.5px">15 specs &middot; since Jan &rsquo;26</span></div><div class="stack-row"><span>python</span><span class="text-muted" style="font-size:11.5px">12 specs &middot; since Sep &rsquo;25</span></div><div class="stack-row"><span>terraform</span><span class="text-muted" style="font-size:11.5px">10 specs &middot; since Jan &rsquo;26</span></div><div class="stack-row"><span>sql</span><span class="text-muted" style="font-size:11.5px">8 specs &middot; since Sep &rsquo;25</span></div><div class="stack-row"><span>azure</span><span class="text-muted" style="font-size:11.5px">7 specs &middot; since Jan &rsquo;26</span></div><div class="stack-row"><span>migration</span><span class="text-muted" style="font-size:11.5px">6 specs &middot; since Sep &rsquo;25</span></div><div class="stack-row"><span>s3</span><span class="text-muted" style="font-size:11.5px">3 specs &middot; since Feb &rsquo;26</span></div><div class="stack-row"><span>ansible</span><span class="text-muted" style="font-size:11.5px">2 specs &middot; since Jan &rsquo;26</span></div></div><p style="margin:11px 0 0;font-size:11.5px;line-height:1.5" class="text-muted">First seen on or before 2026-03-04 &mdash; carried for more than 6 months, back to at least 2025-09-04.</p></div></div>
+      </div>
+      <div>
+        <div class="tbl-head">
+          <h2 class="section-label text-muted" style="margin:0">Open roles &middot; <span id="row-count">39</span><span id="row-total" hidden> of 39</span></h2>
+          <div class="tbl-controls">
+            <input id="role-filter" type="search" placeholder="Filter by title or location" aria-label="Filter open roles">
+            <label class="chk"><input id="new-only" type="checkbox"> New in last 7 days (5)</label>
+          </div>
+        </div>
+        <div class="blueprint" style="overflow-x:auto">
+          <table class="table" id="open-roles">
+            <caption class="visually-hidden">Open roles on the 2026-09-03 board. Titles link to the
+              posting on the company&rsquo;s job board and open in a new tab.</caption>
+            <thead><tr><th scope="col">Posting</th><th scope="col">Location</th><th scope="col">First seen</th><th scope="col">Stack signals matched</th></tr></thead>
+            <tbody><tr data-new="1" data-q="senior data platform engineer, databricks remote - us"><td><span>Senior Data Platform Engineer, Databricks</span><div class="row-flags"><span class="tag tag-solid tag-flag">New</span><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Remote - US</td><td class="text-muted" style="white-space:nowrap">2026-09-03</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">airflow</span><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">data engineering</span><span class="tag tag-outline" style="margin:0 4px 4px 0">data lake</span><span class="tag tag-outline" style="margin:0 4px 4px 0">databricks</span><span class="tag tag-outline" style="margin:0 4px 4px 0">kafka</span><span class="tag tag-outline" style="margin:0 4px 4px 0">machine learning</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">real-time</span><span class="tag tag-outline" style="margin:0 4px 4px 0">s3</span><span class="tag tag-outline" style="margin:0 4px 4px 0">spark</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span></td></tr><tr data-new="1" data-q="cloud network engineer akron, oh"><td><span>Cloud Network Engineer</span><div class="row-flags"><span class="tag tag-solid tag-flag">New</span><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Akron, OH</td><td class="text-muted" style="white-space:nowrap">2026-09-03</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">ansible</span><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">azure</span><span class="tag tag-outline" style="margin:0 4px 4px 0">migration</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="1" data-q="cloud migration program manager scranton, pa"><td><span>Cloud Migration Program Manager</span><div class="row-flags"><span class="tag tag-solid tag-flag">New</span><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-09-03</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">azure</span><span class="tag tag-outline" style="margin:0 4px 4px 0">migration</span><span class="tag tag-outline" style="margin:0 4px 4px 0">modernization</span></td></tr><tr data-new="1" data-q="ai solutions evangelist, paper &amp; print innovation remote - us"><td><span>AI Solutions Evangelist, Paper &amp; Print Innovation</span><div class="row-flags"><span class="tag tag-solid tag-flag">New</span></div></td><td class="text-muted">Remote - US</td><td class="text-muted" style="white-space:nowrap">2026-09-03</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">machine learning</span></td></tr><tr data-new="1" data-q="executive assistant to the ceo new york, ny"><td><span>Executive Assistant to the CEO</span><div class="row-flags"><span class="tag tag-solid tag-flag">New</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-09-03</td><td>&mdash;</td></tr><tr data-new="0" data-q="cloud platform engineer (aws) new york, ny"><td><span>Cloud Platform Engineer (AWS)</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-05-28</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">ci/cd</span><span class="tag tag-outline" style="margin:0 4px 4px 0">cloud-native</span><span class="tag tag-outline" style="margin:0 4px 4px 0">dynamodb</span><span class="tag tag-outline" style="margin:0 4px 4px 0">eks</span><span class="tag tag-outline" style="margin:0 4px 4px 0">greenfield</span><span class="tag tag-outline" style="margin:0 4px 4px 0">kubernetes</span><span class="tag tag-outline" style="margin:0 4px 4px 0">lambda</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">scalability</span><span class="tag tag-outline" style="margin:0 4px 4px 0">serverless</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="cloud data engineer, snowflake scranton, pa"><td><span>Cloud Data Engineer, Snowflake</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-04-30</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">airflow</span><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">data engineering</span><span class="tag tag-outline" style="margin:0 4px 4px 0">data lake</span><span class="tag tag-outline" style="margin:0 4px 4px 0">data warehouse</span><span class="tag tag-outline" style="margin:0 4px 4px 0">dbt</span><span class="tag tag-outline" style="margin:0 4px 4px 0">etl</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">s3</span><span class="tag tag-outline" style="margin:0 4px 4px 0">snowflake</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span></td></tr><tr data-new="0" data-q="devops engineer nashua, nh"><td><span>DevOps Engineer</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Nashua, NH</td><td class="text-muted" style="white-space:nowrap">2026-04-02</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">ci/cd</span><span class="tag tag-outline" style="margin:0 4px 4px 0">devops</span><span class="tag tag-outline" style="margin:0 4px 4px 0">docker</span><span class="tag tag-outline" style="margin:0 4px 4px 0">jenkins</span><span class="tag tag-outline" style="margin:0 4px 4px 0">kubernetes</span><span class="tag tag-outline" style="margin:0 4px 4px 0">microservices</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="director, ai center of excellence new york, ny"><td><span>Director, AI Center of Excellence</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-07-23</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">bedrock</span><span class="tag tag-outline" style="margin:0 4px 4px 0">digital transformation</span><span class="tag tag-outline" style="margin:0 4px 4px 0">genai</span><span class="tag tag-outline" style="margin:0 4px 4px 0">generative ai</span><span class="tag tag-outline" style="margin:0 4px 4px 0">llm</span><span class="tag tag-outline" style="margin:0 4px 4px 0">machine learning</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">vertex ai</span></td></tr><tr data-new="0" data-q="kubernetes platform engineer remote - us"><td><span>Kubernetes Platform Engineer</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Remote - US</td><td class="text-muted" style="white-space:nowrap">2026-07-23</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">ci/cd</span><span class="tag tag-outline" style="margin:0 4px 4px 0">docker</span><span class="tag tag-outline" style="margin:0 4px 4px 0">eks</span><span class="tag tag-outline" style="margin:0 4px 4px 0">golang</span><span class="tag tag-outline" style="margin:0 4px 4px 0">kubernetes</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">scalability</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="senior cloud architect, azure new york, ny"><td><span>Senior Cloud Architect, Azure</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-07-09</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">azure</span><span class="tag tag-outline" style="margin:0 4px 4px 0">azure devops</span><span class="tag tag-outline" style="margin:0 4px 4px 0">devops</span><span class="tag tag-outline" style="margin:0 4px 4px 0">digital transformation</span><span class="tag tag-outline" style="margin:0 4px 4px 0">migration</span><span class="tag tag-outline" style="margin:0 4px 4px 0">re-architect</span><span class="tag tag-outline" style="margin:0 4px 4px 0">scalability</span><span class="tag tag-outline" style="margin:0 4px 4px 0">synapse</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="site reliability engineer remote - us"><td><span>Site Reliability Engineer</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Remote - US</td><td class="text-muted" style="white-space:nowrap">2026-06-11</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">golang</span><span class="tag tag-outline" style="margin:0 4px 4px 0">kubernetes</span><span class="tag tag-outline" style="margin:0 4px 4px 0">microservices</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">real-time</span><span class="tag tag-outline" style="margin:0 4px 4px 0">site reliability</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sre</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="cloud support engineer i scranton, pa"><td><span>Cloud Support Engineer I</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-02-19</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">cloudwatch</span><span class="tag tag-outline" style="margin:0 4px 4px 0">ec2</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">rds</span><span class="tag tag-outline" style="margin:0 4px 4px 0">s3</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="director, cloud infrastructure &amp; platform engineering new york, ny"><td><span>Director, Cloud Infrastructure &amp; Platform Engineering</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-08-20</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">azure</span><span class="tag tag-outline" style="margin:0 4px 4px 0">ci/cd</span><span class="tag tag-outline" style="margin:0 4px 4px 0">cloud-native</span><span class="tag tag-outline" style="margin:0 4px 4px 0">digital transformation</span><span class="tag tag-outline" style="margin:0 4px 4px 0">kubernetes</span><span class="tag tag-outline" style="margin:0 4px 4px 0">migration</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="principal machine learning engineer, demand forecasting new york, ny"><td><span>Principal Machine Learning Engineer, Demand Forecasting</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-06-25</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">databricks</span><span class="tag tag-outline" style="margin:0 4px 4px 0">machine learning</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sagemaker</span><span class="tag tag-outline" style="margin:0 4px 4px 0">spark</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span></td></tr><tr data-new="0" data-q="cloud finops analyst new york, ny"><td><span>Cloud FinOps Analyst</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-08-06</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">athena</span><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">azure</span><span class="tag tag-outline" style="margin:0 4px 4px 0">migration</span><span class="tag tag-outline" style="margin:0 4px 4px 0">power bi</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span></td></tr><tr data-new="0" data-q="cloud security engineer scranton, pa"><td><span>Cloud Security Engineer</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-07-23</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">azure</span><span class="tag tag-outline" style="margin:0 4px 4px 0">ci/cd</span><span class="tag tag-outline" style="margin:0 4px 4px 0">kubernetes</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="systems engineer, virtualization &amp; cloud migration scranton, pa"><td><span>Systems Engineer, Virtualization &amp; Cloud Migration</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-01-08</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">ansible</span><span class="tag tag-outline" style="margin:0 4px 4px 0">aws</span><span class="tag tag-outline" style="margin:0 4px 4px 0">azure</span><span class="tag tag-outline" style="margin:0 4px 4px 0">migration</span><span class="tag tag-outline" style="margin:0 4px 4px 0">python</span><span class="tag tag-outline" style="margin:0 4px 4px 0">terraform</span></td></tr><tr data-new="0" data-q="financial analyst, fp&amp;a new york, ny"><td><span>Financial Analyst, FP&amp;A</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-07-23</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">alteryx</span><span class="tag tag-outline" style="margin:0 4px 4px 0">power bi</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span></td></tr><tr data-new="0" data-q="senior cobol developer, mainframe applications scranton, pa"><td><span>Senior COBOL Developer, Mainframe Applications</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2025-11-27</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">java</span><span class="tag tag-outline" style="margin:0 4px 4px 0">modernization</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span></td></tr><tr data-new="0" data-q="supply chain analyst akron, oh"><td><span>Supply Chain Analyst</span><div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div></td><td class="text-muted">Akron, OH</td><td class="text-muted" style="white-space:nowrap">2026-05-28</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">power bi</span><span class="tag tag-outline" style="margin:0 4px 4px 0">sql</span><span class="tag tag-outline" style="margin:0 4px 4px 0">tableau</span></td></tr><tr data-new="0" data-q="head of ai strategy &amp; thought leadership new york, ny"><td><span>Head of AI Strategy &amp; Thought Leadership</span></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-08-20</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">digital transformation</span><span class="tag tag-outline" style="margin:0 4px 4px 0">generative ai</span><span class="tag tag-outline" style="margin:0 4px 4px 0">llm</span><span class="tag tag-outline" style="margin:0 4px 4px 0">machine learning</span></td></tr><tr data-new="0" data-q="manager, ai enablement &amp; change management scranton, pa"><td><span>Manager, AI Enablement &amp; Change Management</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-04-30</td><td><span class="tag tag-outline" style="margin:0 4px 4px 0">generative ai</span><span class="tag tag-outline" style="margin:0 4px 4px 0">llm</span></td></tr><tr data-new="0" data-q="assistant regional manager scranton, pa"><td><span>Assistant Regional Manager</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-01-08</td><td>&mdash;</td></tr><tr data-new="0" data-q="benefits administrator scranton, pa"><td><span>Benefits Administrator</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-08-20</td><td>&mdash;</td></tr><tr data-new="0" data-q="category manager, office supplies new york, ny"><td><span>Category Manager, Office Supplies</span></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-08-20</td><td>&mdash;</td></tr><tr data-new="0" data-q="corporate controller new york, ny"><td><span>Corporate Controller</span></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-04-30</td><td>&mdash;</td></tr><tr data-new="0" data-q="customer service representative scranton, pa"><td><span>Customer Service Representative</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-03-05</td><td>&mdash;</td></tr><tr data-new="0" data-q="environmental compliance manager akron, oh"><td><span>Environmental Compliance Manager</span></td><td class="text-muted">Akron, OH</td><td class="text-muted" style="white-space:nowrap">2026-07-23</td><td>&mdash;</td></tr><tr data-new="0" data-q="fleet &amp; delivery coordinator scranton, pa"><td><span>Fleet &amp; Delivery Coordinator</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-06-11</td><td>&mdash;</td></tr><tr data-new="0" data-q="human resources generalist scranton, pa"><td><span>Human Resources Generalist</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-04-02</td><td>&mdash;</td></tr><tr data-new="0" data-q="inside sales associate utica, ny"><td><span>Inside Sales Associate</span></td><td class="text-muted">Utica, NY</td><td class="text-muted" style="white-space:nowrap">2026-08-06</td><td>&mdash;</td></tr><tr data-new="0" data-q="marketing coordinator new york, ny"><td><span>Marketing Coordinator</span></td><td class="text-muted">New York, NY</td><td class="text-muted" style="white-space:nowrap">2026-07-09</td><td>&mdash;</td></tr><tr data-new="0" data-q="print shop technician scranton, pa"><td><span>Print Shop Technician</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-08-06</td><td>&mdash;</td></tr><tr data-new="0" data-q="procurement specialist, pulp &amp; fiber akron, oh"><td><span>Procurement Specialist, Pulp &amp; Fiber</span></td><td class="text-muted">Akron, OH</td><td class="text-muted" style="white-space:nowrap">2026-06-25</td><td>&mdash;</td></tr><tr data-new="0" data-q="quality assurance inspector, paper mill akron, oh"><td><span>Quality Assurance Inspector, Paper Mill</span></td><td class="text-muted">Akron, OH</td><td class="text-muted" style="white-space:nowrap">2026-02-05</td><td>&mdash;</td></tr><tr data-new="0" data-q="regional sales manager stamford, ct"><td><span>Regional Sales Manager</span></td><td class="text-muted">Stamford, CT</td><td class="text-muted" style="white-space:nowrap">2026-05-14</td><td>&mdash;</td></tr><tr data-new="0" data-q="sales representative, paper products scranton, pa"><td><span>Sales Representative, Paper Products</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2025-12-25</td><td>&mdash;</td></tr><tr data-new="0" data-q="storage &amp; tape library operator scranton, pa"><td><span>Storage &amp; Tape Library Operator</span></td><td class="text-muted">Scranton, PA</td><td class="text-muted" style="white-space:nowrap">2026-03-19</td><td>&mdash;</td></tr></tbody>
+          </table>
+          <p class="tbl-empty text-muted" id="no-match" hidden>No open role matches that filter. Clear the search box, or untick &ldquo;New in last 7 days&rdquo;, to see the full board.</p>
+        </div>
+        <div class="pager" id="roles-pager" hidden>
+          <button type="button" class="btn btn-secondary btn-sm" id="page-prev">&larr; Prev</button>
+          <span class="text-muted" id="page-status" role="status" aria-live="polite"></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="page-next">Next &rarr;</button>
+        </div>
+        <p class="text-muted" style="margin:10px 0 0;font-size:11.5px;line-height:1.5">Flagged when the posting was absent from a crawl inside the last 7 days and present on 2026-09-03 &mdash; observed absence, not a claimed post date.</p>
+      </div>
+    </div>
+
+    <div class="right-col">
+      <div class="card blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles &mdash; Sep 2025 &ndash; Sep 2026</span>
+        <div class="chart-wrap" id="roles-history">
+<svg viewBox="0 0 440 210" class="ch-svg" role="img"
+     aria-label="Open roles from 2025-09-04 to 2026-09-03, 53 snapshots, ranging 30 to 39.">
+  <g><line x1="34" y1="184.0" x2="430" y2="184.0" class="ch-grid"/><text x="27" y="187.5" class="ch-tick" text-anchor="end">30</text><line x1="34" y1="98.0" x2="430" y2="98.0" class="ch-grid"/><text x="27" y="101.5" class="ch-tick" text-anchor="end">35</text><line x1="34" y1="12.0" x2="430" y2="12.0" class="ch-grid"/><text x="27" y="15.5" class="ch-tick" text-anchor="end">40</text></g>
+  <path d="M34,184 L34.0,166.8 L41.6,166.8 L49.2,166.8 L56.8,166.8 L64.5,149.6 L72.1,166.8 L79.7,166.8 L87.3,149.6 L94.9,149.6 L102.5,149.6 L110.2,149.6 L117.8,166.8 L125.4,166.8 L133.0,166.8 L140.6,149.6 L148.2,166.8 L155.8,166.8 L163.5,184.0 L171.1,166.8 L178.7,166.8 L186.3,149.6 L193.9,149.6 L201.5,149.6 L209.2,149.6 L216.8,149.6 L224.4,149.6 L232.0,132.4 L239.6,132.4 L247.2,132.4 L254.8,132.4 L262.5,115.2 L270.1,132.4 L277.7,132.4 L285.3,115.2 L292.9,80.8 L300.5,80.8 L308.2,80.8 L315.8,98.0 L323.4,80.8 L331.0,80.8 L338.6,63.6 L346.2,63.6 L353.8,63.6 L361.5,98.0 L369.1,80.8 L376.7,63.6 L384.3,46.4 L391.9,80.8 L399.5,63.6 L407.2,46.4 L414.8,29.2 L422.4,46.4 L430.0,29.2 L430,184 Z" class="ch-area"/>
+  <polyline points="34.0,166.8 41.6,166.8 49.2,166.8 56.8,166.8 64.5,149.6 72.1,166.8 79.7,166.8 87.3,149.6 94.9,149.6 102.5,149.6 110.2,149.6 117.8,166.8 125.4,166.8 133.0,166.8 140.6,149.6 148.2,166.8 155.8,166.8 163.5,184.0 171.1,166.8 178.7,166.8 186.3,149.6 193.9,149.6 201.5,149.6 209.2,149.6 216.8,149.6 224.4,149.6 232.0,132.4 239.6,132.4 247.2,132.4 254.8,132.4 262.5,115.2 270.1,132.4 277.7,132.4 285.3,115.2 292.9,80.8 300.5,80.8 308.2,80.8 315.8,98.0 323.4,80.8 331.0,80.8 338.6,63.6 346.2,63.6 353.8,63.6 361.5,98.0 369.1,80.8 376.7,63.6 384.3,46.4 391.9,80.8 399.5,63.6 407.2,46.4 414.8,29.2 422.4,46.4 430.0,29.2" class="ch-line"/>
+  <line class="ch-hair" x1="0" y1="12" x2="0" y2="184" style="display:none"/>
+  <circle class="ch-hot" r="4.5" cx="0" cy="0" style="display:none"/>
+  <text x="34.0" y="201" class="ch-tick" text-anchor="middle">Sep &rsquo;25</text><text x="94.9" y="201" class="ch-tick" text-anchor="middle">Oct</text><text x="155.8" y="201" class="ch-tick" text-anchor="middle">Dec</text><text x="216.8" y="201" class="ch-tick" text-anchor="middle">Feb &rsquo;26</text><text x="277.7" y="201" class="ch-tick" text-anchor="middle">Apr</text><text x="338.6" y="201" class="ch-tick" text-anchor="middle">Jun</text><text x="399.5" y="201" class="ch-tick" text-anchor="middle">Aug</text>
+  <rect x="34" y="12" width="396" height="172" fill="transparent" class="ch-hit"
+        tabindex="0" role="img" aria-label="Open-roles history, interactive. Use the left and right
+        arrow keys to step through snapshots. Every figure is also in the table below."/>
+</svg>
+<div class="chart-tip" hidden></div>
+<p class="visually-hidden" id="roles-history-readout" role="status" aria-live="polite"></p>
+<details class="chart-tbl"><summary>Table view &mdash; 53 snapshots, 2025-09-04 to 2026-09-03</summary>
+<table><thead><tr><th>Crawl</th><th class="num">Open roles</th></tr></thead><tbody><tr><td>2025-09-04</td><td class="num">31</td></tr><tr><td>2025-09-11</td><td class="num">31</td></tr><tr><td>2025-09-18</td><td class="num">31</td></tr><tr><td>2025-09-25</td><td class="num">31</td></tr><tr><td>2025-10-02</td><td class="num">32</td></tr><tr><td>2025-10-09</td><td class="num">31</td></tr><tr><td>2025-10-16</td><td class="num">31</td></tr><tr><td>2025-10-23</td><td class="num">32</td></tr><tr><td>2025-10-30</td><td class="num">32</td></tr><tr><td>2025-11-06</td><td class="num">32</td></tr><tr><td>2025-11-13</td><td class="num">32</td></tr><tr><td>2025-11-20</td><td class="num">31</td></tr><tr><td>2025-11-27</td><td class="num">31</td></tr><tr><td>2025-12-04</td><td class="num">31</td></tr><tr><td>2025-12-11</td><td class="num">32</td></tr><tr><td>2025-12-18</td><td class="num">31</td></tr><tr><td>2025-12-25</td><td class="num">31</td></tr><tr><td>2026-01-01</td><td class="num">30</td></tr><tr><td>2026-01-08</td><td class="num">31</td></tr><tr><td>2026-01-15</td><td class="num">31</td></tr><tr><td>2026-01-22</td><td class="num">32</td></tr><tr><td>2026-01-29</td><td class="num">32</td></tr><tr><td>2026-02-05</td><td class="num">32</td></tr><tr><td>2026-02-12</td><td class="num">32</td></tr><tr><td>2026-02-19</td><td class="num">32</td></tr><tr><td>2026-02-26</td><td class="num">32</td></tr><tr><td>2026-03-05</td><td class="num">33</td></tr><tr><td>2026-03-12</td><td class="num">33</td></tr><tr><td>2026-03-19</td><td class="num">33</td></tr><tr><td>2026-03-26</td><td class="num">33</td></tr><tr><td>2026-04-02</td><td class="num">34</td></tr><tr><td>2026-04-09</td><td class="num">33</td></tr><tr><td>2026-04-16</td><td class="num">33</td></tr><tr><td>2026-04-23</td><td class="num">34</td></tr><tr><td>2026-04-30</td><td class="num">36</td></tr><tr><td>2026-05-07</td><td class="num">36</td></tr><tr><td>2026-05-14</td><td class="num">36</td></tr><tr><td>2026-05-21</td><td class="num">35</td></tr><tr><td>2026-05-28</td><td class="num">36</td></tr><tr><td>2026-06-04</td><td class="num">36</td></tr><tr><td>2026-06-11</td><td class="num">37</td></tr><tr><td>2026-06-18</td><td class="num">37</td></tr><tr><td>2026-06-25</td><td class="num">37</td></tr><tr><td>2026-07-02</td><td class="num">35</td></tr><tr><td>2026-07-09</td><td class="num">36</td></tr><tr><td>2026-07-16</td><td class="num">37</td></tr><tr><td>2026-07-23</td><td class="num">38</td></tr><tr><td>2026-07-30</td><td class="num">36</td></tr><tr><td>2026-08-06</td><td class="num">37</td></tr><tr><td>2026-08-13</td><td class="num">38</td></tr><tr><td>2026-08-20</td><td class="num">39</td></tr><tr><td>2026-08-27</td><td class="num">38</td></tr><tr><td>2026-09-03</td><td class="num">39</td></tr></tbody></table>
+</details>
+</div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding-top:9px;border-top:1px solid var(--color-divider)">
+          <span class="text-muted">2026-08-27 &rarr; 2026-09-03</span>
+          <span>38 &rarr; 39
+            <b style="color:var(--color-accent-700)">+1 (+2.6%)</b></span>
+        </div>
+        <div class="stat-row">
+          <div class="stat"><b>5</b><span>Opened</span></div>
+          <div class="stat"><b>4</b><span>Closed</span></div>
+          <div class="stat"><b>0</b><span>Reopened</span></div>
+        </div>
+      </div>
+      <div class="card blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <h2 style="margin:0 0 3px;font-size:20px">Tech roles opened</h2>
+        <span style="font-size:11.5px;display:block;margin-bottom:12px" class="text-muted">Opened this period and classified as technical</span>
+        <div style="display:flex;flex-direction:column;gap:11px"><div style="padding-bottom:11px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)"><div style="font-size:13.5px;font-weight:500"><span>Senior Data Platform Engineer, Databricks</span></div><div style="font-size:12px" class="text-muted">Remote - US</div></div><div style="padding-bottom:11px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)"><div style="font-size:13.5px;font-weight:500"><span>Cloud Network Engineer</span></div><div style="font-size:12px" class="text-muted">Akron, OH</div></div><div style="padding-bottom:11px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)"><div style="font-size:13.5px;font-weight:500"><span>Cloud Migration Program Manager</span></div><div style="font-size:12px" class="text-muted">Scranton, PA</div></div></div>
+      </div>
+      <div class="card blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <h2 style="margin:0 0 10px;font-size:20px">Source coverage</h2>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+          <div style="display:flex;justify-content:space-between"><span class="text-muted">Postings analyzed</span><span>39</span></div>
+          <div style="display:flex;justify-content:space-between"><span class="text-muted">Window</span><span>2026-08-27 &ndash; 2026-09-03</span></div>
+          <div style="display:flex;justify-content:space-between"><span class="text-muted">Last crawl</span><span>3 Sep 2026, 23:14 UTC</span></div>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+  </main>
+  <footer class="site-foot text-muted"><span>Generated 3 Sep 2026, 23:14 UTC by TICK</span><span>Internal use &mdash; derived from public job postings. Verify before acting.</span></footer>
+</div>
+<script>
+(function () {
+  var PAGE = 10;
+  var q = document.getElementById('role-filter');
+  var newOnly = document.getElementById('new-only');
+  var table = document.getElementById('open-roles');
+  var count = document.getElementById('row-count');
+  var empty = document.getElementById('no-match');
+  var pager = document.getElementById('roles-pager');
+  var prev = document.getElementById('page-prev');
+  var next = document.getElementById('page-next');
+  var status = document.getElementById('page-status');
+  if (!q || !table) return;
+  var rows = Array.prototype.slice.call(table.tBodies[0].rows);
+  var matched = rows.slice();
+  var page = 1;
+
+  function pages() { return Math.max(1, Math.ceil(matched.length / PAGE)); }
+
+  function render() {
+    if (page > pages()) page = pages();
+    if (page < 1) page = 1;
+    var start = (page - 1) * PAGE;
+    var slice = matched.slice(start, start + PAGE);
+    rows.forEach(function (r) { r.hidden = true; });
+    slice.forEach(function (r) { r.hidden = false; });
+
+    if (count) count.textContent = matched.length;
+    var total = document.getElementById('row-total');
+    if (total) total.hidden = matched.length === rows.length;
+    if (empty) empty.hidden = matched.length !== 0;
+
+    if (pager) pager.hidden = matched.length <= PAGE;
+    if (status) {
+      status.textContent = matched.length
+        ? (start + 1) + '–' + (start + slice.length) + ' of ' + matched.length
+          + ' · page ' + page + ' of ' + pages()
+        : '';
+    }
+    if (prev) prev.disabled = page <= 1;
+    if (next) next.disabled = page >= pages();
+  }
+
+  function apply() {
+    var needle = q.value.trim().toLowerCase();
+    var only = newOnly.checked;
+    matched = rows.filter(function (r) {
+      var hay = r.getAttribute('data-q') || '';
+      return (!needle || hay.indexOf(needle) !== -1)
+          && (!only || r.getAttribute('data-new') === '1');
+    });
+    page = 1;               // a new filter always lands the reader on page one
+    render();
+  }
+
+  q.addEventListener('input', apply);
+  newOnly.addEventListener('change', apply);
+  if (prev) prev.addEventListener('click', function () { page--; render(); });
+  if (next) next.addEventListener('click', function () { page++; render(); });
+  apply();
+})();
+</script>
+<script>
+(function () {
+  var DATA = [{"dt": "2025-09-04", "total": 31}, {"dt": "2025-09-11", "total": 31}, {"dt": "2025-09-18", "total": 31}, {"dt": "2025-09-25", "total": 31}, {"dt": "2025-10-02", "total": 32}, {"dt": "2025-10-09", "total": 31}, {"dt": "2025-10-16", "total": 31}, {"dt": "2025-10-23", "total": 32}, {"dt": "2025-10-30", "total": 32}, {"dt": "2025-11-06", "total": 32}, {"dt": "2025-11-13", "total": 32}, {"dt": "2025-11-20", "total": 31}, {"dt": "2025-11-27", "total": 31}, {"dt": "2025-12-04", "total": 31}, {"dt": "2025-12-11", "total": 32}, {"dt": "2025-12-18", "total": 31}, {"dt": "2025-12-25", "total": 31}, {"dt": "2026-01-01", "total": 30}, {"dt": "2026-01-08", "total": 31}, {"dt": "2026-01-15", "total": 31}, {"dt": "2026-01-22", "total": 32}, {"dt": "2026-01-29", "total": 32}, {"dt": "2026-02-05", "total": 32}, {"dt": "2026-02-12", "total": 32}, {"dt": "2026-02-19", "total": 32}, {"dt": "2026-02-26", "total": 32}, {"dt": "2026-03-05", "total": 33}, {"dt": "2026-03-12", "total": 33}, {"dt": "2026-03-19", "total": 33}, {"dt": "2026-03-26", "total": 33}, {"dt": "2026-04-02", "total": 34}, {"dt": "2026-04-09", "total": 33}, {"dt": "2026-04-16", "total": 33}, {"dt": "2026-04-23", "total": 34}, {"dt": "2026-04-30", "total": 36}, {"dt": "2026-05-07", "total": 36}, {"dt": "2026-05-14", "total": 36}, {"dt": "2026-05-21", "total": 35}, {"dt": "2026-05-28", "total": 36}, {"dt": "2026-06-04", "total": 36}, {"dt": "2026-06-11", "total": 37}, {"dt": "2026-06-18", "total": 37}, {"dt": "2026-06-25", "total": 37}, {"dt": "2026-07-02", "total": 35}, {"dt": "2026-07-09", "total": 36}, {"dt": "2026-07-16", "total": 37}, {"dt": "2026-07-23", "total": 38}, {"dt": "2026-07-30", "total": 36}, {"dt": "2026-08-06", "total": 37}, {"dt": "2026-08-13", "total": 38}, {"dt": "2026-08-20", "total": 39}, {"dt": "2026-08-27", "total": 38}, {"dt": "2026-09-03", "total": 39}];
+  var root = document.getElementById("roles-history");
+  if (!root) return;
+  var svg = root.querySelector('.ch-svg'), tip = root.querySelector('.chart-tip'),
+      hair = root.querySelector('.ch-hair'), hot = root.querySelector('.ch-hot'),
+      hit = root.querySelector('.ch-hit'),
+      say = document.getElementById("roles-history-readout");
+  var L = 34, PW = 396, T = 12, PH = 172;
+  var lo = 30, hi = 40;
+  var i = -1;
+  function vx(k) { return L + PW * k / (DATA.length - 1); }
+  function vy(v) { return T + PH - PH * (v - lo) / (hi - lo || 1); }
+  function fmt(iso) {
+    var d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function show(k) {
+    if (k < 0 || k >= DATA.length) return;
+    i = k;
+    var px = vx(k), py = vy(DATA[k].total);
+    hair.setAttribute('x1', px); hair.setAttribute('x2', px); hair.style.display = '';
+    hot.setAttribute('cx', px); hot.setAttribute('cy', py); hot.style.display = '';
+    tip.textContent = '';
+    var v = document.createElement('b'); v.textContent = DATA[k].total + ' open';
+    var s = document.createElement('span'); s.textContent = fmt(DATA[k].dt);
+    tip.appendChild(v); tip.appendChild(s);
+    tip.hidden = false;
+    // the crosshair is a sighted affordance; mirror it into a live region so the
+    // same value is spoken when the chart is stepped through from the keyboard
+    if (say) { say.textContent = DATA[k].total + ' open roles on ' + fmt(DATA[k].dt); }
+    // clamp inside the card so the readout never hangs off the edge
+    var frac = px / 440, w = root.clientWidth;
+    tip.style.left = Math.max(4, Math.min(w - tip.offsetWidth - 4, frac * w - tip.offsetWidth / 2)) + 'px';
+  }
+  function hide() {
+    tip.hidden = true; hair.style.display = 'none'; hot.style.display = 'none'; i = -1;
+    if (say) { say.textContent = ''; }
+  }
+  function nearest(evt) {
+    var r = svg.getBoundingClientRect();
+    var vxp = (evt.clientX - r.left) / r.width * 440;
+    return Math.max(0, Math.min(DATA.length - 1,
+      Math.round((vxp - L) / PW * (DATA.length - 1))));
+  }
+  svg.addEventListener('pointermove', function (e) { show(nearest(e)); });
+  svg.addEventListener('pointerleave', hide);
+  hit.addEventListener('focus', function () { show(DATA.length - 1); });
+  hit.addEventListener('blur', hide);
+  hit.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight') { show(Math.min(DATA.length - 1, i + 1)); e.preventDefault(); }
+    if (e.key === 'ArrowLeft')  { show(Math.max(0, i - 1)); e.preventDefault(); }
+    if (e.key === 'Escape') { hide(); }
+  });
+})();
+</script>
+</body>
+</html>

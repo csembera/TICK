@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs | TICK</title>
+<meta name="description" content="How TICK works: an evaluator agent that maps each company's job board, a nightly collector and publisher on AWS, and a weekly AI-written brief.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#080d12">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TICK">
+<meta property="og:title" content="TICK — docs">
+<meta property="og:description" content="How TICK works: an evaluator agent that maps each company's job board, a nightly collector and publisher on AWS, and a weekly AI-written brief.">
+<meta property="og:url" content="https://tick.sembasolutions.com/docs">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://tick.sembasolutions.com/docs">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cstyle%3E.p%7Bstroke:%23456e99%7D@media(prefers-color-scheme:dark)%7B.p%7Bstroke:%2386aace%7D%7D%3C/style%3E%3Cpath class='p' d='M2 19h6.5l4-12 4.5 17 3.5-10H30' fill='none' stroke-width='3' stroke-linejoin='miter' stroke-linecap='square'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&amp;family=Barlow+Condensed:wght@500;600&amp;display=swap">
+<style>
+:root{
+  --bg:#f2f2f3;
+  --panel:#e9e9ea;
+  --ink:#1d1f20;
+  --ink-2:color-mix(in srgb,var(--ink) 64%,var(--bg));
+  --ink-3:color-mix(in srgb,var(--ink) 40%,var(--bg));
+  --rule:color-mix(in srgb,var(--ink) 15%,transparent);
+  --rule-2:color-mix(in srgb,var(--ink) 30%,transparent);
+  --accent:#5980a6;
+  --accent-ink:#2c455d;
+  --accent-tint:#dde6ef;
+  --navy:#1d2d3d;
+  --on-navy:#f2f2f3;
+  --fail:#a3472f;
+  --fail-tint:#f0e1db;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#11181e;--panel:#18212a;--ink:#e2e6e9;
+    --accent:#86aace;--accent-ink:#d3e3f2;--accent-tint:#1e3042;
+    --navy:#0a1016;--on-navy:#e2e6e9;
+    --fail:#e38a6c;--fail-tint:#3a231c;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11181e;--panel:#18212a;--ink:#e2e6e9;
+  --accent:#86aace;--accent-ink:#d3e3f2;--accent-tint:#1e3042;
+  --navy:#0a1016;--on-navy:#e2e6e9;
+  --fail:#e38a6c;--fail-tint:#3a231c;
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
+a{color:var(--accent);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code{font-family:var(--f-mono);font-size:.86em;overflow-wrap:anywhere}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;line-height:1.1;letter-spacing:-.01em;margin:0;text-wrap:balance}
+
+.wrap{max-width:1220px;margin-inline:auto;padding-inline:24px}
+
+/* menu bar: cloned from /tick (fixed, solid), colors pinned to that page's palette */
+.nav{display:flex;align-items:center;gap:28px;padding:16px 32px;
+  background:#080d12;border-bottom:1px solid rgba(158,186,214,.14)}
+.nav-brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:700;font-size:25px;letter-spacing:.14em;color:#eef2f5;text-decoration:none}
+.nav-brand svg{display:block;width:26px;height:26px;flex:none;color:#86aace}
+.nav-tabs{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.nav-tabs a{color:#9aa9b8;text-decoration:none;font-size:18px}
+.nav-tabs a:hover{color:#eef2f5}
+.nav-auth{margin-left:auto;display:flex;align-items:center;gap:20px}
+.nav-login{font-family:var(--f-body);font-size:18px;color:#9aa9b8;background:none;border:0;padding:6px 2px;cursor:pointer;text-decoration:none;display:inline-block}
+.nav-login:hover{color:#eef2f5}
+.nav-cta{font-family:var(--f-display);font-weight:600;font-size:18px;letter-spacing:.03em;text-decoration:none;
+  background:#456e99;border:1px solid #456e99;border-radius:999px;padding:9px 20px;color:#fff}
+.nav-cta:hover{background:#86aace;border-color:#86aace;color:#05061a}
+.nav :focus-visible{outline-color:#eef2f5}
+/* intro */
+.intro{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:40px 56px;padding-block:40px 34px;align-items:start}
+h1{font-size:44px}
+.lede{font-size:17px;line-height:1.6;max-width:62ch;margin:16px 0 0}
+.lede strong{font-weight:600;color:var(--accent-ink)}
+.caps{border-top:2px solid var(--ink);padding-top:12px}
+.caps h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
+.caps dl{margin:0;display:grid;gap:0}
+.caps dt{font-family:var(--f-display);font-weight:600;font-size:17px;margin-top:12px}
+.caps dd{margin:2px 0 0;font-size:14px;color:var(--ink-2);max-width:52ch}
+
+/* sections */
+section.part{padding-block:30px 10px}
+section.part:last-of-type{padding-bottom:56px}
+.part-head{display:grid;gap:6px;margin-bottom:18px;max-width:70ch}
+.part-head h2{font-size:30px}
+.part-head p{margin:0;color:var(--ink-2);font-size:15.5px}
+
+/* blueprint frames, as on the TICK site */
+.frame{position:relative;border:1px solid var(--rule-2);background:var(--bg);margin:0}
+.frame>.c{position:absolute;width:11px;height:11px;color:var(--ink-3)}
+.frame>.c::before,.frame>.c::after{content:"";position:absolute;background:currentColor}
+.frame>.c::before{left:5px;top:0;width:1px;height:100%}
+.frame>.c::after{top:5px;left:0;width:100%;height:1px}
+.frame>.tl{top:-6px;left:-6px}.frame>.tr{top:-6px;right:-6px}
+.frame>.bl{bottom:-6px;left:-6px}.frame>.br{bottom:-6px;right:-6px}
+.scroll{overflow-x:auto;padding:18px}
+.scroll svg{display:block;width:100%;height:auto}
+.fig-sys svg{min-width:900px}
+.fig-eval svg{min-width:880px}
+figcaption{border-top:1px solid var(--rule);padding:12px 18px 14px;display:flex;flex-wrap:wrap;gap:10px 28px;justify-content:space-between;align-items:flex-start}
+figcaption p{margin:0;font-size:14px;color:var(--ink-2);max-width:78ch}
+
+.legend{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--ink-2)}
+.legend li{display:flex;align-items:center;gap:7px}
+.sw{width:22px;height:13px;display:inline-block;border:1px solid var(--rule-2);background:var(--bg)}
+.sw-l{background:var(--accent-tint);border-color:var(--accent)}
+.sw-x{border-style:dashed;border-color:var(--ink-3)}
+.sw-f{background:var(--fail-tint);border-color:var(--fail)}
+.ln{width:24px;height:0;border-top:1.5px solid var(--ink-2);display:inline-block}
+.ln-f{border-top:1.5px dashed var(--fail)}
+.nb{width:17px;height:17px;border-radius:50%;background:var(--ink);color:var(--bg);font:600 10.5px var(--f-display);display:inline-grid;place-items:center}
+
+/* diagram vocabulary — every color comes from the tokens above */
+.d .zone{fill:var(--panel);stroke:var(--rule-2);stroke-width:1}
+.d .b{fill:var(--bg);stroke:var(--rule-2);stroke-width:1}
+.d .b-l{fill:var(--accent-tint);stroke:var(--accent);stroke-width:1.2}
+.d .b-x{fill:var(--bg);stroke:var(--ink-3);stroke-width:1.2;stroke-dasharray:5 4}
+.d .b-f{fill:var(--fail-tint);stroke:var(--fail);stroke-width:1.2}
+.d .lake{fill:var(--bg);stroke:var(--ink-2);stroke-width:1.4}
+.d .rule{stroke:var(--rule-2);stroke-width:1}
+.d .tt{font:600 15px var(--f-display);fill:var(--ink)}
+.d .tt-l{fill:var(--accent-ink)}
+.d .ts{font:400 11.5px var(--f-body);fill:var(--ink-2)}
+.d .tm{font:400 10.5px var(--f-mono);fill:var(--ink)}
+.d .tz{font:600 10.5px var(--f-display);letter-spacing:.12em;fill:var(--ink-2)}
+.d .tl,.d .tl-f{font:500 11px var(--f-body);fill:var(--ink-2);paint-order:stroke;stroke:var(--panel);stroke-width:4px;stroke-linejoin:round}
+.d .tl-f{fill:var(--fail)}
+.d .on-bg{stroke:var(--bg)}
+.d .e{stroke:var(--ink-2);stroke-width:1.4;fill:none}
+.d .e-r{stroke:var(--ink-3);stroke-width:1.3;fill:none;stroke-dasharray:5 3}
+.d .e-f{stroke:var(--fail);stroke-width:1.5;fill:none;stroke-dasharray:6 4}
+.d .mk{fill:var(--ink-2)}
+.d .mk-r{fill:var(--ink-3)}
+.d .mk-f{fill:var(--fail)}
+.d .n circle{fill:var(--ink)}
+.d .n text{font:600 12px var(--f-display);fill:var(--bg);text-anchor:middle;dominant-baseline:central;font-variant-numeric:tabular-nums}
+
+/* collector pipeline */
+.pipe{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;border:1px solid var(--rule-2);background:var(--bg)}
+.pipe-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.sub-h{font-size:20px;margin:0 0 12px}
+.pipe+.sub-h{margin-top:28px}
+.pipe>li{padding:16px 16px 18px;display:flex;flex-direction:column;gap:8px;border-left:1px solid var(--rule)}
+.pipe>li:first-child{border-left:0}
+.step{display:flex;align-items:baseline;gap:10px;border-top:2px solid var(--accent);padding-top:9px}
+.step b{font-family:var(--f-display);font-weight:600;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums}
+.step h3{font-size:20px}
+.pipe p{margin:0;font-size:13.5px;color:var(--ink-2)}
+.pipe ul{margin:0;padding-left:16px;font-size:13px;color:var(--ink-2);display:grid;gap:3px}
+.out{margin-top:auto;font-family:var(--f-mono);font-size:11.5px;color:var(--ink);background:var(--panel);padding:5px 8px}
+.guard{border:1px solid var(--fail);background:var(--fail-tint);padding:8px 10px;font-size:12.5px;color:var(--ink)}
+.guard strong{color:var(--fail);font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;display:block}
+
+@media (max-width:1000px){
+  .pipe{grid-template-columns:1fr}
+  .pipe>li{border-left:0;border-top:1px solid var(--rule)}
+  .pipe>li:first-child{border-top:0}
+}
+@media (max-width:880px){
+  .intro{grid-template-columns:1fr}
+}
+@media (max-width:620px){
+  .wrap{padding-inline:16px}
+  h1{font-size:34px}
+  .part-head h2{font-size:25px}
+  .scroll{padding:12px}
+  .nav{gap:16px;padding:12px 20px}
+  .nav-tabs{display:none}
+  .nav-auth{gap:14px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+</head>
+<body>
+<header class="nav">
+  <a class="nav-brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M2 19h6.5l4-12 4.5 17 3.5-10H30" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/></svg><span>TICK</span></a>
+  <nav class="nav-tabs" aria-label="Sections">
+    <a href="#system">Architecture</a>
+    <a href="#evaluator">Evaluator</a>
+    <a href="#collection">Collector</a>
+    <a href="#publisher">Publisher</a>
+  </nav>
+  <div class="nav-auth">
+    <a class="nav-login" href="/login">Log in</a>
+    <a class="nav-cta" href="/#access">Get started</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap intro">
+    <div>
+      <h1>Targeted Intelligence Companion Kit<br>(TICK)</h1>
+      <p class="lede">TICK watches public job boards for a list of target accounts and turns their postings into a dashboard and a brief per account. Source discovery happens once: <strong>the evaluator</strong> finds a company's job-posting endpoint and writes it down as a <strong>SourceConfig</strong>. That config then becomes the input for a deterministic collector that runs on serverless infrastructure every night, building a historical data lake of job postings and the hiring insights drawn from them.</p>
+    </div>
+    <aside class="caps" aria-labelledby="caps-h">
+      <h2 id="caps-h">What TICK gives you</h2>
+      <dl>
+        <dt>Accounts overview</dt>
+        <dd>Every tracked company on one page: open roles, the change over the past week, tech-role count and the date of the last crawl.</dd>
+        <dt>Hiring dashboard</dt>
+        <dd>The technology each account is hiring for, split into newly adopted and established, beside a searchable table of open roles and a trend of the board over time. Rebuilt every night.</dd>
+        <dt>Weekly AI brief</dt>
+        <dd>Every Sunday night, an AI agent reads the week's changes for each account and writes a brief on what moved. Movement in leadership, new initiatives the company is staffing for, technologies showing up for the first time, and what to do about them.</dd>      </dl>
+    </aside>
+  </div>
+
+  <!-- ============================================================ SYSTEM -->
+  <section class="part wrap" id="system" aria-labelledby="sys-h">
+    <div class="part-head">
+      <h2 id="sys-h">The whole system</h2>
+      <p>Collection runs across the middle, publishing along the bottom. The lake between them is the only thing they share.</p>
+    </div>
+
+    <figure class="frame fig-sys">
+      <span class="c tl"></span><span class="c tr"></span><span class="c bl"></span><span class="c br"></span>
+      <div class="scroll">
+        <svg class="d" viewBox="0 0 1200 890" role="img" aria-label="TICK architecture. An evaluator writes a SourceConfig into the S3 lake. At 02:00 UTC the dispatcher queues one message per company, and the collector fetches that company's ATS endpoint and writes five objects to the lake. At 04:00 UTC the publisher renders each account's dashboard from the lake into a private site bucket, and on Sundays it also adds an AI-written weekly brief. CloudFront serves the site, where an edge function checks a session cookie minted by the Auth Lambda after Cognito sign-in. A company that fails three times lands in a dead-letter queue whose alarm tells the operator to re-run the evaluator. Numbered markers 1 to 16 trace that flow in order.">
+          <defs>
+            <marker id="s-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+            <marker id="s-f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-f"/></marker>
+          </defs>
+
+          <!-- AWS zone, drawn first so everything inside sits on it -->
+          <rect x="20" y="20" width="940" height="860" class="zone"/>
+          <text x="38" y="866" class="tz">AWS ACCOUNT · US-EAST-1</text>
+
+          <!-- top row: evaluator -->
+          <rect x="80" y="40" width="340" height="92" class="b-l"/>
+          <text x="94" y="65" class="tt tt-l">Evaluator</text>
+          <text x="94" y="85" class="ts">Strands agent on Bedrock · runs once per company</text>
+          <text x="94" y="103" class="ts">Maps how each company publishes its job postings</text>
+          <text x="94" y="121" class="tm">writes configs/&lt;slug&gt;_config.json</text>
+
+          <!-- outside the stack: each company's job board -->
+          <rect x="1000" y="180" width="180" height="96" class="b-x"/>
+          <text x="1014" y="206" class="tt">Company ATS endpoints</text>
+          <text x="1014" y="226" class="ts">Workday CXS · ADP</text>
+          <text x="1014" y="244" class="ts">Greenhouse · Lever · Ashby</text>
+          <text x="1014" y="262" class="ts">any JSON board</text>
+
+          <path d="M420,86 H1090 V177" class="e" marker-end="url(#s-a)"/>
+          <text x="690" y="78" text-anchor="middle" class="tl">probes candidate endpoints live</text>
+
+          <!-- evaluator upload, down the left gutter -->
+          <path d="M80,86 H48 V522 H77" class="e" marker-end="url(#s-a)"/>
+          <text transform="translate(39 330) rotate(-90)" text-anchor="middle" class="tl">writes new config to S3</text>
+
+          <!-- row A: failure -->
+          <rect x="316" y="196" width="152" height="66" class="b-f"/>
+          <text x="330" y="222" class="tt">DLQ alarm</text>
+          <text x="330" y="243" class="ts">CloudWatch → email</text>
+
+          <rect x="552" y="196" width="152" height="66" class="b-f"/>
+          <text x="566" y="222" class="tt">collect-dlq</text>
+          <text x="566" y="243" class="ts">SQS · held 14 days</text>
+
+          <line x1="628" y1="310" x2="628" y2="265" class="e-f" marker-end="url(#s-f)"/>
+          <text x="638" y="292" class="tl-f">after 3 failed tries</text>
+          <line x1="552" y1="229" x2="471" y2="229" class="e-f" marker-end="url(#s-f)"/>
+          <text x="510" y="250" text-anchor="middle" class="tl-f">depth &gt; 0</text>
+          <line x1="340" y1="196" x2="340" y2="135" class="e-f" marker-end="url(#s-f)"/>
+          <text x="350" y="168" class="tl-f">email: re-run the evaluator</text>
+
+          <!-- row B: collection -->
+          <rect x="80" y="310" width="152" height="80" class="b"/>
+          <text x="94" y="336" class="tt">Scheduler</text>
+          <text x="94" y="356" class="ts">EventBridge</text>
+          <text x="94" y="374" class="tm">cron 02:00 UTC</text>
+
+          <rect x="316" y="310" width="152" height="80" class="b-l"/>
+          <text x="330" y="336" class="tt tt-l">Dispatcher λ</text>
+          <text x="330" y="356" class="ts">lists configs/</text>
+          <text x="330" y="373" class="ts">skips review-flagged</text>
+
+          <rect x="552" y="310" width="152" height="80" class="b"/>
+          <text x="566" y="336" class="tt">collect-queue</text>
+          <text x="566" y="356" class="ts">SQS · 1 message each</text>
+          <text x="566" y="373" class="ts">retries after 30 min</text>
+
+          <rect x="788" y="310" width="152" height="80" class="b-l"/>
+          <text x="802" y="336" class="tt tt-l">Collector λ</text>
+          <text x="802" y="356" class="ts">one company per run</text>
+          <text x="802" y="373" class="ts">2 at once · 5 min cap</text>
+
+          <line x1="232" y1="350" x2="313" y2="350" class="e" marker-end="url(#s-a)"/>
+          <text x="272" y="342" text-anchor="middle" class="tl">fires</text>
+          <line x1="468" y1="350" x2="549" y2="350" class="e" marker-end="url(#s-a)"/>
+          <text x="508" y="342" text-anchor="middle" class="tl">1 per company</text>
+          <line x1="704" y1="350" x2="785" y2="350" class="e" marker-end="url(#s-a)"/>
+          <text x="744" y="342" text-anchor="middle" class="tl">invokes</text>
+
+          <path d="M864,310 V228 H997" class="e" marker-end="url(#s-a)"/>
+          <text x="854" y="262" text-anchor="end" class="tl">fetches every page</text>
+          <text x="854" y="277" text-anchor="end" class="tl">+ per-posting details</text>
+
+          <!-- row C: lake -->
+          <rect x="80" y="440" width="860" height="160" class="lake"/>
+          <text x="96" y="464" class="tt">S3 data lake</text>
+          <text x="190" y="464" class="ts">private · versioned · the only thing collection and publishing share</text>
+          <line x1="80" y1="476" x2="940" y2="476" class="rule"/>
+          <line x1="480" y1="476" x2="480" y2="600" class="rule"/>
+
+          <text x="96" y="496" class="tz">WRITTEN BY THE EVALUATOR</text>
+          <text x="96" y="521" class="tm">configs/&lt;slug&gt;.json</text>
+          <text x="96" y="538" class="ts">SourceConfig, one per company</text>
+          <text x="96" y="563" class="tm">enrichment/people/…/people.json</text>
+          <text x="96" y="580" class="ts">optional names for the brief</text>
+
+          <text x="496" y="496" class="tz">WRITTEN BY THE COLLECTOR</text>
+          <text x="496" y="518" class="tm">raw/…/postings.json</text>
+          <text x="744" y="518" class="ts">responses as fetched</text>
+          <text x="496" y="535" class="tm">curated/…/postings.jsonl</text>
+          <text x="744" y="535" class="ts">normalized rows + keywords</text>
+          <text x="496" y="552" class="tm">derived/snapshots/…/diff.json</text>
+          <text x="744" y="552" class="ts">new · closed · reopened</text>
+          <text x="496" y="569" class="tm">derived/state/…/state.json</text>
+          <text x="744" y="569" class="ts">first_seen per posting</text>
+          <text x="496" y="586" class="tm">derived/tech_stack/…/tech_stack.json</text>
+          <text x="744" y="586" class="ts">terms → posting ids</text>
+
+          <line x1="392" y1="390" x2="392" y2="437" class="e" marker-end="url(#s-a)"/>
+          <text x="402" y="419" class="tl">reads configs/</text>
+          <line x1="864" y1="390" x2="864" y2="437" class="e" marker-end="url(#s-a)"/>
+          <text x="854" y="419" text-anchor="end" class="tl">writes 5 objects, reads state</text>
+
+          <!-- row D: publishing -->
+          <rect x="80" y="650" width="152" height="80" class="b"/>
+          <text x="94" y="676" class="tt">Scheduler</text>
+          <text x="94" y="696" class="ts">EventBridge</text>
+          <text x="94" y="714" class="tm">cron 04:00 UTC</text>
+
+          <rect x="316" y="650" width="152" height="80" class="b-l"/>
+          <text x="330" y="676" class="tt tt-l">Publisher λ</text>
+          <text x="330" y="696" class="ts">nightly dashboards</text>
+          <text x="330" y="713" class="ts">+ AI brief on Sundays</text>
+
+          <rect x="552" y="650" width="152" height="80" class="b"/>
+          <text x="566" y="676" class="tt">Site bucket</text>
+          <text x="566" y="696" class="ts">S3 · finished HTML</text>
+          <text x="566" y="713" class="ts">2 pages per account</text>
+
+          <rect x="788" y="650" width="152" height="80" class="b"/>
+          <text x="802" y="676" class="tt">CloudFront</text>
+          <text x="802" y="696" class="ts">edge fn checks cookie</text>
+          <text x="802" y="713" class="ts">/auth/* → Auth λ</text>
+
+          <line x1="392" y1="650" x2="392" y2="603" class="e" marker-end="url(#s-a)"/>
+          <text x="384" y="631" text-anchor="end" class="tl">reads lake</text>
+          <path d="M452,650 V622 H812 V647" class="e" marker-end="url(#s-a)"/>
+          <text x="632" y="639" text-anchor="middle" class="tl">invalidates /*</text>
+
+          <line x1="232" y1="690" x2="313" y2="690" class="e" marker-end="url(#s-a)"/>
+          <text x="272" y="682" text-anchor="middle" class="tl">fires</text>
+          <line x1="468" y1="690" x2="549" y2="690" class="e" marker-end="url(#s-a)"/>
+          <text x="508" y="682" text-anchor="middle" class="tl">writes</text>
+          <line x1="788" y1="690" x2="707" y2="690" class="e" marker-end="url(#s-a)"/>
+          <text x="748" y="682" text-anchor="middle" class="tl">reads (OAC)</text>
+
+          <rect x="1000" y="650" width="180" height="80" class="b-x"/>
+          <text x="1014" y="676" class="tt">Viewer</text>
+          <text x="1014" y="696" class="ts">browser</text>
+          <text x="1014" y="713" class="ts">tick-viewers member</text>
+          <line x1="1000" y1="690" x2="943" y2="690" class="e" marker-end="url(#s-a)"/>
+          <text x="971" y="682" text-anchor="middle" class="tl on-bg">HTTPS</text>
+
+          <!-- row E: sign-in -->
+          <rect x="552" y="780" width="152" height="70" class="b"/>
+          <text x="566" y="804" class="tt">Cognito pool</text>
+          <text x="566" y="823" class="ts">gate: tick-viewers</text>
+
+          <rect x="788" y="780" width="152" height="70" class="b-l"/>
+          <text x="802" y="804" class="tt tt-l">Auth λ</text>
+          <text x="802" y="823" class="ts">OIDC code exchange</text>
+          <text x="802" y="840" class="ts">mints 12 h cookie</text>
+
+          <line x1="864" y1="730" x2="864" y2="777" class="e" marker-end="url(#s-a)"/>
+          <text x="854" y="758" text-anchor="end" class="tl">/auth/* only</text>
+          <line x1="785" y1="815" x2="707" y2="815" class="e" marker-start="url(#s-a)" marker-end="url(#s-a)"/>
+          <text x="746" y="807" text-anchor="middle" class="tl">tokens</text>
+
+          <!-- step order: drawn last so each marker sits above lines and labels -->
+          <g class="n" aria-hidden="true">
+            <circle cx="690" cy="103" r="10"/><text x="690" y="103">1</text>
+            <circle cx="48" cy="440" r="10"/><text x="48" y="440">2</text>
+            <circle cx="272" cy="367" r="10"/><text x="272" y="367">3</text>
+            <circle cx="375" cy="415" r="10"/><text x="375" y="415">4</text>
+            <circle cx="508" cy="367" r="10"/><text x="508" y="367">5</text>
+            <circle cx="744" cy="367" r="10"/><text x="744" y="367">6</text>
+            <circle cx="881" cy="270" r="10"/><text x="881" y="270">7</text>
+            <circle cx="881" cy="415" r="10"/><text x="881" y="415">8</text>
+            <circle cx="272" cy="707" r="10"/><text x="272" y="707">9</text>
+            <circle cx="409" cy="627" r="10"/><text x="409" y="627">10</text>
+            <circle cx="508" cy="707" r="10"/><text x="508" y="707">11</text>
+            <circle cx="586" cy="635" r="10"/><text x="586" y="635">12</text>
+            <circle cx="971" cy="707" r="10"/><text x="971" y="707">13</text>
+            <circle cx="881" cy="754" r="10"/><text x="881" y="754">14</text>
+            <circle cx="746" cy="832" r="10"/><text x="746" y="832">15</text>
+            <circle cx="744" cy="707" r="10"/><text x="744" y="707">16</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        <ul class="legend" aria-label="Legend">
+          <li><span class="sw sw-l"></span>TICK code</li>
+          <li><span class="sw"></span>AWS resource</li>
+          <li><span class="sw sw-f"></span>Failure handling</li>
+          <li><span class="ln"></span>Call or write</li>
+          <li><span class="ln ln-f"></span>Failure path</li>
+          <li><span class="nb" aria-hidden="true">1</span>Step order</li>
+        </ul>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ============================================================ EVALUATOR -->
+  <section class="part wrap" id="evaluator" aria-labelledby="eval-h">
+    <div class="part-head">
+      <h2 id="eval-h">Inside the evaluator agent</h2>
+      <p>The evaluator turns a company name into a verified SourceConfig. It is a Strands agent running Claude on Amazon Bedrock, and it runs once per company, plus again whenever that company's collection starts failing. The model decides where to look; plain code decides when the run stops and whether the result can be trusted.</p>
+    </div>
+
+    <figure class="frame fig-eval">
+      <span class="c tl"></span><span class="c tr"></span><span class="c bl"></span><span class="c br"></span>
+      <div class="scroll">
+        <svg class="d" viewBox="0 0 1160 470" role="img" aria-label="One evaluator run. A company name, with an optional careers URL hint, is the prompt. In phase A a Strands agent running Claude Sonnet 4.6 on Bedrock loops over five tools: web_search_careers, fetch_page, fingerprint_html, probe_ats_endpoint and search_bundle. A call-budget hook checks every model call and stops the loop after 25. In phase B the agent extracts a typed SourceConfig from the whole discovery transcript. Deterministic guards then cap a budget-stopped run at 0.5 confidence and flag anything under 0.7 for human review, and the SourceConfig JSON is written out.">
+          <defs>
+            <marker id="v-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk"/></marker>
+            <marker id="v-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk-r"/></marker>
+            <marker id="v-f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="mk-f"/></marker>
+          </defs>
+
+          <!-- phase A panel first, so the input arrow can cross its edge -->
+          <rect x="240" y="20" width="560" height="400" class="zone"/>
+          <text x="256" y="44" class="tz">PHASE A · DISCOVERY LOOP</text>
+
+          <!-- input -->
+          <rect x="20" y="150" width="170" height="96" class="b-x"/>
+          <text x="34" y="176" class="tt">Company name</text>
+          <text x="34" y="196" class="ts">e.g. Acme</text>
+          <text x="34" y="214" class="ts">+ optional careers URL</text>
+          <line x1="190" y1="198" x2="261" y2="198" class="e" marker-end="url(#v-a)"/>
+          <text x="215" y="190" text-anchor="middle" class="tl on-bg">prompt</text>
+
+          <rect x="264" y="150" width="210" height="96" class="b-l"/>
+          <text x="278" y="176" class="tt tt-l">Strands agent</text>
+          <text x="278" y="196" class="ts">Claude Sonnet 4.6 on Bedrock</text>
+          <text x="278" y="214" class="ts">temperature 0 · prompt caching</text>
+
+          <rect x="264" y="300" width="210" height="86" class="b-f"/>
+          <text x="278" y="326" class="tt">Call budget hook</text>
+          <text x="278" y="346" class="ts">counts every model call</text>
+          <text x="278" y="364" class="ts">stops the loop after 25</text>
+          <line x1="369" y1="297" x2="369" y2="249" class="e-r" marker-end="url(#v-r)"/>
+          <text x="359" y="278" text-anchor="end" class="tl">before each call</text>
+
+          <!-- tool bus -->
+          <line x1="524" y1="90" x2="524" y2="378" class="rule"/>
+          <line x1="524" y1="90" x2="536" y2="90" class="rule"/>
+          <line x1="524" y1="162" x2="536" y2="162" class="rule"/>
+          <line x1="524" y1="234" x2="536" y2="234" class="rule"/>
+          <line x1="524" y1="306" x2="536" y2="306" class="rule"/>
+          <line x1="524" y1="378" x2="536" y2="378" class="rule"/>
+          <line x1="474" y1="184" x2="521" y2="184" class="e" marker-end="url(#v-a)"/>
+          <text x="498" y="176" text-anchor="middle" class="tl">calls</text>
+          <line x1="524" y1="214" x2="477" y2="214" class="e-r" marker-end="url(#v-r)"/>
+          <text x="498" y="232" text-anchor="middle" class="tl">results</text>
+
+          <rect x="536" y="60" width="244" height="60" class="b"/>
+          <text x="550" y="84" class="tm">web_search_careers</text>
+          <text x="550" y="104" class="ts">finds the careers page</text>
+          <rect x="536" y="132" width="244" height="60" class="b"/>
+          <text x="550" y="156" class="tm">fetch_page</text>
+          <text x="550" y="176" class="ts">loads a page, follows redirects</text>
+          <rect x="536" y="204" width="244" height="60" class="b"/>
+          <text x="550" y="228" class="tm">fingerprint_html</text>
+          <text x="550" y="248" class="ts">spots Workday, Greenhouse, Lever…</text>
+          <rect x="536" y="276" width="244" height="60" class="b"/>
+          <text x="550" y="300" class="tm">probe_ats_endpoint</text>
+          <text x="550" y="320" class="ts">live-tests the job API</text>
+          <rect x="536" y="348" width="244" height="60" class="b"/>
+          <text x="550" y="372" class="tm">search_bundle</text>
+          <text x="550" y="392" class="ts">searches JS bundles for API routes</text>
+
+          <!-- phase B, guards, output -->
+          <line x1="800" y1="88" x2="867" y2="88" class="e" marker-end="url(#v-a)"/>
+          <text x="834" y="80" text-anchor="middle" class="tl on-bg">loop ends</text>
+
+          <rect x="870" y="40" width="270" height="96" class="b-l"/>
+          <text x="884" y="66" class="tt tt-l">Phase B · Structured output</text>
+          <text x="884" y="86" class="ts">reads the whole discovery transcript</text>
+          <text x="884" y="106" class="tm">structured_output(SourceConfig)</text>
+
+          <line x1="1005" y1="136" x2="1005" y2="173" class="e" marker-end="url(#v-a)"/>
+          <text x="1015" y="160" class="tl on-bg">draft config</text>
+
+          <rect x="870" y="176" width="270" height="96" class="b-f"/>
+          <text x="884" y="202" class="tt">Deterministic guards</text>
+          <text x="884" y="222" class="ts">stopped by budget → confidence ≤ 0.5</text>
+          <text x="884" y="240" class="ts">confidence &lt; 0.7 → needs human review</text>
+
+          <line x1="1005" y1="272" x2="1005" y2="309" class="e" marker-end="url(#v-a)"/>
+          <text x="1015" y="296" class="tl on-bg">final config</text>
+
+          <rect x="870" y="312" width="270" height="96" class="b"/>
+          <text x="884" y="338" class="tt">SourceConfig (JSON)</text>
+          <text x="884" y="358" class="ts">endpoint, request shape, field map,</text>
+          <text x="884" y="376" class="ts">tier, confidence and evidence</text>
+          <text x="884" y="396" class="tm">exit 2 if flagged for review</text>
+
+          <!-- budget fallback -->
+          <path d="M369,386 V446 H836 V118 H867" class="e-f" marker-end="url(#v-f)"/>
+          <text x="600" y="440" text-anchor="middle" class="tl-f on-bg">25 calls reached: stop digging, keep what was found</text>
+        </svg>
+      </div>
+      <figcaption>
+        <p>Discovery is open-ended; everything after it is not. The model chooses which tools to call and when it has seen enough, but the call budget, the confidence cap and the review flag are ordinary code. A run always ends with a config, even when the model does not converge.</p>
+        <ul class="legend" aria-label="Legend">
+          <li><span class="sw sw-l"></span>Agent (model)</li>
+          <li><span class="sw"></span>Tool or output</li>
+          <li><span class="sw sw-x"></span>Input</li>
+          <li><span class="sw sw-f"></span>Guardrail</li>
+          <li><span class="ln ln-f"></span>Budget fallback</li>
+        </ul>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ============================================================ COLLECTION -->
+  <section class="part wrap" id="collection" aria-labelledby="col-h">
+    <div class="part-head">
+      <h2 id="col-h">Inside one collection</h2>
+      <p>What the collector does with a single queue message. It has no company-specific code: the SourceConfig in the message decides everything.</p>
+    </div>
+
+    <ol class="pipe">
+      <li>
+        <div class="step"><b>1</b><h3>Fetch</h3></div>
+        <p>The config's <code>ats</code> field picks the branch.</p>
+        <ul>
+          <li><b>workday:</b> POST in pages of 20, up to 100 pages</li>
+          <li><b>adp:</b> one list call, then a detail GET per req, merged in</li>
+          <li><b>greenhouse · lever · ashby · other:</b> one GET; <code>postings_key</code> names the array</li>
+        </ul>
+        <span class="out">postings[], total_reported</span>
+      </li>
+      <li>
+        <div class="step"><b>2</b><h3>Normalize</h3></div>
+        <p><code>schema_map</code> paths such as <code>bulletFields[0]</code> turn each posting into a curated row.</p>
+        <ul>
+          <li>No stable id: hash of company + title + location</li>
+          <li>Relative URLs are joined onto <code>careers_url</code></li>
+        </ul>
+        <span class="out">rows[]</span>
+      </li>
+      <li>
+        <div class="step"><b>3</b><h3>Enrich</h3></div>
+        <p>Pulls in the description, then matches keywords in the title and description.</p>
+        <ul>
+          <li>Workday: one detail GET per posting</li>
+          <li>ADP: already merged in step 1</li>
+          <li><code>description_field</code>: read from the listing itself, no extra request</li>
+          <li>8 keyword categories; <code>is_tech_role</code> is set by any hit outside signal terms and analytics tools</li>
+        </ul>
+        <span class="out">rows[].keywords</span>
+      </li>
+      <li>
+        <div class="step"><b>4</b><h3>Diff</h3></div>
+        <p>Compares today's ids with <code>state.json</code> to find new, closed and reopened postings, then stamps <code>first_seen</code> and <code>last_seen</code>.</p>
+        <div class="guard"><strong>Drift guard</strong>0 rows but open reqs in state → raise → retry → DLQ</div>
+        <span class="out">new · closed · reopened</span>
+      </li>
+      <li>
+        <div class="step"><b>5</b><h3>Write</h3></div>
+        <p>Five objects, partitioned by <code>company=</code> and <code>dt=</code>:</p>
+        <ul>
+          <li>raw postings</li>
+          <li>curated rows</li>
+          <li>snapshot diff</li>
+          <li>updated state</li>
+          <li>tech-stack summary</li>
+        </ul>
+        <span class="out">s3 put × 5</span>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ============================================================ PUBLISHER -->
+  <section class="part wrap" id="publisher" aria-labelledby="pub-h">
+    <div class="part-head">
+      <h2 id="pub-h">Inside the publisher</h2>
+      <p>Two jobs put pages on the site. The publisher rebuilds every dashboard each night, and a brief agent writes each account's brief once a week from what changed.</p>
+    </div>
+
+    <h3 class="sub-h">Every night: dashboards</h3>
+    <ol class="pipe pipe-4">
+      <li>
+        <div class="step"><b>1</b><h3>Find accounts</h3></div>
+        <p>Reads every SourceConfig in <code>configs/</code> and picks out the accounts with at least two crawls, since a dashboard needs something to compare.</p>
+        <span class="out">accounts[]</span>
+      </li>
+      <li>
+        <div class="step"><b>2</b><h3>Compare</h3></div>
+        <p>Measures the latest crawl against the most recent one at least 7 days older, so the numbers show a week's drift rather than overnight noise.</p>
+        <ul>
+          <li>Short history falls back to the oldest crawl, labeled with its real date</li>
+          <li>Terms first seen in the last 6 months count as newly adopted</li>
+        </ul>
+        <span class="out">opened · closed · reopened</span>
+      </li>
+      <li>
+        <div class="step"><b>3</b><h3>Render</h3></div>
+        <p>Builds one dashboard per account from the comparison.</p>
+        <ul>
+          <li>Hiring stack, newly adopted vs. established</li>
+          <li>Searchable open-roles table, new roles flagged</li>
+          <li>Open-role trend and tech roles opened</li>
+        </ul>
+        <div class="guard"><strong>Nothing invented</strong>Every number traces to a posting, snapshot count or diff</div>
+        <span class="out">&lt;slug&gt;/dashboard.html</span>
+      </li>
+      <li>
+        <div class="step"><b>4</b><h3>Publish</h3></div>
+        <p>Writes each dashboard to the private site bucket, where only CloudFront can read it.</p>
+        <ul>
+          <li>Cached for 5 minutes, so a reload soon shows fresh numbers</li>
+          <li>An empty lake fails the run instead of publishing a blank site</li>
+        </ul>
+        <span class="out">s3 put × dashboards</span>
+      </li>
+    </ol>
+
+    <h3 class="sub-h">Every Sunday night: briefs</h3>
+    <ol class="pipe">
+      <li>
+        <div class="step"><b>1</b><h3>Start</h3></div>
+        <p>EventBridge starts the brief agent once a week, on Sunday night, for each account.</p>
+        <span class="out">company_slug</span>
+      </li>
+      <li>
+        <div class="step"><b>2</b><h3>Read the week</h3></div>
+        <p>Loads the account's week of diffs from the lake: roles opened, closed and reopened, with the postings and stack terms behind them.</p>
+        <span class="out">diffs · postings · stack</span>
+      </li>
+      <li>
+        <div class="step"><b>3</b><h3>Reason</h3></div>
+        <p>A Strands agent running Claude on Bedrock works out what the week means for the account.</p>
+        <ul>
+          <li>Leadership seats filled or newly opened</li>
+          <li>New initiatives the company is staffing for</li>
+          <li>Technology appearing for the first time</li>
+        </ul>
+        <span class="out">findings + citations</span>
+      </li>
+      <li>
+        <div class="step"><b>4</b><h3>Write the brief</h3></div>
+        <p>Writes a short summary of the week with suggested next steps.</p>
+        <div class="guard"><strong>Grounded in the lake</strong>Every claim cites the posting or snapshot it came from; anything the week's data can't support is left out</div>
+        <span class="out">&lt;slug&gt;/brief.html</span>
+      </li>
+      <li>
+        <div class="step"><b>5</b><h3>Publish</h3></div>
+        <p>Writes each brief to the private site bucket next to the account's dashboard, where only CloudFront can read it.</p>
+        <ul>
+          <li>Replaces the previous week's brief</li>
+          <li>Cached for 5 minutes, like the dashboards</li>
+        </ul>
+        <span class="out">s3 put × briefs</span>
+      </li>
+    </ol>
+  </section>
+</main>
+</body>
+</html>

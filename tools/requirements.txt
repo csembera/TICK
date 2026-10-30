@@ -1,0 +1,4 @@
+strands-agents>=1.42.0
+botocore[crt]>=1.43.28
+httpx>=0.28.1
+pydantic>=2.13.4

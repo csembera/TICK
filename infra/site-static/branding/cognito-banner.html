@@ -1,0 +1,23 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<title>TICK - Beta — Cognito banner lockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600&display=swap">
+<style>
+  /* Rendered at 2x into a PNG for the Cognito hosted UI banner, which shows an
+     uploaded image rather than text. Transparent ground: the banner colour is
+     set by .banner-customizable in template.yaml, so the mark sits on whatever
+     that is and the two cannot drift apart. */
+  html,body{margin:0;background:transparent}
+  .plate{width:420px;height:56px;display:flex;align-items:center;justify-content:center;gap:15px}
+  svg{display:block;width:34px;height:34px;flex:none}
+  .brand{font-family:"Barlow Condensed",system-ui,sans-serif;font-weight:600;font-size:35px;
+    letter-spacing:.085em;color:#f2f2f3;line-height:1;white-space:nowrap}
+</style></head><body>
+<div class="plate">
+  <svg viewBox="0 0 32 32" aria-hidden="true">
+    <path d="M2 19h6.5l4-12 4.5 17 3.5-10H30" fill="none" stroke="#5980a6"
+          stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/>
+  </svg>
+  <span class="brand">TICK - Beta</span>
+</div></body></html>
