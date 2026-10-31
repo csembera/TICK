@@ -20,7 +20,8 @@ EventBridge Scheduler (daily, 30 min later)
         └─► S3 site bucket (private)
               ├─ login/index.html              accounts home
               ├─ <slug>/dashboard.html
-              └─ <slug>/brief.html
+              ├─ <slug>/brief.html
+              └─ <slug>/archive/<pid>/index.html   one per closed req
 
 site-static/ ── make publish-static ──► the same bucket
               ├─ index.html                    marketing page
@@ -196,6 +197,7 @@ https://tick.sembasolutions.com/demo                      demo            (publi
 https://tick.sembasolutions.com/login                     accounts home
 https://tick.sembasolutions.com/<company-slug>/dashboard.html
 https://tick.sembasolutions.com/<company-slug>/brief.html
+https://tick.sembasolutions.com/<company-slug>/archive/<posting-id>   a closed req
 ```
 
 The site has two halves in one bucket, and they never collide:

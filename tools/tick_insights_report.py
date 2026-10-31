@@ -17,12 +17,17 @@ window it compares against the oldest snapshot there is and labels the real
 dates, so a short window reads as itself.
   - Brief — per account, a narrative summary with numbered citations, each
     pointing at the posting (or snapshot) it was derived from.
+  - Archive — per closed req, its last recorded description and dates, at a
+    stable address the brief can cite once the board's own link is dead.
 
 Layout written under --out-dir:
 
     login/index.html              the accounts home, served at /login
     <company-slug>/dashboard.html
     <company-slug>/brief.html
+    <company-slug>/archive/<posting-id>/index.html
+                                  one per closed req, served at
+                                  /<company-slug>/archive/<posting-id>
 
 "/" , "/docs" and "/demo" are NOT written here — they are the hand-authored
 public pages in infra/site-static/, deployed separately. This renderer
@@ -68,6 +73,28 @@ _CAT_LABELS = {
 # Where the signed-in app starts. "/" is the public marketing page, so every
 # in-app link home is root-absolute to this instead of a relative "index.html".
 APP_HOME = "/login"
+
+# The public origin, for links that have to work outside the site — the
+# workbench's markdown briefs. The pages themselves link root-absolute.
+SITE_URL = "https://tick.sembasolutions.com"
+
+
+def archive_segment(pid: str) -> str:
+    """A posting id as one URL path segment. The edge resolves an extensionless
+    tail to <tail>/index.html, so a '.' or '/' in an id would misroute the page;
+    every ATS id seen so far (JR4531, R-005305, 5001215941206) passes untouched."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", str(pid))
+
+
+def archive_href(company: str, pid: str) -> str:
+    """Where a closed req's own page lives: /<slug>/archive/<pid>. It sits under
+    the account's /<slug>/, so the edge's per-account check covers it as is."""
+    return f"/{company}/archive/{archive_segment(pid)}"
+
+
+def archive_key(company: str, pid: str) -> str:
+    """The object that backs archive_href — the edge appends /index.html."""
+    return f"{company}/archive/{archive_segment(pid)}/index.html"
 
 # ------------------------------------------------------------------ loading
 
@@ -180,7 +207,8 @@ def load_lake(source: str, company: str, lake_io: dict | None = None,
     state.json and curated postings.jsonl for description text.
 
     Returns {"curr", "prev", "series", "history", "diff", "state", "curated",
-    "curated_dt", "dts", "term_first_seen", "history_from"} — curated_dt and dts let the caller check that the curated board is
+    "curated_dt", "dts", "term_first_seen", "history_from", "archive"} — archive
+    maps every closed posting_id to its last curated record; curated_dt and dts let the caller check that the curated board is
     the current one and reason about crawl cadence."""
     io = lake_io or open_lake(source)
     keys, get, get_text = io["keys"], io["get"], io["get_text"]
@@ -269,9 +297,32 @@ def load_lake(source: str, company: str, lake_io: dict | None = None,
         curated = _read_curated(curateds[-1])
         if len(curateds) > 1:
             curated_prev = _read_curated(curateds[-2])
+
+    # The archive: every req state.json holds as closed, with the last curated
+    # record TICK has for it. A posting's final appearance is the crawl dated its
+    # last_seen, so that partition is where its description survives — reading
+    # only the newest two would leave anything closed before last week blank.
+    # Each partition is read once however many closed reqs it holds.
+    closed_ids = {pid: st for pid, st in state.items() if st.get("closed_on")}
+    curated_by_dt = _partition_map(keys, "postings.jsonl", company)
+    loaded = {}
+    if curateds:
+        loaded[curated_dt] = curated
+        if len(curateds) > 1:
+            loaded[_DT_RE.search(curateds[-2]).group(1)] = curated_prev
+    archive = {}
+    for dt in sorted({st.get("last_seen") for st in closed_ids.values()} - {None}):
+        if dt not in curated_by_dt:
+            continue
+        if dt not in loaded:
+            loaded[dt] = _read_curated(curated_by_dt[dt])
+        for pid, st in closed_ids.items():
+            if st.get("last_seen") == dt and pid in loaded[dt]:
+                archive[pid] = loaded[dt][pid]
     return {"curr": curr, "prev": prev, "series": series, "history": history,
             "diff": diff, "state": state, "curated": curated,
             "curated_dt": curated_dt, "curated_prev": curated_prev, "people": people,
+            "archive": archive,
             "dts": dts,
             "term_first_seen": term_first_seen,
             "history_from": history[0]["dt"] if history else curr_dt}
@@ -662,6 +713,45 @@ def closed_postings(diff: dict, state: dict) -> list[dict]:
     # than one that lasted a week
     out.sort(key=lambda r: (-(r["days_open"] or 0), r["title"]))
     return out
+
+
+def archived_postings(lake: dict) -> list[dict]:
+    """Every req that has left the board, across the lake's whole history — not
+    just this window, which is all closed_postings covers.
+
+    state.json names and dates each one; the detail (description, team, posted
+    date, stack terms) comes from the last curated crawl it appeared on. A req
+    whose final crawl predates curated descriptions still gets a row, just a
+    thinner one, and the detail panel says so rather than looking empty."""
+    state, archive = lake.get("state") or {}, lake.get("archive") or {}
+    rows = []
+    for pid, st in state.items():
+        if not st.get("closed_on"):
+            continue
+        rec = archive.get(pid) or {}
+        rows.append({
+            "pid": pid,
+            "title": rec.get("title") or st.get("title") or pid,
+            "location": rec.get("location") or st.get("location") or "",
+            "team": rec.get("team"),
+            "url": rec.get("url") or "",
+            "source": rec.get("source"),
+            "posted_on": rec.get("posted_on"),
+            "date_trust": rec.get("date_trust"),
+            "remote": bool(rec.get("remote_flag")),
+            "is_tech_role": bool(rec.get("is_tech_role")),
+            "terms": flat_terms(rec.get("keywords")),
+            "description": rec.get("description_raw"),
+            "first_seen": st.get("first_seen"),
+            "last_seen": st.get("last_seen"),
+            "closed_on": st["closed_on"],
+            "days_open": _days_between(st.get("first_seen"), st["closed_on"]),
+            "has_record": bool(rec),
+        })
+    # most recently closed first; title breaks ties so rows do not reshuffle
+    rows.sort(key=lambda r: r["title"].lower())
+    rows.sort(key=lambda r: r["closed_on"], reverse=True)
+    return rows
 
 
 def _days_between(a: str | None, b: str | None) -> int | None:
@@ -1055,7 +1145,20 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 70%,transparent)}
 .tbl-empty{margin:0;padding:14px;font-size:12.5px}
 .pager{display:flex;align-items:center;gap:12px;margin-top:11px;flex-wrap:wrap}
-.pager #page-status{font-size:12px;font-variant-numeric:tabular-nums}
+.arch-table tbody tr[data-arch]{cursor:pointer}
+.arch-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.arch-dialog{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;
+  border:1px solid var(--color-divider);background:var(--color-bg);color:var(--color-text)}
+.arch-dialog::backdrop{background:color-mix(in srgb,#1d1f20 45%,transparent)}
+.arch-dialog-bar{position:sticky;top:0;display:flex;justify-content:flex-end;padding:10px 12px;
+  background:var(--color-bg);border-bottom:1px solid var(--color-divider)}
+.arch-dialog-body{padding:16px 22px 22px}
+.arch-title{font-size:26px;margin:4px 0 8px}
+.arch-fields{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:16px 0 0;font-size:13px}
+.arch-fields dt{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.arch-fields dd{margin:0;overflow-wrap:anywhere}
+.arch-desc{white-space:pre-wrap;font-size:13.5px;line-height:1.6;max-width:72ch}
+.pager [role=status]{font-size:12px;font-variant-numeric:tabular-nums}
 .pager button[disabled]{opacity:.4;cursor:default}
 .site-foot{border-top:1px solid var(--color-divider);margin-top:38px;padding-top:14px;
   display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:11.5px;line-height:1.5}
@@ -1072,7 +1175,7 @@ a{color:var(--color-accent);text-underline-offset:3px}
     transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 @media print{
-  .nav,.skip-link,.crumb,.btn,.tbl-controls,.pager,.chart-tbl{display:none!important}
+  .nav,.skip-link,.crumb,.btn,.tbl-controls,.pager,.chart-tbl,.arch-dialog{display:none!important}
   body{background:#fff;font-size:11.5pt}
   .wrap{max-width:none;padding:0}
   .grid,.grid.narrative{grid-template-columns:1fr;gap:14px}
@@ -1386,28 +1489,40 @@ def _copy_script(element_id: str, text: str) -> str:
 ROLES_PAGE_SIZE = 10
 
 
-def _filter_script() -> str:
-    """Client-side filtering + pagination for the open-roles table.
+_ROLE_TABLE_IDS = {"table": "open-roles", "filter": "role-filter", "flag": "new-only",
+                   "flag_attr": "data-new", "count": "row-count", "total": "row-total",
+                   "empty": "no-match", "pager": "roles-pager", "prev": "page-prev",
+                   "next": "page-next", "status": "page-status"}
+_ARCHIVE_TABLE_IDS = {"table": "archive-roles", "filter": "archive-filter", "flag": "archive-tech",
+                      "flag_attr": "data-tech", "count": "archive-count", "total": "archive-total",
+                      "empty": "archive-no-match", "pager": "archive-pager", "prev": "archive-prev",
+                      "next": "archive-next", "status": "archive-status"}
+
+
+def _filter_script(ids: dict = _ROLE_TABLE_IDS) -> str:
+    """Client-side filtering + pagination for a dashboard table — the open roles
+    and the archive share it, each passing the ids of its own controls.
 
     The table ships complete in the HTML and this only toggles row visibility,
-    so with JS off every open role is still on the page — which is also why the
+    so with JS off every row is still on the page — which is also why the
     pager starts hidden and is revealed here rather than rendered ready-made.
     Paging applies to the FILTERED set, not the raw rows, so the page numbers
     always describe what the reader is actually looking at."""
     return f"""<script>
 (function () {{
   var PAGE = {ROLES_PAGE_SIZE};
-  var q = document.getElementById('role-filter');
-  var newOnly = document.getElementById('new-only');
-  var table = document.getElementById('open-roles');
-  var count = document.getElementById('row-count');
-  var empty = document.getElementById('no-match');
-  var pager = document.getElementById('roles-pager');
-  var prev = document.getElementById('page-prev');
-  var next = document.getElementById('page-next');
-  var status = document.getElementById('page-status');
+  var q = document.getElementById('{ids["filter"]}');
+  var flag = document.getElementById('{ids["flag"]}');
+  var table = document.getElementById('{ids["table"]}');
+  var count = document.getElementById('{ids["count"]}');
+  var empty = document.getElementById('{ids["empty"]}');
+  var pager = document.getElementById('{ids["pager"]}');
+  var prev = document.getElementById('{ids["prev"]}');
+  var next = document.getElementById('{ids["next"]}');
+  var status = document.getElementById('{ids["status"]}');
   if (!q || !table) return;
-  var rows = Array.prototype.slice.call(table.tBodies[0].rows);
+  var rows = Array.prototype.slice.call(table.tBodies[0].rows)
+    .filter(function (r) {{ return r.hasAttribute('data-q'); }});
   var matched = rows.slice();
   var page = 1;
 
@@ -1422,7 +1537,7 @@ def _filter_script() -> str:
     slice.forEach(function (r) {{ r.hidden = false; }});
 
     if (count) count.textContent = matched.length;
-    var total = document.getElementById('row-total');
+    var total = document.getElementById('{ids["total"]}');
     if (total) total.hidden = matched.length === rows.length;
     if (empty) empty.hidden = matched.length !== 0;
 
@@ -1439,18 +1554,18 @@ def _filter_script() -> str:
 
   function apply() {{
     var needle = q.value.trim().toLowerCase();
-    var only = newOnly.checked;
+    var only = flag && flag.checked;
     matched = rows.filter(function (r) {{
       var hay = r.getAttribute('data-q') || '';
       return (!needle || hay.indexOf(needle) !== -1)
-          && (!only || r.getAttribute('data-new') === '1');
+          && (!only || r.getAttribute('{ids["flag_attr"]}') === '1');
     }});
     page = 1;               // a new filter always lands the reader on page one
     render();
   }}
 
   q.addEventListener('input', apply);
-  newOnly.addEventListener('change', apply);
+  if (flag) flag.addEventListener('change', apply);
   if (prev) prev.addEventListener('click', function () {{ page--; render(); }});
   if (next) next.addEventListener('click', function () {{ page++; render(); }});
   apply();
@@ -1497,6 +1612,143 @@ def _term_bucket_card(title: str, tag_class: str, rows: list[dict], footer_fn) -
             f'<div style="display:flex;flex-direction:column;gap:8px">{"".join(body)}</div>'
             f'{f"<p style=\"margin:11px 0 0;font-size:11.5px;line-height:1.5\" class=\"text-muted\">{footer}</p>" if footer else ""}'
             f'</div>')
+
+
+def _archive_record(r: dict, href: str | None = None, heading: str = "h2") -> str:
+    """The full record for one archived req — the body of both the dashboard's
+    detail dialog and the req's own page at archive_href. Every field the lake
+    kept is shown; one it never had is said to be missing rather than silently
+    left out. href, when given, is the req's own page, linked from the dialog."""
+    def field(label: str, value: str | None) -> str:
+        shown = html.escape(value) if value else '<span class="text-muted">Not captured</span>'
+        return f'<dt>{label}</dt><dd>{shown}</dd>'
+
+    flags = []
+    if r["is_tech_role"]:
+        flags.append('<span class="tag tag-accent tag-flag">Tech role</span>')
+    if r["remote"]:
+        flags.append('<span class="tag tag-neutral tag-flag">Remote</span>')
+    flags.append('<span class="tag tag-outline tag-flag">Closed</span>')
+    posted = r["posted_on"]
+    if posted and r["date_trust"]:
+        posted = f'{posted} (board date, trust: {r["date_trust"]})'
+    days = f'{r["days_open"]} day{"s" if r["days_open"] != 1 else ""}' if r["days_open"] is not None else None
+    terms = "".join(f'<span class="tag tag-outline" style="margin:0 4px 4px 0">{html.escape(t)}</span>'
+                    for t in r["terms"]) or '<span class="text-muted">None matched</span>'
+    if r["url"]:
+        link = (f'<a href="{html.escape(r["url"])}" target="_blank" rel="noopener">'
+                f'{html.escape(r["url"])}</a><br><span class="text-muted" style="font-size:11.5px">'
+                f'The req has closed, so the board may no longer serve this page.</span>')
+    else:
+        link = '<span class="text-muted">Not captured</span>'
+    page = (f'<dt>TICK page</dt><dd><a href="{html.escape(href)}">{html.escape(href)}</a></dd>'
+            if href else "")
+    if r["description"]:
+        desc = f'<div class="arch-desc">{html.escape(r["description"])}</div>'
+    elif r["has_record"]:
+        desc = ('<p class="text-muted" style="margin:0;font-size:12.5px">The board served no '
+                'description for this req on its last crawl.</p>')
+    else:
+        desc = (f'<p class="text-muted" style="margin:0;font-size:12.5px">No curated crawl for '
+                f'{html.escape(r["last_seen"] or "its last sighting")} is in the lake, so only the '
+                f'title, location and dates tracked in state survive for this req.</p>')
+    return (f'<p class="eyebrow text-muted" style="margin:0">Archived posting</p>'
+            f'<{heading} class="arch-title">{html.escape(r["title"])}</{heading}>'
+            f'<div class="row-flags">{"".join(flags)}</div>'
+            f'<dl class="arch-fields">'
+            f'{field("Location", r["location"])}{field("Team", r["team"])}'
+            f'{field("Posted on", posted)}{field("First seen", r["first_seen"])}'
+            f'{field("Last seen", r["last_seen"])}{field("Closed on", r["closed_on"])}'
+            f'{field("Days open", days)}{field("Source", r["source"])}'
+            f'{field("Posting ID", r["pid"])}'
+            f'<dt>Original posting</dt><dd>{link}</dd>{page}'
+            f'<dt>Stack signals</dt><dd>{terms}</dd>'
+            f'</dl>'
+            f'<h3 class="section-label text-muted" style="margin:18px 0 8px">Description</h3>{desc}')
+
+
+def _archive_detail(r: dict, i: int, href: str) -> str:
+    """One archived req, pre-rendered into a <template> the detail dialog clones
+    on click."""
+    return f'<template id="arch-{i}">{_archive_record(r, href)}</template>'
+
+
+def render_archive_page(r: dict, company: str, company_name: str, generated: str,
+                        domain: str | None = None) -> str:
+    """A closed req's own page, served at archive_href. The board stops serving
+    a posting once it closes, so this is the stable address for one: briefs cite
+    it, and the dashboard's archive rows link to it. Static like every other
+    page — no script, so it reads the same with JS off and prints whole."""
+    dash = f"/{company}/dashboard.html"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{_head(f"{r['title']} — {company_name} archive — TICK",
+       f"Archived {company_name} posting {r['pid']}, closed {r['closed_on']}.")}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+{_nav("archive")}
+<div class="wrap narrow">
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><a href="{dash}">{html.escape(company_name)}</a><span>/</span><a href="{dash}#archive">Archive</a><span>/</span><span style="color:var(--color-text)">{html.escape(r["pid"])}</span></div>
+  <main id="main">
+  {_archive_record(r, heading="h1")}
+  <p style="margin:26px 0 0"><a class="btn btn-secondary btn-sm" href="{dash}#archive">&larr; Back to the archive</a></p>
+  </main>
+  {_footer(generated, domain)}
+</div>
+</body>
+</html>
+"""
+
+
+def render_archive_pages(lake: dict, company: str) -> dict[str, str]:
+    """{key: html} — one page per closed req, keyed by archive_key."""
+    curr = lake["curr"]
+    generated, domain = fmt_dt(curr["captured_at"]), board_domain(curr["postings"])
+    return {archive_key(company, r["pid"]): render_archive_page(r, company, curr["company"],
+                                                                generated, domain)
+            for r in archived_postings(lake)}
+
+
+def _archive_script() -> str:
+    """Opens the detail dialog for an archive row. A click anywhere on the row
+    works, as does the title link (which is what keyboard users tab to). The
+    link is a real one to the req's own page, so a modified click opens that
+    in a new tab and with JS off it is simply followed."""
+    return """<script>
+(function () {
+  var dlg = document.getElementById('archive-dialog');
+  var body = document.getElementById('archive-dialog-body');
+  var table = document.getElementById('archive-roles');
+  if (!dlg || !body || !table) return;
+  var opener = null;
+  function open(id, from) {
+    var tpl = document.getElementById(id);
+    if (!tpl) return;
+    body.innerHTML = '';
+    body.appendChild(tpl.content.cloneNode(true));
+    opener = from;
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    body.scrollTop = 0;
+  }
+  function close() {
+    if (dlg.close) dlg.close(); else dlg.removeAttribute('open');
+  }
+  table.addEventListener('click', function (e) {
+    var row = e.target.closest('tr[data-arch]');
+    if (!row) return;
+    if (e.target.closest('a') && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
+                                  || e.button !== 0)) return;
+    e.preventDefault();
+    open(row.getAttribute('data-arch'), row.querySelector('a') || row);
+  });
+  document.getElementById('archive-dialog-close').addEventListener('click', close);
+  // a click on the backdrop lands on the dialog element itself, not its content
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) close(); });
+  dlg.addEventListener('close', function () { if (opener) opener.focus(); });
+})();
+</script>"""
 
 
 def render_dashboard(lake: dict, company: str) -> str:
@@ -1556,6 +1808,26 @@ def render_dashboard(lake: dict, company: str) -> str:
                 f'<td>{terms}</td></tr>')
 
     open_table_rows = "".join(_open_row(r) for r in open_rows)
+
+    archive_rows = archived_postings(lake)
+    archive_tech = sum(1 for r in archive_rows if r["is_tech_role"])
+
+    def _archive_row(r: dict, i: int) -> str:
+        days = "&mdash;" if r["days_open"] is None else str(r["days_open"])
+        hay = " ".join([r["title"], r["location"], r["team"] or ""]).lower()
+        badge = ('<div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div>'
+                 if r["is_tech_role"] else "")
+        return (f'<tr data-arch="arch-{i}" data-tech="{int(r["is_tech_role"])}" '
+                f'data-q="{html.escape(hay, quote=True)}">'
+                f'<td><a href="{archive_href(company, r["pid"])}" aria-haspopup="dialog">'
+                f'{html.escape(r["title"])}</a>{badge}</td>'
+                f'<td class="text-muted">{html.escape(r["location"])}</td>'
+                f'<td class="text-muted" style="white-space:nowrap">{html.escape(r["closed_on"])}</td>'
+                f'<td class="text-muted num">{days}</td></tr>')
+
+    archive_table_rows = "".join(_archive_row(r, i) for i, r in enumerate(archive_rows))
+    archive_details = "".join(_archive_detail(r, i, archive_href(company, r["pid"]))
+                               for i, r in enumerate(archive_rows))
 
     # Why some roles can never carry the flag: first_seen is when TICK first saw
     # a posting, so it only dates the opening if a crawl that lacked it ran
@@ -1659,6 +1931,32 @@ def render_dashboard(lake: dict, company: str) -> str:
         </div>
         <p class="text-muted" style="margin:10px 0 0;font-size:11.5px;line-height:1.5">{recency_note}</p>
       </div>
+      <div id="archive">
+        <div class="tbl-head">
+          <h2 class="section-label text-muted" style="margin:0">Archive &middot; <span id="archive-count">{len(archive_rows)}</span><span id="archive-total" hidden> of {len(archive_rows)}</span> closed</h2>
+          <div class="tbl-controls">
+            <input id="archive-filter" type="search" placeholder="Filter by title, location or team" aria-label="Filter archived roles">
+            <label class="chk"><input id="archive-tech" type="checkbox"> Tech roles only ({archive_tech})</label>
+          </div>
+        </div>
+        <div class="blueprint" style="overflow-x:auto">
+          <table class="table arch-table" id="archive-roles">
+            <caption class="visually-hidden">Postings that have left the board, most recently closed
+              first. Select a posting to see everything TICK recorded about it.</caption>
+            <thead><tr><th scope="col">Posting</th><th scope="col">Location</th><th scope="col">Closed</th><th scope="col" class="num">Days open</th></tr></thead>
+            <tbody>{archive_table_rows or '<tr><td colspan="4" class="text-muted">No postings have closed since collection started.</td></tr>'}</tbody>
+          </table>
+          <p class="tbl-empty text-muted" id="archive-no-match" hidden>No archived role matches that filter.</p>
+        </div>
+        <div class="pager" id="archive-pager" hidden>
+          <button type="button" class="btn btn-secondary btn-sm" id="archive-prev">&larr; Prev</button>
+          <span class="text-muted" id="archive-status" role="status" aria-live="polite"></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="archive-next">Next &rarr;</button>
+        </div>
+        <p class="text-muted" style="margin:10px 0 0;font-size:11.5px;line-height:1.5">Every req that has
+          disappeared from the board since collection began. Closed is the first crawl it was missing from;
+          details are from the last crawl it appeared on. A req that comes back moves to Open roles.</p>
+      </div>
     </div>
 
     <div class="right-col">
@@ -1696,7 +1994,14 @@ def render_dashboard(lake: dict, company: str) -> str:
   {_footer(fmt_dt(curr['captured_at']), domain)}
 </div>
 {_copy_script('copy-brief', brief_text)}
+<dialog id="archive-dialog" class="arch-dialog" aria-label="Archived posting details">
+  <div class="arch-dialog-bar"><button type="button" class="btn btn-secondary btn-sm" id="archive-dialog-close">Close</button></div>
+  <div id="archive-dialog-body" class="arch-dialog-body"></div>
+</dialog>
+{archive_details}
 {_filter_script()}
+{_filter_script(_ARCHIVE_TABLE_IDS)}
+{_archive_script()}
 {_history_chart_script(history)}
 </body>
 </html>
@@ -1729,6 +2034,17 @@ def render_brief(lake: dict, company: str) -> str:
     lead_new = leadership_postings(new_rows)
     lead_closed = leadership_closed(closed_rows)
     prev_tech_ids = set((prev or {}).get("tech_role_ids", []))
+
+    def posting_url(pid: str) -> str | None:
+        """A req still on the board is cited to the board; one that has left it
+        to its archive page, since the board's own URL now answers "role not
+        found"."""
+        if pid in curr["postings"]:
+            return curr["postings"][pid].get("url")
+        if (state.get(pid) or {}).get("closed_on"):
+            return archive_href(company, pid)
+        return None
+
     closed_tech_n = sum(1 for r in closed_rows if r["pid"] in prev_tech_ids)
 
     diff_label = (f"Diff rollup over {days} days: {opened_n} opened, {closed_n} closed, "
@@ -1752,7 +2068,7 @@ def render_brief(lake: dict, company: str) -> str:
         named = []
         for r in lead_closed[:3]:
             held = f', open {r["days_open"]} days' if r["days_open"] else ""
-            named.append(f'{html.escape(r["title"])}{cx.cite(f"{r["pid"]} — {r["title"]}, closed after {r["days_open"]} days on the board." if r["days_open"] else f"{r["pid"]} — {r["title"]}, closed.")}')
+            named.append(f'{html.escape(r["title"])}{cx.cite(f"{r["pid"]} — {r["title"]}, closed after {r["days_open"]} days on the board." if r["days_open"] else f"{r["pid"]} — {r["title"]}, closed.", posting_url(r["pid"]))}')
         longest = lead_closed[0]
         lead.append(
             f' The notable movement is at the top: {_join_en(named)} came off the board. '
@@ -1909,8 +2225,7 @@ def render_brief(lake: dict, company: str) -> str:
     for a in acts:
         mark = ""
         if a["pid"]:
-            src = (curr["postings"].get(a["pid"]) or {})
-            mark = cx.cite(f'{a["pid"]} — {a["title"]}: {a["why"]}.', src.get("url"))
+            mark = cx.cite(f'{a["pid"]} — {a["title"]}: {a["why"]}.', posting_url(a["pid"]))
         profile = ""
         who = a.get("person")
         if who:
@@ -1938,7 +2253,7 @@ def render_brief(lake: dict, company: str) -> str:
         if a.get("quote"):
             qsrc = curr["postings"].get(a["quote_pid"]) or {}
             qmark = cx.cite(f'{a["quote_pid"]} — {qsrc.get("title", "?")}, from the job '
-                            f'description.', qsrc.get("url"))
+                            f'description.', posting_url(a["quote_pid"]))
             profile += (f'<p style="margin:9px 0 0;font-size:12.5px;line-height:1.55">'
                         f'<span class="text-muted">In their words &mdash; </span>'
                         f'<span style="font-style:italic">&ldquo;'
@@ -2296,7 +2611,10 @@ def render_ai_brief(brief: dict, evidence: dict) -> str:
                 else f'reopened {p["reopened_on"]}' if p.get("reopened_on")
                 else f'open {p.get("days_open")} days')
         where = f' ({p["location"]})' if p.get("location") else ""
-        return f'{cid} — {p["title"]}{where}, {what}.', p.get("url")
+        # a closed req's board URL now answers "role not found"; its archive page does not
+        url = (archive_href(evidence["company"]["slug"], cid) if p.get("closed_on")
+               else p.get("url"))
+        return f'{cid} — {p["title"]}{where}, {what}.', url
 
     def sup(m: re.Match) -> str:
         cid = html.unescape(m.group(1)).strip()
@@ -2508,6 +2826,14 @@ if __name__ == "__main__":
             f.write(render_brief(lake, a["slug"]))
         print(f"wrote {dash_path}")
         print(f"wrote {brief_path}")
+        archive = render_archive_pages(lake, a["slug"])
+        for key, body in archive.items():
+            path = os.path.join(args.out_dir, key)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(body)
+        print(f"wrote {len(archive)} archive page{'s' if len(archive) != 1 else ''} "
+              f"under {os.path.join(acct_dir, 'archive')}")
 
     skipped = [a for a in accounts if not a["has_pages"]]
     if skipped and not args.company:

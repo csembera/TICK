@@ -5,6 +5,7 @@ TICK publisher — renders the S3 lake into the static site CloudFront serves.
   derived/ + configs/     renders HTML       home/<key>/index.html (Cognito sign-in)
                                              <slug>/dashboard.html
                                              <slug>/brief.html
+                                             <slug>/archive/<pid>/index.html
 
 Viewers see only the accounts they are assigned, so there is no single
 accounts home. Each viewer's session carries a scope — "*" for admins, else
@@ -121,6 +122,7 @@ def render_site(source: str, scopes: set[str] | None = None) -> dict[str, str]:
         lake = report.load_lake(source, slug, lake_io)
         pages[f"{slug}/dashboard.html"] = report.render_dashboard(lake, slug)
         pages[f"{slug}/brief.html"] = report.render_brief(lake, slug)
+        pages.update(report.render_archive_pages(lake, slug))
     return pages
 
 
