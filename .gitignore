@@ -12,3 +12,4 @@ __pycache__/
 # Collected data and rendered output: live in the data bucket, not git
 out/
 site/
+local-data/

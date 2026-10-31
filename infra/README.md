@@ -103,7 +103,7 @@ make publish-cognito-ui
 
 # 4. Re-render the app pages. Until this runs, /login 404s for signed-in users.
 aws lambda invoke --function-name tick-collector-publisher /dev/stdout
-#    expect {"accounts_rendered": N, "pages": N+1, ...}
+#    expect {"accounts_rendered": N, "homes_rendered": H, "pages": 2N+H, ...}
 ```
 
 ### Verify
@@ -249,6 +249,8 @@ stack (`UserPoolId` output). It is invite-only — no self sign-up — and mail
 |---|---|
 | App client `tick-collector-site` | Confidential client for the code exchange |
 | Group `tick-viewers` | Only its members may view the site |
+| Group `tick-admins` | Sees every account (and may also sign in without `tick-viewers`) |
+| Attribute `custom:accounts` | The accounts a viewer may open: comma-separated company slugs |
 | Hosted-UI domain `tick-login-<account>` | Serves the login page (`SiteLoginDomain` output) |
 
 Being in the pool is not enough — membership in `tick-viewers` is what grants
@@ -267,6 +269,38 @@ aws cognito-idp admin-create-user --user-pool-id "$POOL" \
 
 aws cognito-idp admin-add-user-to-group --user-pool-id "$POOL" \
   --group-name tick-viewers --username you@example.com
+
+# Which accounts they see — the company slugs, as in configs/ and the page URLs.
+# Overwrites the whole list, so pass every account each time.
+aws cognito-idp admin-update-user-attributes --user-pool-id "$POOL" \
+  --username you@example.com \
+  --user-attributes Name=custom:accounts,Value="dunder-mifflin,initech"
+
+# Or let them see everything
+aws cognito-idp admin-add-user-to-group --user-pool-id "$POOL" \
+  --group-name tick-admins --username you@example.com
+
+# Then render their accounts home
+aws lambda invoke --function-name tick-collector-publisher /dev/stdout
+```
+
+A viewer sees only their accounts: the accounts home lists nothing else, and
+any other account's `/<slug>/` page sends them back to it. Assignments are
+read at sign-in, so a change applies at the viewer's next sign-in — after the
+publisher has rendered a home for the new set. A viewer with no
+`custom:accounts` and no `tick-admins` sees an empty home. Only the admin API
+can write `custom:accounts`; the app client may not, so a viewer cannot grant
+themselves an account.
+
+Every accounts home ends with a **Track another company** form. It posts to
+`/api/account-request` (the join Lambda, which checks the session cookie
+itself because `/api/*` skips the edge check), stores the request in the
+`account-requests` table and emails the alert address. To fulfil one: run the
+evaluator for the company, add its slug to the requester's `custom:accounts`,
+and republish.
+
+```bash
+make list-account-requests   # created_at, status, requester, company, careers URL
 ```
 
 The hosted UI walks a new user through choosing a password on first sign-in.
@@ -286,8 +320,13 @@ work is split:
 2. `/auth/login` → the auth Lambda redirects to the Cognito hosted UI.
 3. `/auth/callback` → the Lambda exchanges the code for tokens (client secret,
    server side), checks `aud` / `iss` / `token_use` / `exp` and the group
-   claim, then mints an HMAC-signed session cookie good for 12 hours.
+   claim, then mints an HMAC-signed session cookie good for 12 hours. The
+   cookie carries the viewer's scope: `*` for `tick-admins`, else their
+   normalised `custom:accounts`.
 4. Every later request → one HMAC at the edge. No Lambda, no Cognito call.
+   The edge refuses `/<slug>/` pages outside the scope, and serves `/login`
+   from `home/<sha256(scope)[:16]>/index.html` — the publisher renders one
+   such home per distinct scope in the pool.
 
 `SessionSecret` is the HMAC key, shared by the Lambda and the edge function.
 It has no default — **every deploy must pass it** — and rotating it signs out
@@ -310,7 +349,8 @@ sam deploy --parameter-overrides "AlertEmail=canyon.work01@gmail.com SessionSecr
 
 Like any CloudFront Function source, it is readable by anyone holding
 `cloudfront:GetFunction` on the account: it authenticates viewers, it is not a
-secret from account principals. Sign out at `/auth/logout`.
+secret from account principals. Sign out using the **Sign out** link in the
+navigation on any protected app page, or directly at `/auth/logout`.
 
 ### Publishing
 
@@ -325,7 +365,7 @@ Republish immediately (after uploading a config, say):
 
 ```bash
 aws lambda invoke --function-name tick-collector-publisher /dev/stdout
-#    expect {"accounts_rendered": N, "pages": 2N+1, ...}
+#    expect {"accounts_rendered": N, "homes_rendered": H, "pages": 2N+H, ...}
 ```
 
 ### Comparison window

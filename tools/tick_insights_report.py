@@ -437,10 +437,12 @@ def open_postings(lake: dict, days: int = NEW_ROLE_DAYS) -> list[dict]:
             "first_seen": fs,
             "is_new": opening_window(dts, curr_dt, fs, days),
         })
-    # newest first, then tech roles, then the richest stack evidence — title
-    # breaks ties so the table does not reshuffle between runs
-    rows.sort(key=lambda r: (not r["is_new"], not r["is_tech_role"],
-                             -len(r["terms"]), r["title"].lower()))
+    # Newest first by first-seen date; postings with no date sink to the end.
+    # Within a day: tech roles, then the richest stack evidence, and title breaks
+    # ties so the table does not reshuffle between runs. Two stable passes,
+    # because the date sorts descending and the tie-breaks ascending.
+    rows.sort(key=lambda r: (not r["is_tech_role"], -len(r["terms"]), r["title"].lower()))
+    rows.sort(key=lambda r: (r["first_seen"] is not None, r["first_seen"] or ""), reverse=True)
     return rows
 
 
@@ -529,10 +531,6 @@ def action_items(lead_closed: list[dict], lead_new: list[dict], themes: list[dic
         ]
         if who:
             steps = [html.escape(v) for v in who.get("verify", [])] + steps
-        else:
-            steps.insert(0, f'Confirm the hire before you use a name &mdash; TICK reads '
-                            f'postings, not people. Check {html.escape(company_name)} press '
-                            f'and the usual professional networks for a start announcement.')
         items.append({
             "kind": "match",
             "person": who,
@@ -1041,15 +1039,14 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .chart-tbl .num{text-align:right;font-variant-numeric:tabular-nums}
 .acct-add{border-style:dashed}
 .acct-add .acct-name{font-size:17px}
-.acct-add label,.acct-add .acct-cmd-label{display:block;font-size:11.5px;letter-spacing:.02em;margin:11px 0 4px;
+.acct-add{margin:0}
+.acct-add label{display:block;font-size:11.5px;letter-spacing:.02em;margin:11px 0 4px;
   color:color-mix(in srgb,var(--color-text) 70%,transparent)}
-.acct-add input{font-family:var(--font-body);font-size:13px;padding:6px 9px;width:100%;
+.acct-add input,.acct-add textarea{font-family:var(--font-body);font-size:13px;padding:6px 9px;width:100%;
   background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
-.acct-add input:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
-.acct-add .acct-cmd-label{margin-bottom:0}
-.acct-add code{display:block;font-size:11.5px;line-height:1.5;padding:9px 10px;margin-top:12px;
-  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
-  overflow-x:auto;white-space:pre;background:color-mix(in srgb,var(--color-text) 5%,transparent)}
+.acct-add textarea{resize:vertical;min-height:52px}
+.acct-add input:focus-visible,.acct-add textarea:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
+.acct-add .acct-status{font-size:12px}
 .tbl-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
 .tbl-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .tbl-controls input[type=search]{font-family:var(--font-body);font-size:13px;padding:6px 10px;width:230px;max-width:100%;
@@ -1334,6 +1331,7 @@ def _nav(active: str, prefix: str = "") -> str:
     if active in ("dashboard", "brief"):
         tabs += [tab("Dashboard", "dashboard.html", "dashboard"),
                  tab("Brief", "brief.html", "brief")]
+    tabs += [tab("Sign out", "/auth/logout", "logout")]
     return (f'<div class="nav"><a class="nav-brand" href="{APP_HOME}" '
             f'style="color:inherit;text-decoration:none">TICK</a>'
             f'<span class="nav-badge">Targeted Intelligence Companion Kit</span>'
@@ -2123,64 +2121,96 @@ def _account_card(a: dict) -> str:
 
 
 def _add_account_card() -> str:
-    """Trailing tile in the account grid: the onboarding path for a company the
-    lake does not track yet. A static page cannot run the evaluator, so this
-    composes the exact command rather than pretending to submit anywhere."""
+    """Trailing tile in the account grid: any viewer can ask for a company the
+    lake does not track yet. The form posts to /api/account-request, which
+    records the request against the viewer's session and alerts an admin, who
+    onboards it with the evaluator and assigns it to the viewer."""
     return (
-        '<div class="card blueprint acct-add">' + _corners() +
+        '<form class="card blueprint acct-add" id="acct-form" novalidate>' + _corners() +
         '<div class="acct-head"><div>'
         '<h2 class="acct-name">Track another company</h2>'
-        '<div class="acct-meta text-muted">evaluator &middot; writes a SourceConfig into configs/</div>'
+        '<div class="acct-meta text-muted">request &middot; reviewed by an administrator</div>'
         '</div><span class="tag tag-neutral" style="white-space:nowrap">Not tracked</span></div>'
-        '<p class="acct-note text-muted" style="margin-top:11px">The evaluator finds the company&rsquo;s '
-        'job-posting endpoint, checks it against a live fetch, and writes a config into '
-        '<code style="display:inline;padding:0;background:none">configs/</code>. The next scheduled crawl '
-        'picks it up; the account appears here with a dashboard and brief once it has two crawls to '
-        'compare. Fill in the fields to build the command.</p>'
+        '<p class="acct-note text-muted" style="margin-top:11px">Tell us which company to track. Once '
+        'it&rsquo;s set up and has two crawls to compare, it appears here with a dashboard and brief.</p>'
         '<label for="acct-name-in">Company name</label>'
-        '<input id="acct-name-in" type="text" placeholder="Acme Industrial Supply" '
-        'autocomplete="organization" spellcheck="false">'
-        '<label for="acct-url-in">Careers URL <span style="opacity:.65">(optional hint)</span></label>'
-        '<input id="acct-url-in" type="url" placeholder="https://careers.example.com" '
-        'inputmode="url" autocomplete="url" spellcheck="false">'
-        '<span class="acct-cmd-label" id="acct-cmd-label">Command to run</span>'
-        '<code id="acct-cmd" aria-labelledby="acct-cmd-label"></code>'
+        '<input id="acct-name-in" name="company" type="text" placeholder="Acme Industrial Supply" '
+        'autocomplete="organization" spellcheck="false" maxlength="120" required>'
+        '<label for="acct-url-in">Careers URL <span style="opacity:.65">(optional)</span></label>'
+        '<input id="acct-url-in" name="careers_url" type="url" placeholder="https://careers.example.com" '
+        'inputmode="url" autocomplete="url" spellcheck="false" maxlength="500">'
+        '<label for="acct-note-in">Notes <span style="opacity:.65">(optional)</span></label>'
+        '<textarea id="acct-note-in" name="note" rows="2" maxlength="1000" '
+        'placeholder="Why this company..."></textarea>'
         '<div class="acct-foot">'
-        '<button class="btn btn-primary btn-sm" id="acct-copy" type="button">Copy command</button>'
-        '</div></div>')
+        '<button class="btn btn-primary btn-sm" id="acct-submit" type="submit">Request account</button>'
+        '<span class="acct-status text-muted" id="acct-status" role="status" aria-live="polite"></span>'
+        '</div></form>')
 
 
 def _add_account_script() -> str:
-    """Live-composes the evaluator command. The --out path is only a suggested
-    filename: the evaluator picks its own company_slug, so a config may land
-    under a shorter name than the one composed from the typed company name."""
-    return '<script>\n(function () {' + _COPY_FN + r"""
-  var name = document.getElementById('acct-name-in'),
+    """Posts the request same-origin. CloudFront signs it to the function URL
+    with OAC, which for a body needs the payload's SHA-256 from the browser —
+    the x-amz-content-sha256 header, as on the public waitlist form."""
+    return r"""<script>
+(function () {
+  var form = document.getElementById('acct-form'),
+      name = document.getElementById('acct-name-in'),
       url  = document.getElementById('acct-url-in'),
-      out  = document.getElementById('acct-cmd'),
-      btn  = document.getElementById('acct-copy');
-  if (!name || !url || !out || !btn) return;
-  function slug(s) {
-    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'company';
+      note = document.getElementById('acct-note-in'),
+      btn  = document.getElementById('acct-submit'),
+      out  = document.getElementById('acct-status');
+  if (!form || !name || !url || !note || !btn || !out) return;
+  var fields = [name, url, note, btn];
+  function busy(on) { fields.forEach(function (f) { f.disabled = on; }); }
+  function send(payload) {
+    var body = JSON.stringify(payload);
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)).then(function (buf) {
+      var hash = Array.prototype.map.call(new Uint8Array(buf), function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+      return fetch('/api/account-request', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', 'x-amz-content-sha256': hash },
+        body: body
+      });
+    }).then(function (res) {
+      if (res.ok) return;
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        var err = new Error(data.error || 'HTTP ' + res.status);
+        err.status = res.status;
+        throw err;
+      });
+    });
   }
-  function q(s) { return s.replace(/(["\\$`])/g, '\\$1'); }
-  function cmd() {
-    var n = name.value.trim() || 'Company Name',
-        u = url.value.trim(),
-        c = 'python evaluator.py "' + q(n) + '"';
-    if (u) { c += ' \\\n  --careers-url "' + q(u) + '"'; }
-    return c + ' \\\n  --out configs/' + slug(n) + '_config.json';
-  }
-  function sync() { out.textContent = cmd(); }
-  name.addEventListener('input', sync);
-  url.addEventListener('input', sync);
-  btn.addEventListener('click', function () { tickCopy(cmd(), btn); });
-  sync();
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var company = name.value.trim(), careers = url.value.trim();
+    if (!company) { out.textContent = 'Enter the company name.'; name.focus(); return; }
+    if (careers && !/^https?:\/\/\S+$/i.test(careers)) {
+      out.textContent = 'The careers URL must start with https://'; url.focus(); return;
+    }
+    busy(true);
+    out.textContent = 'Sending…';
+    send({ company: company, careers_url: careers, note: note.value.trim() }).then(function () {
+      form.reset();
+      busy(false);
+      out.textContent = 'Request sent ✓ — we’ll add it to your accounts once it’s set up.';
+    }).catch(function (err) {
+      busy(false);
+      out.textContent = err.status === 401 ? 'Your session expired — reload the page to sign in again.'
+                       : err.status === 400 ? err.message
+                       : 'Couldn’t send — please try again.';
+    });
+  });
 })();
 </script>"""
 
 
 def render_home(accounts: list[dict]) -> str:
+    """The accounts grid. The publisher renders one per viewer scope, passing
+    only that viewer's accounts; every home ends with the request tile."""
     reporting = [a for a in accounts if a["has_pages"]]
     collected = [a for a in accounts if a["open_roles"] is not None]
     tracked = sum(a["open_roles"] for a in collected)
@@ -2190,7 +2220,14 @@ def render_home(accounts: list[dict]) -> str:
            f'<b>{len(reporting)} reporting</b> &middot; <b>{tracked}</b> open postings tracked'
            f'{f" &middot; last crawl {fmt_dt(last)}" if last else ""}')
 
-    cards = "".join(_account_card(a) for a in accounts) + _add_account_card()
+    cards = "".join(_account_card(a) for a in accounts)
+    if not accounts:
+        cards = ('<div class="card blueprint">' + _corners() +
+                 '<h2 class="acct-name">No accounts yet</h2>'
+                 '<p class="acct-note text-muted" style="margin-top:11px">No accounts have been '
+                 'assigned to you yet. Request one alongside; once it&rsquo;s set up it appears '
+                 'here the next time you sign in.</p></div>')
+    cards += _add_account_card()
     last_crawl_label = fmt_dt(last) if last else "no crawl yet"
     description = (f'TICK tracks hiring signals across {len(accounts)} '
                    f'account{"s" if len(accounts) != 1 else ""} — '
@@ -2216,6 +2253,163 @@ def render_home(accounts: list[dict]) -> str:
   {_footer(last_crawl_label)}
 </div>
 {_add_account_script()}
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------------- AI brief page
+
+_AI_CITE_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+
+
+def render_ai_brief(brief: dict, evidence: dict) -> str:
+    """The weekly brief a model wrote (see .claude/skills/tick-brief), in the
+    same page as render_brief. The model's text is escaped like any other
+    untrusted input; its [[id]] citations become numbered sources resolved
+    against the evidence pack it was written from."""
+    company_name = evidence["company"]["name"]
+    window, board = evidence["window"], evidence["board"]
+    postings: dict[str, dict] = {}
+    for sec in ("opened", "closed", "reopened"):
+        for p in evidence.get(sec, []):
+            postings.setdefault(p["id"], p)
+    for key in ("open_leadership_roles", "longest_open"):
+        for p in board.get(key, []):
+            postings.setdefault(p["id"], p)
+
+    cx = Citations()
+    numbered: dict[str, int] = {}
+
+    def label(cid: str) -> tuple[str, str | None]:
+        if cid == "BOARD":
+            return (f'Board {window["start"]} → {window["end"]}: {board["open_at_start"]} → '
+                    f'{board["open_at_end"]} open; {board["opened"]} opened, {board["closed"]} '
+                    f'closed, {board["reopened"]} reopened.', None)
+        if cid == "STACK":
+            return "Stack terms across the open board.", None
+        p = postings.get(cid)
+        if not p:
+            return f"{cid} — not in the evidence pack.", None
+        what = (f'closed {p["closed_on"]} after {p.get("days_open")} days' if p.get("closed_on")
+                else f'opened {p["opened_on"]}' if p.get("opened_on")
+                else f'reopened {p["reopened_on"]}' if p.get("reopened_on")
+                else f'open {p.get("days_open")} days')
+        where = f' ({p["location"]})' if p.get("location") else ""
+        return f'{cid} — {p["title"]}{where}, {what}.', p.get("url")
+
+    def sup(m: re.Match) -> str:
+        cid = html.unescape(m.group(1)).strip()
+        if cid not in numbered:
+            cx.cite(*label(cid))
+            numbered[cid] = len(cx.items)
+        return f'<sup class="cite"> {numbered[cid]}</sup>'
+
+    def rich(text: str) -> str:
+        return _AI_CITE_RE.sub(sup, html.escape(text or ""))
+
+    def plain(text: str) -> str:
+        return _AI_CITE_RE.sub("", text or "").replace("  ", " ").strip()
+
+    # No headline: a one-line title over the first paragraph only restated it.
+    paras = "".join(f"<p>{rich(p)}</p>" for p in brief.get("paragraphs", []))
+
+    act_html = []
+    for a in brief.get("action_items") or []:
+        quote = ""
+        q = a.get("quote")
+        if q and q.get("text"):
+            quote = (f'<p style="margin:9px 0 0;font-size:12.5px;line-height:1.55">'
+                     f'<span class="text-muted">In their words &mdash; </span>'
+                     f'<span style="font-style:italic">&ldquo;{html.escape(q["text"])}&rdquo;</span>'
+                     f'{rich(f"[[{q.get("source", "")}]]")}</p>')
+        steps = "".join(f'<li style="margin-top:6px">{rich(s)}</li>' for s in a.get("steps", []))
+        kind = a.get("kind", "")
+        act_html.append(
+            f'<div class="card blueprint" style="padding:14px 16px;margin-bottom:12px">{_corners()}'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">'
+            f'<div style="font-size:14.5px;font-weight:600;font-family:var(--font-heading)">'
+            f'{html.escape(a.get("title", ""))}</div>'
+            f'<span class="tag tag-{"solid" if kind == "outreach" else "neutral"} tag-flag">'
+            f'{html.escape(kind)}</span></div>'
+            f'<p class="text-muted" style="margin:5px 0 0;font-size:12.5px">{rich(a.get("why", ""))}</p>'
+            f'{quote}'
+            f'<ul style="margin:9px 0 0;padding-left:17px;font-size:12.5px;line-height:1.55">{steps}</ul></div>')
+    actions_html = "".join(act_html) or (
+        '<p class="text-muted" style="margin:0;font-size:12.5px">'
+        'Nothing moved this week that warrants an approach.</p>')
+
+    weekly = board.get("weekly_open_totals") or []
+    sparkline = _trend_svg(weekly)
+    spark_span = f'{weekly[0]["dt"]} &rarr; {weekly[-1]["dt"]}' if weekly else ""
+    delta = board.get("net_change") or 0
+    moves = [("Opened", board["opened"]), ("Closed", board["closed"]), ("Reopened", board["reopened"])]
+    moves_html = "".join(f'<div style="display:flex;justify-content:space-between"><span>{k}</span>'
+                         f'<b>{v}</b></div>' for k, v in moves)
+
+    brief_text = "\n\n".join(
+        [f"{company_name} — account brief, week to {window['end']}"]
+        + [plain(p) for p in brief.get("paragraphs", [])]
+        + (["Action items:"] + [f'- {a.get("title", "")} — {plain(a.get("why", ""))}'
+                                + "".join(f"\n    * {plain(s)}" for s in a.get("steps", []))
+                                for a in brief["action_items"]] if brief.get("action_items") else []))
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{_head(f"{company_name} — TICK brief",
+       f"What moved on {company_name}'s job board in the week to {window['end']}, and what to do about it.")}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+{_nav("brief", "../")}
+<div class="wrap narrow">
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Brief</span></div>
+  <main id="main">
+  <div class="hdr">
+    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">Account brief</h1>
+      <p class="text-muted" style="margin:6px 0 0;font-size:13px">Week to {window['end']} &middot; every claim carries a citation</p></div>
+    <button class="btn btn-primary" type="button" id="copy-brief">Copy brief</button>
+  </div>
+  <div class="grid narrative">
+    <div class="prose">
+      {paras}
+      <div style="margin-top:26px">
+        <h2 class="section-label text-muted" style="margin-bottom:12px">Action items</h2>
+        {actions_html}
+      </div>
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-divider)">
+        <h2 class="section-label text-muted" style="margin-bottom:10px">Sources &middot; {len(cx.items)} citations</h2>
+        <div style="display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.5">{cx.render_list()}</div>
+      </div>
+    </div>
+    <div class="right-col">
+      <div class="card blueprint">{_corners()}
+        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles, {spark_span}</span>
+        {sparkline}
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;flex-wrap:wrap;
+                    padding-top:9px;border-top:1px solid var(--color-divider)">
+          <span class="text-muted">{window['start']} &rarr; {window['end']}</span>
+          <span>{board['open_at_start']} &rarr; {board['open_at_end']}
+            <b style="color:{'var(--color-accent-700)' if delta >= 0 else 'inherit'}">{delta:+d}</b></span>
+        </div>
+      </div>
+      <div class="card blueprint">{_corners()}
+        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:9px" class="text-muted">This week</span>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">{moves_html}</div>
+      </div>
+      <div class="card blueprint">{_corners()}
+        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:9px" class="text-muted">Generated</span>
+        <p style="margin:0;font-size:12.5px;line-height:1.55" class="text-muted">Written from {window['crawl_days']} daily
+        crawls of {html.escape(evidence['company'].get('board_host') or '?')}, prompt v{html.escape(str(brief.get('prompt_version', '?')))}.
+        Every claim above cites the posting or board count it rests on.</p>
+      </div>
+    </div>
+  </div>
+  </main>
+  {_footer(window['end'], evidence['company'].get('board_host'))}
+</div>
+{_copy_script('copy-brief', brief_text)}
 </body>
 </html>
 """

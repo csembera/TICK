@@ -52,7 +52,11 @@ Parameters:
   ViewerGroupName:
     Type: String
     Default: tick-viewers
-    Description: Only members of this group may view the site
+    Description: Only members of this group (or the admin group) may view the site
+  AdminGroupName:
+    Type: String
+    Default: tick-admins
+    Description: Members see every account; everyone else sees only their custom:accounts
   SessionSecret:
     Type: String
     NoEcho: true
@@ -168,6 +172,16 @@ Resources:
       UserPoolTier: ESSENTIALS
       UsernameAttributes: [email]
       AutoVerifiedAttributes: [email]
+      # Which accounts a viewer may open: comma-separated company slugs, set
+      # by an admin with admin-update-user-attributes. Custom attributes can
+      # be added to a live pool but never changed or removed afterwards.
+      Schema:
+        - Name: accounts
+          AttributeDataType: String
+          Mutable: true
+          StringAttributeConstraints:
+            MinLength: '0'
+            MaxLength: '2048'
       AccountRecoverySetting:
         RecoveryMechanisms:
           - Name: verified_email
@@ -217,6 +231,13 @@ Resources:
       GroupName: !Ref ViewerGroupName
       Description: May view the TICK site
 
+  SiteAdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref SiteUserPool
+      GroupName: !Ref AdminGroupName
+      Description: May view every account on the TICK site
+
   # Confidential client: the code exchange happens in the auth Lambda, never in
   # a browser, so it carries a secret. The callback can only be known once the
   # distribution exists, which is why the client depends on it and the Lambda
@@ -231,6 +252,10 @@ Resources:
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email, profile]
+      # custom:accounts is the access list, so no signed-in user may write it —
+      # only an admin through the Cognito admin API. Read stays the default
+      # (all), which is what puts custom:accounts in the ID token.
+      WriteAttributes: [email]
       # Both hosts stay registered: the CloudFront domain keeps working, and
       # anyone arriving there is carried to the canonical domain by the login
       # round trip, because that is the host the session cookie lands on.
@@ -273,6 +298,7 @@ Resources:
           USER_POOL_ID: !Ref SiteUserPool
           COGNITO_DOMAIN: !Ref SiteUserPoolDomain
           VIEWER_GROUP: !Ref ViewerGroupName
+          ADMIN_GROUP: !Ref AdminGroupName
           SESSION_SECRET: !Ref SessionSecret
           CONFIG_PARAM: !Sub /tick/${AWS::StackName}/auth-config
       Policies:
@@ -339,6 +365,24 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  # "Track another company" requests from signed-in viewers. Keyed by a
+  # generated id: one viewer may ask for many companies.
+  AccountRequestsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${AWS::StackName}-account-requests
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: request_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: request_id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   JoinFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -350,13 +394,24 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref JoinRequestsTable
+          ACCOUNT_TABLE_NAME: !Ref AccountRequestsTable
           ALERT_TOPIC_ARN: !If [HasAlertEmail, !Ref AlertTopic, '']
           SENDER: !Sub TICK <${SenderAddress}>
+          # /api/account-request is for signed-in viewers only; /api/* skips the
+          # edge check, so this function verifies the session cookie itself.
+          SESSION_SECRET: !Ref SessionSecret
+          USER_POOL_ID: !Ref SiteUserPool
       Policies:
         - Statement:
             - Effect: Allow
               Action: dynamodb:PutItem
-              Resource: !GetAtt JoinRequestsTable.Arn
+              Resource:
+                - !GetAtt JoinRequestsTable.Arn
+                - !GetAtt AccountRequestsTable.Arn
+            # the requester's email, from the sub in their session cookie
+            - Effect: Allow
+              Action: cognito-idp:ListUsers
+              Resource: !GetAtt SiteUserPool.Arn
             # The confirmation reply: only through the domain identity, and only
             # as the one TICK address.
             - Effect: Allow
@@ -529,19 +584,51 @@ Resources:
             var payload = session.substring(0, split);
             var signature = session.substring(split + 1);
             var expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
-            if (expected === signature) {
-              var expiry = parseInt(payload.substring(payload.lastIndexOf(':') + 1), 10);
-              if (expiry * 1000 > Date.now()) {
-                return request;
-              }
+            // <sub>:<scope>:<exp>. A two-part cookie predates per-account
+            // access and carries no scope, so it is sent to sign in again.
+            var parts = payload.split(':');
+            if (expected === signature && parts.length === 3
+                && parseInt(parts[2], 10) * 1000 > Date.now()) {
+              return authorize(request, parts[1]);
             }
           }
 
+          return redirect('/auth/login?next=' + encodeURIComponent(asked));
+        }
+
+        // A signed-in viewer may open their own accounts and nothing else.
+        // scope is "*" (admin) or the sorted, comma-joined slugs they hold.
+        // /login is served from the home the publisher rendered for exactly
+        // this scope; home/ is never reachable by its own name, and a page
+        // under another account's /<slug>/ sends the viewer back to their
+        // own home rather than confirming that the account exists.
+        function authorize(request, scope) {
+          var uri = request.uri;
+          if (uri === '/login/index.html') {
+            var key = crypto.createHash('sha256').update(scope).digest('hex').substring(0, 16);
+            request.uri = '/home/' + key + '/index.html';
+            return request;
+          }
+          var slash = uri.indexOf('/', 1);
+          if (slash === -1) {
+            return request;               // top-level files: 404.html, robots.txt
+          }
+          var account = uri.substring(1, slash);
+          if (account === 'home') {
+            return redirect('/login');
+          }
+          if (scope === '*' || (',' + scope + ',').indexOf(',' + account + ',') !== -1) {
+            return request;
+          }
+          return redirect('/login');
+        }
+
+        function redirect(location) {
           return {
             statusCode: 302,
             statusDescription: 'Found',
             headers: {
-              location: { value: '/auth/login?next=' + encodeURIComponent(asked) },
+              location: { value: location },
               'cache-control': { value: 'no-store' }
             }
           };
@@ -642,6 +729,9 @@ Resources:
           DATA_BUCKET: !Ref DataBucket
           SITE_BUCKET: !Ref SiteBucket
           DISTRIBUTION_ID: !Ref SiteDistribution
+          USER_POOL_ID: !Ref SiteUserPool
+          VIEWER_GROUP: !Ref ViewerGroupName
+          ADMIN_GROUP: !Ref AdminGroupName
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref DataBucket
@@ -651,6 +741,10 @@ Resources:
             - Effect: Allow
               Action: cloudfront:CreateInvalidation
               Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}
+            # one accounts home per viewer scope — see src/publisher/app.py
+            - Effect: Allow
+              Action: cognito-idp:ListUsersInGroup
+              Resource: !GetAtt SiteUserPool.Arn
       Events:
         AfterDailyCollection:
           Type: ScheduleV2
@@ -726,7 +820,13 @@ Outputs:
     Value: !Ref SiteViewerGroup
     Description: >-
       Grant access with: aws cognito-idp admin-add-user-to-group
-      --user-pool-id <UserPoolId> --group-name <this> --username <email>
+      --user-pool-id <UserPoolId> --group-name <this> --username <email>,
+      then assign accounts with: aws cognito-idp admin-update-user-attributes
+      --user-pool-id <UserPoolId> --username <email>
+      --user-attributes Name=custom:accounts,Value=<slug>,<slug>
+  AdminGroup:
+    Value: !Ref SiteAdminGroup
+    Description: Members see every account
   SiteBucketName:
     Value: !Ref SiteBucket
   SiteDistributionId:
@@ -734,6 +834,9 @@ Outputs:
   PublisherFunctionName:
     Value: !Ref PublisherFunction
     Description: Invoke to republish the site immediately
+  AccountRequestsTableName:
+    Value: !Ref AccountRequestsTable
+    Description: Viewer requests to track a company — `make list-account-requests`
   JoinRequestsTableName:
     Value: !Ref JoinRequestsTable
     Description: Waitlist — one row per email; `make list-requests` prints it

@@ -110,9 +110,14 @@ cognito-css-default:
 
 # ── waitlist ────────────────────────────────────────────────────────────────
 #   make list-requests   every /api/join request, oldest first
-.PHONY: list-requests
+.PHONY: list-requests list-account-requests
 
 list-requests:
 	@aws dynamodb scan --table-name "$(STACK)-join-requests" --region "$(REGION)" --output json \
 	  | jq -r '.Items | sort_by(.created_at.S)[] | [.created_at.S, .status.S, .email.S, .name.S, .company.S] | @tsv' \
+	  | column -t -s "$$(printf '\t')"
+
+list-account-requests:
+	@aws dynamodb scan --table-name "$(STACK)-account-requests" --region "$(REGION)" --output json \
+	  | jq -r '.Items | sort_by(.created_at.S)[] | [.created_at.S, .status.S, (.requester_email.S // .requester_sub.S), .company.S, (.careers_url.S // "-")] | @tsv' \
 	  | column -t -s "$$(printf '\t')"

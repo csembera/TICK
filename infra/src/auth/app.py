@@ -14,8 +14,15 @@ all an edge function can do (it cannot verify an RS256 JWT or call a network).
 So the expensive, once-per-session work happens here, and the per-request check
 costs a single HMAC at the edge.
 
-The cookie is `<sub>:<exp>.<hmac-sha256 hex>` over `<sub>:<exp>`, signed with
-SESSION_SECRET — the same secret compiled into the CloudFront Function.
+The cookie is `<sub>:<scope>:<exp>.<hmac-sha256 hex>` over `<sub>:<scope>:<exp>`,
+signed with SESSION_SECRET — the same secret compiled into the CloudFront
+Function. <scope> is the accounts this viewer may open, fixed at sign-in: "*"
+for members of ADMIN_GROUP, otherwise the user's `custom:accounts` attribute
+(comma-separated company slugs, set by an admin) normalised to sorted,
+de-duplicated slugs — possibly empty. The edge refuses any /<slug>/ page
+outside it and serves /login from the home page the publisher rendered for
+exactly that scope, so a change of accounts takes effect at the viewer's next
+sign-in.
 
 Config that depends on the CloudFront distribution (this Lambda's own origin)
 is read from SSM at cold start rather than passed as an environment variable:
@@ -28,6 +35,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -38,6 +46,7 @@ USER_POOL_ID = os.environ["USER_POOL_ID"]
 COGNITO_DOMAIN = os.environ["COGNITO_DOMAIN"]        # prefix only
 AWS_REGION = os.environ["AWS_REGION"]
 VIEWER_GROUP = os.environ["VIEWER_GROUP"]
+ADMIN_GROUP = os.environ["ADMIN_GROUP"]
 SESSION_SECRET = os.environ["SESSION_SECRET"].encode()
 CONFIG_PARAM = os.environ["CONFIG_PARAM"]
 
@@ -106,6 +115,21 @@ def read_state(state: str) -> str:
     # The edge serves the public pages without ever redirecting here, so a
     # "next" pointing at one is a path this flow should never have been given.
     return HOME_PATH if nxt in ("/", "/index.html") else nxt
+
+
+_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+def account_scope(groups: list[str], accounts: str) -> str:
+    """The cookie's <scope>. The publisher derives the same string from the
+    same user to name each home page, so the two must never disagree — keep
+    this in step with account_scope() in ../publisher/app.py. Anything that
+    is not a plain slug is dropped, so the attribute can never smuggle a ':'
+    or ',' into the signed payload."""
+    if ADMIN_GROUP in groups:
+        return "*"
+    slugs = {s.strip().lower() for s in (accounts or "").split(",")}
+    return ",".join(sorted(s for s in slugs if _SLUG_RE.match(s)))
 
 
 # ------------------------------------------------------------------ responses
@@ -192,7 +216,7 @@ def callback(params: dict) -> dict:
     claims = id_claims(exchange_code(code)["id_token"])
 
     groups = claims.get("cognito:groups") or []
-    if VIEWER_GROUP not in groups:
+    if VIEWER_GROUP not in groups and ADMIN_GROUP not in groups:
         # Authenticated but not entitled: a real pool user who has not been
         # granted TICK. Say so plainly rather than bouncing them to a login
         # page they would pass again and again.
@@ -202,7 +226,8 @@ def callback(params: dict) -> dict:
                     "Ask an administrator to add you.", ("/auth/logout", "Sign out"))
 
     expires = int(time.time()) + SESSION_TTL
-    payload = f'{claims["sub"]}:{expires}'
+    scope = account_scope(groups, claims.get("custom:accounts", ""))
+    payload = f'{claims["sub"]}:{scope}:{expires}'
     cookie = (f"tick_session={payload}.{_sign(payload)}; Path=/; Secure; HttpOnly; "
               f"SameSite=Lax; Max-Age={SESSION_TTL}")
     return redirect(read_state(params.get("state", "")), cookies=[cookie])
