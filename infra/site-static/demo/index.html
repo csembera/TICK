@@ -213,16 +213,25 @@ a{color:var(--color-accent);text-underline-offset:3px}
 </div>
 <script>
 (function () {
-  // Mirrors Pulp's WaitlistForm: POST {email, name, company, source} to the same
-  // join-request endpoint. Only `email` is part of Pulp's contract; the rest ride
-  // along, and an opaque response cannot confirm they were stored.
-  // The demo is served from sembasolutions.com but the API lives on
-  // pulp.sembasolutions.com, which returns no Access-Control-Allow-Origin - so
-  // this uses mode:'no-cors'. That forbids a JSON content-type, but the handler
-  // calls JSON.parse(event.body) without inspecting Content-Type, so a
-  // text/plain body parses fine. The response is opaque by definition, so - as
-  // Pulp itself does - any failure is treated the same as success.
-  var ENDPOINT = 'https://pulp.sembasolutions.com/api/auth/join-request';
+  // Posts to the waitlist at /api/join on this same site. CloudFront signs the
+  // request to the function URL (OAC), and for a body it needs the payload's
+  // SHA-256 from the browser — that is the x-amz-content-sha256 header.
+  // Same-origin, so the response is real: only a 200 counts as success.
+  function sendJoin(payload) {
+    var body = JSON.stringify(payload);
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(body))['then'](function (buf) {
+      var hash = Array.prototype.map.call(new Uint8Array(buf), function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+      return fetch('/api/join', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-amz-content-sha256': hash },
+        body: body
+      });
+    })['then'](function (res) {
+      if (!res.ok) { throw new Error('HTTP ' + res.status); }
+    });
+  }
   var form = document.getElementById('acct-form');
   var name = document.getElementById('acct-name-in');
   var mail = document.getElementById('acct-email-in');
@@ -253,20 +262,11 @@ a{color:var(--color-accent);text-underline-offset:3px}
     }
     btn.disabled = true; name.disabled = true; mail.disabled = true; firm.disabled = true;
     out.textContent = 'Sending…';
-    fetch(ENDPOINT, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify({ email: email, name: person, company: company, source: 'tick-demo' })
-    })['then'](function () {
-      // no-cors gives an opaque response, so this only means "the request left
-      // the browser" - not that the server recorded it. That is the same
-      // guarantee Pulp's own form offers.
+    sendJoin({ email: email, name: person, company: company })['then'](function () {
       btn.textContent = 'Request received';
       out.textContent = 'You’re on the list ✓';
     })['catch'](function () {
-      // A rejection IS meaningful: CSP block, DNS failure, offline, request
-      // blocked by an extension. Never report success for one of these - that
-      // is how a CSP block masqueraded as a working form.
+      // Network failure or a non-200 from the waitlist: never report success.
       btn.disabled = false; name.disabled = false; mail.disabled = false; firm.disabled = false;
       out.textContent = 'Couldn’t send — please try again.';
     });

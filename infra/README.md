@@ -30,7 +30,7 @@ site-static/ ── make publish-static ──► the same bucket
 
         └─► CloudFront ── the only way in
               ├─ /, /docs, /demo  ─► public, no session needed
-              ├─ /auth/*          ─► Auth Lambda ─► Cognito hosted UI (pulp-user-pool)
+              ├─ /auth/*          ─► Auth Lambda ─► Cognito hosted UI (TICK's own pool)
               └─ everything else  ─► CloudFront Function checks the session cookie
 ```
 
@@ -46,7 +46,6 @@ sam deploy --guided
 #    Stack Name:          tick-collector
 #    ScheduleState:       DISABLED       (enable after first manual run succeeds)
 #    AlertEmail:          you@example.com (optional — DLQ alarm emails)
-#    UserPoolId:          us-east-1_7nie1ydof  (existing pool; see "The site")
 #    ViewerGroupName:     tick-viewers
 #    SessionSecret:       $(openssl rand -hex 32)
 #    Allow IAM role creation: y
@@ -241,33 +240,38 @@ config is uploaded, marked `Not collected` until its first crawl and
 
 ### Access
 
-Viewers sign in with Cognito, against the **existing `pulp-user-pool`**
-(`us-east-1_7nie1ydof`). That pool is owned by `PulpDataStack`; this stack only
-*adds* to it and never edits pulp's own client:
+Viewers sign in with Cognito against **TICK's own user pool**, created by this
+stack (`UserPoolId` output). It is invite-only — no self sign-up — and mail
+(invites, password resets) goes out through Cognito's default sender, capped at
+50 emails a day.
 
-| Added to the pool | Why |
+| In the pool | Why |
 |---|---|
 | App client `tick-collector-site` | Confidential client for the code exchange |
 | Group `tick-viewers` | Only its members may view the site |
-| Hosted-UI domain `tick-site-<account>` | Serves the login page |
-
-⚠️ The hosted-UI domain is the one **pool-level singleton** here. Nothing uses
-it today, but if `PulpDataStack` ever adds a domain of its own, that deploy
-will conflict with this one.
+| Hosted-UI domain `tick-login-<account>` | Serves the login page (`SiteLoginDomain` output) |
 
 Being in the pool is not enough — membership in `tick-viewers` is what grants
-access, so the site does not silently open up to everyone pulp adds later. A
-pool user who is not in the group gets an explanatory page, not a login loop:
+access. A pool user who is not in the group gets an explanatory page, not a
+login loop. To invite someone:
 
 ```bash
-aws cognito-idp admin-add-user-to-group \
-  --user-pool-id us-east-1_7nie1ydof \
-  --group-name tick-viewers \
-  --username you@example.com
+POOL=$(aws cloudformation describe-stacks --stack-name tick-collector \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
+
+# Sends the invite email with a temporary password
+aws cognito-idp admin-create-user --user-pool-id "$POOL" \
+  --username you@example.com \
+  --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true \
+  --desired-delivery-mediums EMAIL
+
+aws cognito-idp admin-add-user-to-group --user-pool-id "$POOL" \
+  --group-name tick-viewers --username you@example.com
 ```
 
-Seven of the pool's ten users are still `FORCE_CHANGE_PASSWORD`; the hosted UI
-walks them through setting a password on first sign-in.
+The hosted UI walks a new user through choosing a password on first sign-in.
+After a deploy that replaces the app client, re-run `make publish-cognito-ui`:
+the sign-in styling is attached per client.
 
 #### How the check works
 

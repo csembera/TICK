@@ -278,14 +278,25 @@ footer.site a:hover{color:var(--ink)}
 })();
 
 (function () {
-  // Same join-request endpoint as /tick-demo and Pulp's own form: POST
-  // {email, name, company, source}. The API lives on pulp.sembasolutions.com and
-  // sends no Access-Control-Allow-Origin, so this is mode:'no-cors' — the body
-  // parses server-side without a JSON content-type, and the response is opaque,
-  // so a resolved fetch only means the request left the browser. A rejection,
-  // though, is real (CSP block, offline, extension) and is never reported as
-  // success.
-  var ENDPOINT = 'https://pulp.sembasolutions.com/api/auth/join-request';
+  // Posts to the waitlist at /api/join on this same site. CloudFront signs the
+  // request to the function URL (OAC), and for a body it needs the payload's
+  // SHA-256 from the browser — that is the x-amz-content-sha256 header.
+  // Same-origin, so the response is real: only a 200 counts as success.
+  function sendJoin(payload) {
+    var body = JSON.stringify(payload);
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(body))['then'](function (buf) {
+      var hash = Array.prototype.map.call(new Uint8Array(buf), function (b) {
+        return ('0' + b.toString(16)).slice(-2);
+      }).join('');
+      return fetch('/api/join', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-amz-content-sha256': hash },
+        body: body
+      });
+    })['then'](function (res) {
+      if (!res.ok) { throw new Error('HTTP ' + res.status); }
+    });
+  }
   var form = document.getElementById('access-form');
   var name = document.getElementById('name-in');
   var mail = document.getElementById('email-in');
@@ -307,11 +318,7 @@ footer.site a:hover{color:var(--ink)}
 
     btn.disabled = true; name.disabled = true; mail.disabled = true; firm.disabled = true;
     out.textContent = 'Sending…';
-    fetch(ENDPOINT, {
-      method: 'POST',
-      mode: 'no-cors',
-      body: JSON.stringify({ email: email, name: person, company: company, source: 'tick' })
-    })['then'](function () {
+    sendJoin({ email: email, name: person, company: company })['then'](function () {
       btn.textContent = 'Request received';
       out.textContent = 'You’re on the list ✓';
     })['catch'](function () {

@@ -77,7 +77,8 @@ publish-static:
 .PHONY: publish-cognito-ui cognito-banner cognito-css-default
 
 publish-cognito-ui:
-	@POOL=$$(awk '/^  UserPoolId:/{f=1} f&&/Default:/{print $$2; exit}' template.yaml); \
+	@POOL=$$(aws cloudformation describe-stacks --stack-name "$(STACK)" --region "$(REGION)" \
+	  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text); \
 	CLIENT=$$(aws cloudformation describe-stack-resource --stack-name "$(STACK)" \
 	  --logical-resource-id SiteUserPoolClient --region "$(REGION)" \
 	  --query 'StackResourceDetail.PhysicalResourceId' --output text) || \
@@ -102,6 +103,16 @@ cognito-banner:
 	echo "rendered site-static/branding/cognito-banner.png ($$(wc -c < site-static/branding/cognito-banner.png | tr -d ' ') bytes; Cognito's limit is 100KB)"
 
 cognito-css-default:
-	@POOL=$$(awk '/^  UserPoolId:/{f=1} f&&/Default:/{print $$2; exit}' template.yaml); \
+	@POOL=$$(aws cloudformation describe-stacks --stack-name "$(STACK)" --region "$(REGION)" \
+	  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text); \
 	aws cognito-idp get-ui-customization --user-pool-id "$$POOL" --client-id ALL \
 	  --region "$(REGION)" --query 'UICustomization.CSS' --output text
+
+# ── waitlist ────────────────────────────────────────────────────────────────
+#   make list-requests   every /api/join request, oldest first
+.PHONY: list-requests
+
+list-requests:
+	@aws dynamodb scan --table-name "$(STACK)-join-requests" --region "$(REGION)" --output json \
+	  | jq -r '.Items | sort_by(.created_at.S)[] | [.created_at.S, .status.S, .email.S, .name.S, .company.S] | @tsv' \
+	  | column -t -s "$$(printf '\t')"

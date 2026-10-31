@@ -7,7 +7,7 @@ Description: >
   Failures retry 3x then land in the DLQ (the "re-run evaluator" signal).
   A second schedule, half an hour later, runs the Publisher Lambda: it
   renders the lake into static HTML in the site bucket, which CloudFront
-  serves behind Cognito sign-in (existing pool, group-gated) — except the
+  serves behind Cognito sign-in (TICK's own pool, group-gated) — except the
   public marketing pages at /, /docs and /demo, which are hand-authored,
   carry no lake data and are deployed separately. The lake itself is never
   public.
@@ -39,13 +39,16 @@ Parameters:
     Type: String
     Default: Z09625732CWT1QHUYO9J
     Description: Route 53 public hosted zone holding SiteDomainName, in this account
-  UserPoolId:
+  SenderDomain:
     Type: String
-    Default: us-east-1_7nie1ydof
+    Default: sembasolutions.com
     Description: >-
-      Existing Cognito user pool that fronts the site. Owned by PulpDataStack —
-      this stack only adds its own app client, group and hosted-UI domain to it,
-      and never modifies pulp's client.
+      Verified SES domain identity customer mail is sent through. Owned by the
+      SembaPlatform stack (Semba-Solutions/infra), not this one.
+  SenderAddress:
+    Type: String
+    Default: support@sembasolutions.com
+    Description: From/Reply-To address for customer mail; must be on SenderDomain
   ViewerGroupName:
     Type: String
     Default: tick-viewers
@@ -153,20 +156,64 @@ Resources:
               MaximumConcurrency: 2       # be polite to ATS endpoints
 
   # ------------------------------------------------------------------ cognito
-  # Added to the existing pool, never modifying it: a dedicated app client, a
-  # group that gates the site, and the hosted-UI domain the login page needs.
-  # The domain is the one pool-level singleton here — if PulpDataStack ever
-  # adds its own, that deploy conflicts with this one.
+  # TICK's own users. Invite-only: accounts are created by an admin, never by
+  # self sign-up, and the tick-viewers group below is what grants the site.
+  # Mail goes out through the platform's SES identity as "TICK <SenderAddress>",
+  # so invites and password resets come from the company domain (DKIM-signed)
+  # rather than Cognito's no-reply address and its 50-a-day cap.
+  SiteUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${AWS::StackName}-users
+      UserPoolTier: ESSENTIALS
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 7
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: Your TICK sign-in
+          EmailMessage: >-
+            You have been invited to TICK.<br><br>
+            Sign in at https://tick.sembasolutions.com/login with<br>
+            email: {username}<br>temporary password: {####}<br><br>
+            You will choose your own password on first sign-in.
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: Your TICK verification code
+        EmailMessage: 'Your TICK verification code is {####}'
+      EmailConfiguration:
+        EmailSendingAccount: DEVELOPER
+        SourceArn: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SenderDomain}
+        From: !Sub TICK <${SenderAddress}>
+        ReplyToEmailAddress: !Ref SenderAddress
+
+  # Hosted-UI domain prefixes are global and this one has to be new: the old
+  # tick-site-<account> prefix belonged to the previous pool and is only freed
+  # after CloudFormation deletes it, which happens after this is created.
+  # Version 1 is the classic hosted UI, which is what cognito-ui.css styles.
   SiteUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      UserPoolId: !Ref UserPoolId
-      Domain: !Sub tick-site-${AWS::AccountId}
+      UserPoolId: !Ref SiteUserPool
+      Domain: !Sub tick-login-${AWS::AccountId}
+      ManagedLoginVersion: 1
 
   SiteViewerGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
-      UserPoolId: !Ref UserPoolId
+      UserPoolId: !Ref SiteUserPool
       GroupName: !Ref ViewerGroupName
       Description: May view the TICK site
 
@@ -178,7 +225,7 @@ Resources:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       ClientName: !Sub ${AWS::StackName}-site
-      UserPoolId: !Ref UserPoolId
+      UserPoolId: !Ref SiteUserPool
       GenerateSecret: true
       SupportedIdentityProviders: [COGNITO]
       AllowedOAuthFlowsUserPoolClient: true
@@ -223,7 +270,7 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          USER_POOL_ID: !Ref UserPoolId
+          USER_POOL_ID: !Ref SiteUserPool
           COGNITO_DOMAIN: !Ref SiteUserPoolDomain
           VIEWER_GROUP: !Ref ViewerGroupName
           SESSION_SECRET: !Ref SessionSecret
@@ -235,7 +282,7 @@ Resources:
               Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tick/${AWS::StackName}/auth-config
             - Effect: Allow
               Action: cognito-idp:DescribeUserPoolClient
-              Resource: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}
+              Resource: !GetAtt SiteUserPool.Arn
 
   AuthFunctionUrl:
     Type: AWS::Lambda::Url
@@ -268,6 +315,91 @@ Resources:
     Properties:
       OriginAccessControlConfig:
         Name: !Sub ${AWS::StackName}-auth-oac
+        OriginAccessControlOriginType: lambda
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ---------------------------------------------------------------- waitlist
+  # The public "Get started" / "Request access" forms post to /api/join on this
+  # site's own distribution. One row per email; retained, with PITR, because it
+  # is the only record of who asked for access.
+  JoinRequestsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub ${AWS::StackName}-join-requests
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  JoinFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-join
+      CodeUri: src/join/
+      Handler: app.handler
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref JoinRequestsTable
+          ALERT_TOPIC_ARN: !If [HasAlertEmail, !Ref AlertTopic, '']
+          SENDER: !Sub TICK <${SenderAddress}>
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt JoinRequestsTable.Arn
+            # The confirmation reply: only through the domain identity, and only
+            # as the one TICK address.
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SenderDomain}
+              Condition:
+                StringEquals:
+                  ses:FromAddress: !Ref SenderAddress
+        - !If
+          - HasAlertEmail
+          - SNSPublishMessagePolicy:
+              TopicName: !GetAtt AlertTopic.TopicName
+          - !Ref AWS::NoValue
+
+  JoinFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt JoinFunction.Arn
+      AuthType: AWS_IAM          # only CloudFront may invoke it, signed via OAC
+
+  # Same pair of grants as the auth function — see the note there.
+  JoinFunctionCloudFrontPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt JoinFunction.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: cloudfront.amazonaws.com
+      FunctionUrlAuthType: AWS_IAM
+      SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}
+
+  JoinFunctionCloudFrontInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt JoinFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: cloudfront.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}
+
+  JoinOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-join-oac
         OriginAccessControlOriginType: lambda
         SigningBehavior: always
         SigningProtocol: sigv4
@@ -443,7 +575,22 @@ Resources:
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               OriginSSLProtocols: [TLSv1.2]
+          - Id: join-lambda
+            DomainName: !Select [2, !Split ["/", !GetAtt JoinFunctionUrl.FunctionUrl]]
+            OriginAccessControlId: !GetAtt JoinOriginAccessControl.Id
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
         CacheBehaviors:
+          # The waitlist is public by design, so like /auth/* it skips the
+          # session check. POST needs the full method list — CloudFront offers
+          # no smaller set that includes it.
+          - PathPattern: /api/*
+            TargetOriginId: join-lambda
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
           # The login endpoints must stay reachable without a session, so the
           # viewer-request check is deliberately absent here — attaching it
           # would redirect the login page to itself.
@@ -518,7 +665,11 @@ Resources:
     Properties:
       TopicName: !Sub ${AWS::StackName}-alerts
 
-  AlertSubscription:
+  # Email subscriptions only deliver once confirmed, and SNS drops an
+  # unconfirmed one after three days — that is how the original AlertSubscription
+  # silently vanished. Renamed so CloudFormation subscribes afresh; click the
+  # confirmation email after any deploy that recreates it.
+  AlertEmailSubscription:
     Type: AWS::SNS::Subscription
     Condition: HasAlertEmail
     Properties:
@@ -568,6 +719,9 @@ Outputs:
   SiteLoginDomain:
     Value: !Sub https://${SiteUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
     Description: Cognito hosted UI serving the login page
+  UserPoolId:
+    Value: !Ref SiteUserPool
+    Description: TICK's own user pool — invite users here (see infra/README.md)
   ViewerGroup:
     Value: !Ref SiteViewerGroup
     Description: >-
@@ -580,3 +734,6 @@ Outputs:
   PublisherFunctionName:
     Value: !Ref PublisherFunction
     Description: Invoke to republish the site immediately
+  JoinRequestsTableName:
+    Value: !Ref JoinRequestsTable
+    Description: Waitlist — one row per email; `make list-requests` prints it
