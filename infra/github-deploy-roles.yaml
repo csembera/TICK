@@ -17,10 +17,17 @@ Description: >
       --parameter-overrides ArtifactBucket=<aws-sam-cli-managed-default SourceBucket>
 
 Parameters:
+  # GitHub puts immutable ids in the token's sub claim, owner@<id>/repo@<id>,
+  # not the plain owner/repo, so a deleted-and-recreated repo of the same name
+  # cannot assume these roles. A failed AssumeRoleWithWebIdentity in CloudTrail
+  # shows the exact value GitHub sends.
   Repository:
     Type: String
-    Default: csembera/TICK
-    Description: owner/name of the GitHub repository allowed to assume the roles
+    Default: csembera@72778296/TICK@1440281117
+    Description: >-
+      The repository part of the GitHub OIDC sub claim allowed to assume the
+      roles: owner@<owner id>/<repo>@<repo id>
+
   ArtifactBucket:
     Type: String
     Description: >-
