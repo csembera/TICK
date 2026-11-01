@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  GitHub Actions access for .github/workflows/deploy.yml. Deployed once, by
+  hand, and deliberately kept out of the tick-collector stack: a bad deploy of
+  that stack must not be able to break the roles that deploy it.
+
+  Two roles, split along the approval gate:
+    tick-github-plan    assumable by any run on main. Packages artifacts and
+                        creates change sets. It cannot execute one, so nothing
+                        it does reaches production.
+    tick-github-deploy  assumable only by a job in the "production" GitHub
+                        environment, i.e. after a required reviewer approves.
+
+  Deploy (from infra/):
+    aws cloudformation deploy --template-file github-deploy-roles.yaml \
+      --stack-name tick-github-deploy --capabilities CAPABILITY_NAMED_IAM \
+      --parameter-overrides ArtifactBucket=<aws-sam-cli-managed-default SourceBucket>
+
+Parameters:
+  Repository:
+    Type: String
+    Default: csembera/TICK
+    Description: owner/name of the GitHub repository allowed to assume the roles
+  ArtifactBucket:
+    Type: String
+    Description: >-
+      The SAM CLI managed artifact bucket (SourceBucket output of the
+      aws-sam-cli-managed-default stack), where sam package uploads code.
+  StackName:
+    Type: String
+    Default: tick-collector
+  CreateOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      An account holds one GitHub OIDC provider. Set false if another stack
+      already created it.
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1]
+
+  PlanRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tick-github-plan
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateProvider
+                - !Ref GitHubOidcProvider
+                - !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${Repository}:ref:refs/heads/main
+      Policies:
+        - PolicyName: plan
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadStacks
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ValidateTemplate
+                Resource: '*'
+              - Sid: ChangeSets
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:ListChangeSets
+                Resource:
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${StackName}/*
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:changeSet/gh-*/*
+              - Sid: SamTransform
+                Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource: !Sub arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31
+              - Sid: Artifacts
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub arn:aws:s3:::${ArtifactBucket}/${StackName}/*
+              - Sid: ArtifactsList
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub arn:aws:s3:::${ArtifactBucket}
+
+  # Executing a change set runs with the caller's permissions, and this stack
+  # creates IAM roles, Cognito, CloudFront and DNS, so the deploy role is
+  # broad. What fences it is the trust policy: only an approved production
+  # job can assume it. Narrowing it means a CloudFormation service role.
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tick-github-deploy
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateProvider
+                - !Ref GitHubOidcProvider
+                - !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${Repository}:environment:production
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+Outputs:
+  PlanRoleArn:
+    Value: !GetAtt PlanRole.Arn
+  DeployRoleArn:
+    Value: !GetAtt DeployRole.Arn

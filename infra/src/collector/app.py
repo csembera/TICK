@@ -12,7 +12,7 @@ Per invocation:
     -> curated/ (+first_seen/last_seen) -> derived/snapshots/ + state
 
 Local dry run (no AWS): set LOCAL_OUTPUT_DIR to write files to disk:
-    LOCAL_OUTPUT_DIR=./out python app.py ../../../configs/dunder-mifflin_config.json
+    LOCAL_OUTPUT_DIR=./out python app.py ../../../configs/<slug>_config.json
 """
 
 import hashlib

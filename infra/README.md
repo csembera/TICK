@@ -76,6 +76,11 @@ Other parameters at deploy time:
 
 ## Deploying a change
 
+Merging to `main` deploys through
+[../.github/workflows/deploy.yml](../.github/workflows/deploy.yml): it plans a
+change set, waits for a reviewer to approve the `production` environment, then
+runs the steps below. Run them by hand only when the pipeline is unavailable.
+
 The order matters, for one reason: the site bucket's `index.html` is the public
 marketing page, but the edge only treats it as public after the stack update
 lands. Deploy the stack while the bucket still holds something private at that
@@ -171,7 +176,7 @@ The collector worker doubles as a local script — writes to disk instead of S3:
 
 ```bash
 cd src/collector
-LOCAL_OUTPUT_DIR=../../out python app.py ../../../configs/dunder-mifflin_config.json
+LOCAL_OUTPUT_DIR=../../out python app.py ../../../configs/<slug>_config.json
 ```
 
 Or simulate the full SQS invocation:
@@ -181,7 +186,9 @@ sam build
 sam local invoke CollectorFunction -e events/dunder-mifflin_sqs_event.json
 ```
 
-(`sam local invoke` will attempt the S3 writes — use real credentials and
+(The event carries the fictional `dunder-mifflin` config, whose endpoint does
+not resolve: swap in a real config's JSON to exercise a live fetch.
+`sam local invoke` will also attempt the S3 writes — use real credentials and
 `BUCKET_NAME`, or prefer the `LOCAL_OUTPUT_DIR` path above.)
 
 ## The site
@@ -374,7 +381,7 @@ aws lambda invoke --function-name tick-collector-publisher /dev/stdout
 
 Both pages compare the latest snapshot against **the most recent one at least 7
 days old**, not against the previous crawl, and the chart plots every snapshot
-between the two. An overnight delta on a daily board is mostly noise: Dunder Mifflin
+between the two. An overnight delta on a daily board is mostly noise: one tracked board
 moves +12/-7 between consecutive days while drifting far less, so a
 crawl-to-crawl comparison reported ±1 and a flat line no matter what the week
 did.
