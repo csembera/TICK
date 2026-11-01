@@ -10,7 +10,7 @@ TICK insights report — renders the lake into a small static site:
 
 Comparisons reach back a window (default 7 days, --window-days) rather than to
 the previous crawl. On a daily board the overnight delta is mostly noise —
-Dunder Mifflin swings +12/-7 between consecutive days while drifting far less — so the
+One tracked board swings +12/-7 between consecutive days while drifting far less — so the
 page compares the latest snapshot against the most recent one at least that
 old, and plots every snapshot in between. Where history is shorter than the
 window it compares against the oldest snapshot there is and labels the real
@@ -123,7 +123,7 @@ def pick_baseline(dts: list[str], curr_dt: str, window_days: int) -> str | None:
     window_days old.
 
     Comparing against whatever was captured last makes the delta a single
-    overnight change, which on a daily board is mostly noise — Dunder Mifflin swings
+    overnight change, which on a daily board is mostly noise — one tracked board swings
     +12/-7 between consecutive days while drifting far less than that. Reaching
     back a fixed window measures drift instead of jitter.
 
@@ -451,7 +451,7 @@ def open_postings(lake: dict, days: int = NEW_ROLE_DAYS) -> list[dict]:
 
     The board comes from the curated crawl, which holds every posting collected
     that day; tech_stack's own `postings` map holds only the ones that matched a
-    stack term (23 of 137 for Dunder Mifflin), so it cannot answer "all open roles".
+    stack term (23 of 137 on one tracked board), so it cannot answer "all open roles".
     Where the newest curated partition is older than the current snapshot it is
     not today's board, and the open set is rebuilt from state.json instead —
     every posting not closed and still seen on the current crawl."""

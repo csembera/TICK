@@ -13,3 +13,7 @@ __pycache__/
 out/
 site/
 local-data/
+
+# SourceConfigs: the data bucket's configs/ prefix is the source of truth.
+# Pull a local copy with: aws s3 sync s3://<DataBucketName>/configs/ configs/
+configs/
