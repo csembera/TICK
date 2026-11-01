@@ -1,0 +1,251 @@
+# Production deploy for the tick-collector stack, gated on a human.
+#
+#   plan    sam build + package, then create a CloudFormation change set and
+#           write it to the run summary. Uses tick-github-plan, which cannot
+#           execute anything, so this job never touches production.
+#   deploy  waits on the "production" environment's required reviewer. Read
+#           the change set in the plan job's summary, then approve or reject.
+#           After approval it runs the order from infra/README.md: static
+#           pages, the change set, Cognito UI, republish, verify.
+#
+# The change set reuses every existing parameter value (UsePreviousValue), so
+# SessionSecret and AlertEmail carry over without the workflow ever seeing
+# them. samconfig.toml's confirm_changeset only governs manual `sam deploy`;
+# here the reviewer is the confirmation.
+#
+# One-time setup: infra/github-deploy-roles.yaml, the AWS_ACCOUNT_ID repository
+# variable, and a "production" environment with a required reviewer.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'tools/tick_insights_report.py'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# One deploy at a time. A run waiting for approval holds the group; a newer
+# push queues behind it and plans against whatever the first one left.
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  STACK: tick-collector
+  SITE: https://tick.sembasolutions.com
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    outputs:
+      change_set: ${{ steps.changeset.outputs.name }}
+      has_changes: ${{ steps.changeset.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/tick-github-plan
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate
+        run: sam validate --lint
+
+      - name: Build
+        run: sam build
+
+      - name: Package
+        id: package
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks --stack-name aws-sam-cli-managed-default \
+            --query "Stacks[0].Outputs[?OutputKey=='SourceBucket'].OutputValue" --output text)
+          sam package --s3-bucket "$BUCKET" --s3-prefix "$STACK" --output-template-file packaged.yaml
+          KEY="$STACK/packaged/$GITHUB_SHA-$GITHUB_RUN_ATTEMPT.yaml"
+          aws s3 cp packaged.yaml "s3://$BUCKET/$KEY" --only-show-errors
+          echo "url=https://$BUCKET.s3.$AWS_REGION.amazonaws.com/$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Create change set
+        id: changeset
+        env:
+          TEMPLATE_URL: ${{ steps.package.outputs.url }}
+        run: |
+          # A rejected run leaves its change set behind; clear them so the
+          # console only ever shows the one under review.
+          for old in $(aws cloudformation list-change-sets --stack-name "$STACK" \
+              --query "Summaries[?starts_with(ChangeSetName, 'gh-')].ChangeSetName" --output text); do
+            aws cloudformation delete-change-set --stack-name "$STACK" --change-set-name "$old"
+          done
+
+          # Keep the deployed value of every parameter the new template still
+          # declares. A parameter new to the template takes its default.
+          aws cloudformation describe-stacks --stack-name "$STACK" \
+            --query 'Stacks[0].Parameters[].ParameterKey' --output text | tr '\t' '\n' | sort > deployed.txt
+          aws cloudformation get-template-summary --template-url "$TEMPLATE_URL" \
+            --query 'Parameters[].ParameterKey' --output text | tr '\t' '\n' | sort > declared.txt
+          PARAMS=$(comm -12 deployed.txt declared.txt | sed 's/.*/ParameterKey=&,UsePreviousValue=true/')
+
+          NAME="gh-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          aws cloudformation create-change-set --stack-name "$STACK" --change-set-name "$NAME" \
+            --template-url "$TEMPLATE_URL" --parameters $PARAMS \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --description "$GITHUB_SHA" > /dev/null
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+          if aws cloudformation wait change-set-create-complete --stack-name "$STACK" --change-set-name "$NAME"; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          REASON=$(aws cloudformation describe-change-set --stack-name "$STACK" --change-set-name "$NAME" \
+            --query StatusReason --output text)
+          case "$REASON" in
+            *"didn't contain changes"*|*"No updates are to be performed"*)
+              aws cloudformation delete-change-set --stack-name "$STACK" --change-set-name "$NAME"
+              echo "has_changes=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::Change set failed: $REASON"
+              exit 1 ;;
+          esac
+
+      - name: Summarize for the reviewer
+        env:
+          NAME: ${{ steps.changeset.outputs.name }}
+          HAS_CHANGES: ${{ steps.changeset.outputs.has_changes }}
+        run: |
+          {
+            echo "## Change set for \`$STACK\`"
+            echo
+            echo "Commit \`${GITHUB_SHA::7}\`: $(git log -1 --format=%s)"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$HAS_CHANGES" != "true" ]; then
+            echo "**No stack changes.** Approving still publishes static pages, the Cognito UI and a republish." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          aws cloudformation describe-change-set --stack-name "$STACK" --change-set-name "$NAME" \
+            --output json > changeset.json
+
+          # Replacing a stateful resource destroys its contents: a new user
+          # pool has no users, a new bucket has no lake. Make those loud.
+          RISKY=$(jq -r '[.Changes[].ResourceChange
+                    | select(.Action == "Remove" or .Replacement == "True" or .Replacement == "Conditional")
+                    | "\(.Action) \(.LogicalResourceId) (\(.ResourceType)), replacement: \(.Replacement // "n/a")"]
+                  | .[]' changeset.json)
+          if [ -n "$RISKY" ]; then
+            {
+              echo "> [!WARNING]"
+              echo "> These resources are removed or replaced. Check none of them holds state (user pool, buckets, tables) before approving."
+              echo "$RISKY" | sed 's/^/> - /'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "$RISKY" | while read -r line; do echo "::warning::$line"; done
+          fi
+
+          {
+            echo "| Action | Resource | Type | Replacement |"
+            echo "|---|---|---|---|"
+            jq -r '.Changes[].ResourceChange
+              | "| \(.Action) | `\(.LogicalResourceId)` | \(.ResourceType) | \(.Replacement // "-") |"' changeset.json
+            echo
+            echo "Change set \`$NAME\`. Approve the **deploy** job to execute it."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: plan
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ env.SITE }}
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      NAME: ${{ needs.plan.outputs.change_set }}
+      HAS_CHANGES: ${{ needs.plan.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/tick-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Approval can come hours later. If the stack moved in between, the
+      # change set is obsolete and what was reviewed is no longer what would run.
+      - name: Check the change set is still the one reviewed
+        if: env.HAS_CHANGES == 'true'
+        run: |
+          STATE=$(aws cloudformation describe-change-set --stack-name "$STACK" --change-set-name "$NAME" \
+            --query '[Status, ExecutionStatus]' --output text)
+          if [ "$STATE" != "$(printf 'CREATE_COMPLETE\tAVAILABLE')" ]; then
+            echo "::error::Change set $NAME is $STATE. Re-run all jobs to plan again."
+            exit 1
+          fi
+
+      # Static first, always: see infra/README.md § Deploying a change.
+      - name: Publish static pages
+        run: make publish-static
+
+      - name: Execute change set
+        if: env.HAS_CHANGES == 'true'
+        run: |
+          aws cloudformation execute-change-set --stack-name "$STACK" --change-set-name "$NAME"
+          if ! aws cloudformation wait stack-update-complete --stack-name "$STACK"; then
+            aws cloudformation describe-stack-events --stack-name "$STACK" --max-items 20 \
+              --query 'StackEvents[?contains(ResourceStatus, `FAILED`)].[LogicalResourceId, ResourceStatusReason]' \
+              --output text | sed 's/^/::error::/'
+            exit 1
+          fi
+
+      # Idempotent, and required after any deploy that replaces the app client.
+      - name: Publish Cognito UI
+        run: make publish-cognito-ui
+
+      - name: Republish the site
+        run: |
+          aws lambda invoke --function-name "$STACK-publisher" --cli-read-timeout 0 \
+            --query FunctionError --output text publish.json > error.txt
+          cat publish.json; echo
+          if [ "$(cat error.txt)" != "None" ]; then
+            echo "::error::Publisher failed: $(cat publish.json)"
+            exit 1
+          fi
+
+      - name: Verify the edge
+        run: |
+          fail=0
+          for p in / /docs /demo /demo/dunder-mifflin/brief; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE$p")
+            echo "public  $p -> $code"
+            [ "$code" = "200" ] || { echo "::error::$p returned $code, expected 200"; fail=1; }
+          done
+          # A 200 here is a client-data leak, not a cosmetic bug.
+          for p in /login /dunder-mifflin/dashboard.html /dunder-mifflin/brief.html; do
+            out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$SITE$p")
+            echo "guarded $p -> $out"
+            case "$out" in
+              "302 "*"/auth/login"*) ;;
+              *) echo "::error::$p returned '$out', expected a 302 to /auth/login"; fail=1 ;;
+            esac
+          done
+          exit $fail

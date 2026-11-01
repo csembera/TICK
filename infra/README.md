@@ -76,6 +76,11 @@ Other parameters at deploy time:
 
 ## Deploying a change
 
+Merging to `main` deploys through
+[../.github/workflows/deploy.yml](../.github/workflows/deploy.yml): it plans a
+change set, waits for a reviewer to approve the `production` environment, then
+runs the steps below. Run them by hand only when the pipeline is unavailable.
+
 The order matters, for one reason: the site bucket's `index.html` is the public
 marketing page, but the edge only treats it as public after the stack update
 lands. Deploy the stack while the bucket still holds something private at that
