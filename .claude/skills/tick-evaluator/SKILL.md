@@ -1,6 +1,6 @@
 ---
 name: tick-evaluator
-description: Discover and verify a company's job-posting collection endpoint, and learn how its job descriptions are laid out, emitting a verified TICK SourceConfig JSON for the deterministic daily collector. Use when asked to evaluate, onboard, or re-evaluate a target company for TICK, to find a company's ATS or careers API (Workday, Greenhouse, Lever, Ashby, ADP, Dayforce), to learn or relearn a board's description format, or when a collector run fails and its config must be rebuilt.
+description: Discover and verify a company's job-posting collection endpoint, and learn how its job descriptions are laid out, emitting a verified TICK SourceConfig JSON for the deterministic daily collector. Use when asked to evaluate, onboard, or re-evaluate a target company for TICK, to find a company's ATS or careers API (Workday, Greenhouse, Lever, Ashby, ADP, Dayforce, Taleo), to learn or relearn a board's description format, or when a collector run fails and its config must be rebuilt.
 ---
 
 # TICK Evaluator
@@ -131,6 +131,20 @@ Field rules that cost real data when broken:
   `{"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": ""}`,
   pagination `offset`.
 - **Dayforce**: `jobReqId`, not `jobPostingId` — every save mints a new one.
+- **Taleo** (`<tenant>.taleo.net/careersection/...`): `ats: "taleo"`. Endpoint
+  `https://<tenant>.taleo.net/careersection/rest/jobboard/searchjobs?lang=en`,
+  `POST`, with no `portal` in the URL. Each career section's portal id is the
+  `portalNo` in its `jobsearch.ftl` page; list **every** section under
+  `portals` as `{"portal": "<portalNo>", "section": "<code in its URL>"}`.
+  The collector pages them all and tags each posting `careerSection`. The
+  search answers 500 without `request_headers`
+  `{"tz": "GMT-05:00", "tzname": "America/Chicago"}`. `posting_id` is
+  `contestNo` (the requisition number in `jobdetail.ftl?job=`), not `jobId`.
+  `column` holds the list columns in order (check which is which on a real
+  response); the location column is a JSON array in a string, which the
+  collector unwraps. Set `detail_endpoint` and `schema_map.url` to
+  `https://<tenant>.taleo.net/careersection/{careerSection}/jobdetail.ftl?job={contestNo}&lang=en`:
+  descriptions are read from that page.
 - `posting_id` must be the STABLE requisition identity. Where a source exposes
   both a requisition id and a per-revision id, take the requisition id. A
   revision id turns one edited opening into N postings and makes every edit diff
@@ -239,8 +253,11 @@ to phase A — the endpoint is wrong, not the draft.
 
 The gate re-executes the config exactly as the collector will: the collector's
 headers, not the browser set the discovery tools send (some boards answer a
-browser `Accept-Language` with an empty posting list), and for ADP each
-posting's detail merged in before `schema_map` is checked.
+browser `Accept-Language` with an empty posting list), for ADP each
+posting's detail merged in before `schema_map` is checked, and for Taleo
+every page of every career section, with the collector's own code. A Taleo
+section that returns fewer postings than it reports fails the gate, as it
+would fail the collector's run.
 
 The gate also samples fresh descriptions and writes
 `verification.descriptions`: coverage with and without your format, how often

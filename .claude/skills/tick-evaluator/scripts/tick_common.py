@@ -12,6 +12,10 @@ description the way the collector's enrich() does, and the format report
 parses it with the collector's own description.py, imported from
 infra/src/collector rather than copied, so a description_format is checked
 exactly as the collector will apply it.
+
+Taleo boards page across career sections, and their descriptions sit in each
+job page. Both are read with the collector's own taleo.py, imported the same
+way, so the gate pages a Taleo board exactly as the collector does.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from typing import Any, Callable, Optional
 sys.path.insert(0, os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "infra", "src", "collector")))
 import description  # noqa: E402  the collector's parser, not a copy
+import taleo  # noqa: E402  the collector's Taleo paging and job-page reader
 
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
@@ -48,6 +53,7 @@ FINGERPRINTS: list[tuple[str, str]] = [
     ("smartrecruiters", r"careers\.smartrecruiters\.com/([A-Za-z0-9]+)"),
     ("adp",            r"myjobs\.adp\.com/([A-Za-z0-9\-_]+)"),
     ("dayforce",       r"jobs\.dayforcehcm\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9\-_]+)/([A-Za-z0-9\-_]+)"),
+    ("taleo",          r"([a-z0-9\-]+)\.taleo\.net/careersection/(?!rest/)([A-Za-z0-9\-_+%.]+)/"),
 ]
 
 # Default sweep for an SPA's API contract: quoted /api/ paths, versioned routes,
@@ -122,9 +128,11 @@ def locate_postings(data: Any) -> tuple[list, Optional[str]]:
 # ------------------------------------------------------------ descriptions
 
 GetJson = Callable[..., Any]   # (url, method="GET", body=None) -> parsed JSON
+GetText = Callable[[str], str]  # (url) -> page body
 
 
-def description_html(cfg: dict, posting: dict, get_json: GetJson) -> Optional[str]:
+def description_html(cfg: dict, posting: dict, get_json: GetJson,
+                     get_text: Optional[GetText] = None) -> Optional[str]:
     """A posting's description HTML, fetched the way the collector's enrich() does."""
     if cfg.get("description_field"):
         h = resolve_field(posting, cfg["description_field"])
@@ -142,7 +150,15 @@ def description_html(cfg: dict, posting: dict, get_json: GetJson) -> Optional[st
             row = (get_json(cfg["detail_endpoint"].replace("{posting_id}", str(rid)))
                    .get("jobRequisitions") or [None])[0]
             return (row or {}).get("jobDescription")
+    if cfg.get("ats") == "taleo" and cfg.get("detail_endpoint") and get_text:
+        return taleo.description(get_text(taleo.detail_url(cfg["detail_endpoint"], posting)))
     return None
+
+
+def collect_taleo(cfg: dict, get_json: GetJson) -> tuple[list, int]:
+    """A Taleo board's postings and reported total, paged by the collector's
+    own code: every career section, every page."""
+    return taleo.fetch_all(cfg, lambda url, body: get_json(url, "POST", body))
 
 
 def merge_detail(cfg: dict, posting: dict, get_json: GetJson) -> dict:

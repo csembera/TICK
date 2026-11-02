@@ -37,8 +37,8 @@ except ImportError:  # pragma: no cover
     sys.exit(0)
 
 from tick_common import (BROWSER_HEADERS, BUNDLE_PATTERNS, FINGERPRINTS, _UA,
-                         collector_headers, description_html, format_report,
-                         locate_postings, spread)
+                         collect_taleo, collector_headers, description_html,
+                         format_report, locate_postings, spread)
 
 
 def _json_arg(raw: Optional[str], what: str) -> Optional[dict]:
@@ -196,16 +196,24 @@ def cmd_descriptions(a) -> dict:
             r = c.request(method, url, json=body)
             r.raise_for_status()
             return r.json()
+
+        def get_text(url):
+            r = c.get(url)
+            r.raise_for_status()
+            return r.text
         try:
-            data = get_json(cfg["endpoint"], cfg.get("http_method") or "GET", cfg.get("request_body"))
+            if cfg.get("ats") == "taleo":
+                postings = collect_taleo(cfg, get_json)[0]
+            else:
+                data = get_json(cfg["endpoint"], cfg.get("http_method") or "GET", cfg.get("request_body"))
+                postings = (data.get(cfg["postings_key"]) if cfg.get("postings_key") and isinstance(data, dict)
+                            else locate_postings(data)[0]) or []
         except Exception as e:
             return {"error": f"collection endpoint failed: {type(e).__name__}: {e}"}
-        postings = (data.get(cfg["postings_key"]) if cfg.get("postings_key") and isinstance(data, dict)
-                    else locate_postings(data)[0]) or []
         htmls = []
         for posting in spread(postings, a.n):
             try:
-                h = description_html(cfg, posting, get_json)
+                h = description_html(cfg, posting, get_json, get_text)
             except Exception as e:
                 errors.append(f"{type(e).__name__}: {e}")
                 continue

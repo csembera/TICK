@@ -495,10 +495,13 @@ day's change record, and exits 1 listing any opening or closure a record lost.
 ## Descriptions & keyword enrichment
 
 For Workday sources the collector fetches each posting's full description
-(CXS detail endpoint, one GET per posting, 0.1s politeness gap); ADP and
-inline boards carry it in the posting payload. The original HTML is kept in
-`raw/` for every ATS (Workday's is attached to the posting before `raw/` is
-written), so descriptions can be re-parsed without refetching. Every curated
+(CXS detail endpoint, one GET per posting, 0.1s politeness gap). For Taleo
+it reads each posting's job page (`jobdetail.ftl`), which embeds the
+description, with the same gap ([src/collector/taleo.py](src/collector/taleo.py)).
+ADP and inline boards carry it in the posting payload. The original HTML is
+kept in `raw/` for every ATS (Workday's and Taleo's are attached to the
+posting before `raw/` is written), so descriptions can be re-parsed without
+refetching. Every curated
 row gets:
 
 - `description` — the description in labelled sections, parsed by
