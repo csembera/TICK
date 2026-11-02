@@ -18,7 +18,7 @@ EventBridge Scheduler (daily)
 EventBridge Scheduler (daily, 30 min later)
   └─► Publisher Lambda ── reads the lake + s3://<bucket>/configs/*.json
         └─► S3 site bucket (private)
-              ├─ login/index.html              accounts home
+              ├─ home/<key>/index.html         an accounts home per viewer scope (/accounts)
               ├─ <slug>/dashboard.html
               ├─ <slug>/brief.html
               └─ <slug>/archive/<pid>/index.html   one per closed req
@@ -107,7 +107,7 @@ sam deploy --parameter-overrides "AlertEmail=you@example.com SessionSecret=$SECR
 #    here does not matter.
 make publish-cognito-ui
 
-# 4. Re-render the app pages. Until this runs, /login 404s for signed-in users.
+# 4. Re-render the app pages. Until this runs, /accounts 404s for signed-in users.
 aws lambda invoke --function-name tick-collector-publisher /dev/stdout
 #    expect {"accounts_rendered": N, "homes_rendered": H, "pages": 2N+H, ...}
 ```
@@ -127,14 +127,15 @@ Guarded — every one of these must 302 to `/auth/login`. **A 200 here is a
 client-data leak, not a cosmetic bug:**
 
 ```bash
-for p in /login /dunder-mifflin/dashboard.html /dunder-mifflin/brief.html; do
+for p in /accounts /login /dunder-mifflin/dashboard.html /dunder-mifflin/brief.html; do
   printf "%-36s %s\n" "$p" \
     "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' https://tick.sembasolutions.com$p)"
 done
 ```
 
 Then sign in through a browser: `/` → **Log in** → Cognito (TICK palette, TICK
-banner) → lands on `/login` showing the accounts home.
+banner) → lands on `/accounts` showing the accounts home. Then open `/` and
+`/login` again: both must 302 straight to `/accounts` while you are signed in.
 
 ### Which target owns what
 
@@ -142,7 +143,7 @@ banner) → lands on `/login` showing the accounts home.
 |---|---|---|
 | `/`, `/docs`, `/demo` | `make publish-static` | no |
 | Cognito hosted UI | `make publish-cognito-ui` (`cognito-ui.css` + banner) | n/a |
-| `/login`, `/<slug>/*` | the publisher Lambda | yes |
+| `/accounts`, `/<slug>/*` | the publisher Lambda | yes |
 
 The hosted-UI customization is deliberately **not** a CloudFormation resource.
 `SetUICustomization` and `AWS::Cognito::UserPoolUICustomizationAttachment`
@@ -201,7 +202,8 @@ browser never reads the lake, and the lake bucket is never public.
 https://tick.sembasolutions.com/                          marketing page  (public)
 https://tick.sembasolutions.com/docs                      documentation   (public)
 https://tick.sembasolutions.com/demo                      demo            (public)
-https://tick.sembasolutions.com/login                     accounts home
+https://tick.sembasolutions.com/login                     the way in: signs you in, then /accounts
+https://tick.sembasolutions.com/accounts                  accounts home
 https://tick.sembasolutions.com/<company-slug>/dashboard.html
 https://tick.sembasolutions.com/<company-slug>/brief.html
 https://tick.sembasolutions.com/<company-slug>/archive/<posting-id>   a closed req
@@ -212,9 +214,9 @@ The site has two halves in one bucket, and they never collide:
 | | Written by | Guarded |
 |---|---|---|
 | `/`, `/docs`, `/demo` | `make publish-static` from `site-static/` | no |
-| `/login`, `/<slug>/*` | the publisher Lambda, nightly | yes |
+| `/accounts`, `/<slug>/*` | the publisher Lambda, nightly | yes |
 
-The publisher writes `login/index.html` and per-account keys only, so a nightly
+The publisher writes `home/<key>/index.html` and per-account keys only, so a nightly
 run cannot overwrite the marketing pages; `make publish-static` scopes its
 `--delete` to the `docs/` and `demo/` prefixes, so it cannot reach the app.
 
@@ -242,7 +244,7 @@ Deploying with `SiteDomainName=""` removes the alias, certificate and DNS
 records and falls back to the CloudFront domain — the way out if certificate
 validation ever wedges a deploy.
 
-The accounts home at `/login` lists every account in `s3://<DataBucketName>/configs/` — the
+The accounts home at `/accounts` lists every account in `s3://<DataBucketName>/configs/` — the
 same list the dispatcher collects from — so an account shows up the moment its
 config is uploaded, marked `Not collected` until its first crawl and
 `First crawl` until it has the two snapshots the dashboard and brief compare.
@@ -323,9 +325,11 @@ work is split:
 
 1. The edge function first resolves extensionless URIs (`/docs` →
    `/docs/index.html`), because S3 has no directory semantics and
-   `DefaultRootObject` only covers `/`. It then lets the public prefixes
+   `DefaultRootObject` only covers `/`. The two front doors come next: `/`
+   and `/login` with a valid session → 302 to `/accounts`, so a signed-in
+   viewer never lands on the marketing page. Then it lets the public prefixes
    through. For anything else, no session cookie → 302 to `/auth/login`,
-   preserving the path you asked for.
+   preserving the path you asked for (`/login` asks for `/accounts`).
 2. `/auth/login` → the auth Lambda redirects to the Cognito hosted UI.
 3. `/auth/callback` → the Lambda exchanges the code for tokens (client secret,
    server side), checks `aud` / `iss` / `token_use` / `exp` and the group
@@ -333,7 +337,7 @@ work is split:
    cookie carries the viewer's scope: `*` for `tick-admins`, else their
    normalised `custom:accounts`.
 4. Every later request → one HMAC at the edge. No Lambda, no Cognito call.
-   The edge refuses `/<slug>/` pages outside the scope, and serves `/login`
+   The edge refuses `/<slug>/` pages outside the scope, and serves `/accounts`
    from `home/<sha256(scope)[:16]>/index.html` — the publisher renders one
    such home per distinct scope in the pool.
 

@@ -5,8 +5,10 @@ TICK site auth — the OIDC half of the hosted site's front door.
   /auth/callback  code -> tokens -> group check -> session cookie -> 302 home
   /auth/logout    clears the cookie, 302 to the Hosted UI logout
 
-Signing in lands on HOME_PATH ("/login"); signing out lands on "/", the public
-marketing page, which is what a viewer without a session is meant to see.
+Signing in lands on HOME_PATH ("/accounts"); signing out lands on "/", the
+public marketing page, which is what a viewer without a session is meant to
+see. "/login" is the way in, not a page: the edge sends a signed-in viewer on
+to /accounts and a signed-out one here.
 
 The app's pages are guarded at the edge instead: the CloudFront
 Function checks a short HMAC-signed session cookie this Lambda mints, which is
@@ -20,7 +22,7 @@ Function. <scope> is the accounts this viewer may open, fixed at sign-in: "*"
 for members of ADMIN_GROUP, otherwise the user's `custom:accounts` attribute
 (comma-separated company slugs, set by an admin) normalised to sorted,
 de-duplicated slugs — possibly empty. The edge refuses any /<slug>/ page
-outside it and serves /login from the home page the publisher rendered for
+outside it and serves /accounts from the home page the publisher rendered for
 exactly that scope, so a change of accounts takes effect at the viewer's next
 sign-in.
 
@@ -52,7 +54,7 @@ CONFIG_PARAM = os.environ["CONFIG_PARAM"]
 
 SESSION_TTL = 12 * 3600      # a working day; expiry re-runs the silent Cognito redirect
 STATE_TTL = 600              # a login round trip
-HOME_PATH = "/login"         # the app's front page; "/" is the public marketing page
+HOME_PATH = "/accounts"      # the app's front page; "/" is the public marketing page
 
 _ISSUER = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{USER_POOL_ID}"
 _HOSTED_UI = f"https://{COGNITO_DOMAIN}.auth.{AWS_REGION}.amazoncognito.com"
@@ -98,7 +100,8 @@ def read_state(state: str) -> str:
     off-site falls back to the app's home page rather than being followed.
 
     Never "/" — that is the public marketing page, so a viewer who has just
-    signed in would be dropped back on the page they signed in from."""
+    signed in would be dropped back on the page they signed in from — and
+    never "/login", the way in, which only bounces on to /accounts."""
     payload, _, signature = (state or "").rpartition(".")
     if not payload or not _verify(payload, signature):
         return HOME_PATH
@@ -114,7 +117,7 @@ def read_state(state: str) -> str:
         return HOME_PATH
     # The edge serves the public pages without ever redirecting here, so a
     # "next" pointing at one is a path this flow should never have been given.
-    return HOME_PATH if nxt in ("/", "/index.html") else nxt
+    return HOME_PATH if nxt in ("/", "/index.html", "/login", "/login/") else nxt
 
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")

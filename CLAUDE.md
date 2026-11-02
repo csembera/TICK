@@ -31,10 +31,10 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
   the build, so it needs a decision first.
 - **Edit the renderer in `tools/`, never through the symlink path.** It is one
   file run two ways: by the CLI and by the publisher Lambda.
-- **Guarded paths must never serve without a session.** A 200 on `/login` or
+- **Guarded paths must never serve without a session.** A 200 on `/accounts` or
   `/<slug>/*` without a cookie is a client-data leak, not a cosmetic bug.
 - **The two halves of the site bucket never overlap.** The publisher writes only
-  `login/`, `home/` and `<slug>/` keys. `publish-static` uses `--delete` only on
+  `home/` and `<slug>/` keys. `publish-static` uses `--delete` only on
   `docs/` and `demo/`. New keys must keep that separation.
 - **One company failing never affects the others.** Each company gets its own
   invocation. Keep it that way.

@@ -10,7 +10,7 @@ TICK publisher — renders the S3 lake into the static site CloudFront serves.
 Viewers see only the accounts they are assigned, so there is no single
 accounts home. Each viewer's session carries a scope — "*" for admins, else
 the sorted slugs in their `custom:accounts` Cognito attribute — and the edge
-serves /login from home/<key>/index.html, key = first 16 hex of
+serves /accounts from home/<key>/index.html, key = first 16 hex of
 sha256(scope). This Lambda reads the pool's users and renders one home per
 distinct scope, so an assignment change shows after the next publish (and
 the viewer's next sign-in, which re-mints the scope).

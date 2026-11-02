@@ -17,7 +17,8 @@ renderer never reads it) under the gitignored local-data/; nothing leaves the
 machine and the server binds to 127.0.0.1 only.
 
 Not previewed: the CloudFront edge, Cognito sign-in and per-viewer scoping.
-/login lists every account, and the account-request form gets a stub 200.
+/accounts lists every account, the account-request form gets a stub 200, and
+nothing redirects: /login and a signed-in visit to / are the edge's doing.
 """
 
 import argparse
@@ -130,12 +131,12 @@ def main() -> None:
             subprocess.run(["git", "worktree", "remove", "--force", tree], cwd=ROOT)
 
     url = f"http://127.0.0.1:{args.port}"
-    print(f"\nTICK preview of {label}\n  {url}/          public pages\n  {url}/login/    accounts home\n"
+    print(f"\nTICK preview of {label}\n  {url}/          public pages\n  {url}/accounts/ accounts home\n"
           "Ctrl-C to stop.", flush=True)
     server = http.server.ThreadingHTTPServer(
         ("127.0.0.1", args.port), functools.partial(Handler, directory=OUT))
     if not args.no_open:
-        webbrowser.open(f"{url}/login/")
+        webbrowser.open(f"{url}/accounts/")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
