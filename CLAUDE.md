@@ -61,7 +61,9 @@ Match the code around you. Python 3.12. Each module opens with a docstring
 saying what it does and why. Comments explain *why*, never *what*. Prefer
 plain functions and stdlib over abstractions. Commit subjects are short,
 sentence case and imperative, with no prefix tags ("Archive closed postings,
-each at /<slug>/archive/<pid>").
+each at /<slug>/archive/<pid>"). Commits and PR descriptions carry no AI
+attribution: no `Co-Authored-By: Claude` trailer, no "Generated with Claude
+Code" line.
 
 ## How a feature gets built
 
