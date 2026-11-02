@@ -22,7 +22,7 @@ dates, so a short window reads as itself.
 
 Layout written under --out-dir:
 
-    login/index.html              the accounts home, served at /login
+    accounts/index.html           the accounts home, served at /accounts
     <company-slug>/dashboard.html
     <company-slug>/brief.html
     <company-slug>/archive/<posting-id>/index.html
@@ -72,7 +72,7 @@ _CAT_LABELS = {
 
 # Where the signed-in app starts. "/" is the public marketing page, so every
 # in-app link home is root-absolute to this instead of a relative "index.html".
-APP_HOME = "/login"
+APP_HOME = "/accounts"
 
 # The public origin, for links that have to work outside the site — the
 # workbench's markdown briefs. The pages themselves link root-absolute.
@@ -1443,9 +1443,12 @@ _NAV_MARK = ('<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">'
 def _nav(active: str, account: str = "", signed_in: bool = True) -> str:
     """The menu bar of infra/site-static/demo/, with the app's links: account
     pages get that account's Dashboard and Brief, and the right side says Sign
-    out where the demo says Log in / Get started. Links are root-absolute, so
-    they resolve the same from /<slug>/brief.html and an archive page. The 404
-    page cannot know whether its reader is signed in, so it offers Log in."""
+    out where the demo says Log in / Get started. The brand goes to the
+    accounts home, not to "/": a signed-in viewer has no business on the
+    marketing page. Links are root-absolute, so they resolve the same from
+    /<slug>/brief.html and an archive page. The 404 page cannot know whether
+    its reader is signed in, so it offers Log in and a brand link to "/",
+    which the edge forwards to /accounts for anyone with a session."""
     def tab(label, href, key):
         cur = ' aria-current="page"' if key == active else ""
         return f'<a href="{href}"{cur}>{label}</a>'
@@ -1455,8 +1458,9 @@ def _nav(active: str, account: str = "", signed_in: bool = True) -> str:
                  tab("Brief", f"/{account}/brief.html", "brief")]
     tabs.append(tab("Docs", "/docs", "docs"))
     auth = ('<a class="nav-login" href="/auth/logout">Sign out</a>' if signed_in
-            else f'<a class="nav-login" href="{APP_HOME}">Log in</a>')
-    return (f'<div class="nav"><a class="nav-brand" href="/" style="text-decoration:none">'
+            else '<a class="nav-login" href="/login">Log in</a>')
+    brand = APP_HOME if signed_in else "/"
+    return (f'<div class="nav"><a class="nav-brand" href="{brand}" style="text-decoration:none">'
             f'{_NAV_MARK}<span>TICK</span></a><div class="nav-tabs">{"".join(tabs)}</div>\n'
             f'  <div class="nav-auth">\n    {auth}\n  </div>\n</div>')
 
@@ -2425,8 +2429,8 @@ def _account_card(a: dict) -> str:
         stats = ""
 
     if a["has_pages"]:
-        # Root-absolute: the home page is served at /login, so a relative slug
-        # would resolve under it (/login/<slug>/dashboard.html) and 404.
+        # Root-absolute: the home page is served at /accounts, so a relative slug
+        # would resolve under it (/accounts/<slug>/dashboard.html) and 404.
         foot = (f'<a class="btn btn-primary btn-sm" href="/{html.escape(a["slug"])}/dashboard.html">Dashboard</a>'
                 f'<a class="btn btn-secondary btn-sm" href="/{html.escape(a["slug"])}/brief.html">Brief</a>'
                 f'<span class="text-muted" style="margin-left:auto;font-size:11.5px">'
@@ -2797,7 +2801,7 @@ if __name__ == "__main__":
                          "with nothing collected yet still appear (default: the lake's own configs/ "
                          "prefix on S3, or ./configs when rendering a local lake)")
     ap.add_argument("--out-dir", default="site",
-                    help="directory to write login/index.html and <slug>/ into")
+                    help="directory to write accounts/index.html and <slug>/ into")
     ap.add_argument("--window-days", type=int, default=DEFAULT_WINDOW_DAYS,
                     help="how far back the comparison reaches: the page compares the latest snapshot "
                          "against the most recent one at least this old, so the delta measures drift "
@@ -2813,7 +2817,7 @@ if __name__ == "__main__":
         sys.exit(f"no accounts found — no SourceConfigs and no snapshots at {args.source}")
 
     os.makedirs(args.out_dir, exist_ok=True)
-    home_path = os.path.join(args.out_dir, "login", "index.html")
+    home_path = os.path.join(args.out_dir, "accounts", "index.html")
     os.makedirs(os.path.dirname(home_path), exist_ok=True)
     with open(home_path, "w") as f:
         f.write(render_home(accounts))

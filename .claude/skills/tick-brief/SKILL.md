@@ -65,7 +65,7 @@ Run everything from the project root. The lake is a local backup, e.g.
    weeks so versions compare like for like.
 
 6. **Preview** in the real page design:
-   `python3 $S/preview.py $L --serve 8765` → http://127.0.0.1:8765/login/
+   `python3 $S/preview.py $L --serve 8765` → http://127.0.0.1:8765/accounts/
    Renders the whole site from the local lake into `local-data/preview/`,
    using each company's newest brief that passes check.py and the
    rule-based brief otherwise. Re-run it after regenerating a brief.

@@ -240,7 +240,7 @@ jobs:
             [ "$code" = "200" ] || { echo "::error::$p returned $code, expected 200"; fail=1; }
           done
           # A 200 here is a client-data leak, not a cosmetic bug.
-          for p in /login /dunder-mifflin/dashboard.html /dunder-mifflin/brief.html; do
+          for p in /accounts /login /dunder-mifflin/dashboard.html /dunder-mifflin/brief.html; do
             out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$SITE$p")
             echo "guarded $p -> $out"
             case "$out" in

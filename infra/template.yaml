@@ -568,43 +568,65 @@ Resources:
         function handler(event) {
           var request = event.request;
           // Keep what the viewer actually asked for: the login round trip sends
-          // them back to "/login", not to the "/login/index.html" it resolves to.
+          // them back to "/dunder-mifflin/archive/DM-2001", not to the ".../index.html" it
+          // resolves to.
           var asked = request.uri;
           request.uri = resolve(request.uri);
 
+          // The front doors: "/" (the marketing page) and "/login" (the way
+          // in). A signed-in viewer is past both, so either sends them to
+          // their accounts. Only these two pay for a session check before
+          // the public pass, so /docs and /demo stay a string compare.
+          var front = request.uri === '/index.html' || request.uri === '/login/index.html';
+          if (isPublic(request.uri) && !front) {
+            return request;
+          }
+          var scope = sessionScope(request);
+          if (front && scope !== null) {
+            return redirect('/accounts');
+          }
           if (isPublic(request.uri)) {
             return request;
           }
+          if (scope !== null) {
+            return authorize(request, scope);
+          }
+          // Signing in from /login lands on the accounts home, not back on /login.
+          var next = request.uri === '/login/index.html' ? '/accounts' : asked;
+          return redirect('/auth/login?next=' + encodeURIComponent(next));
+        }
 
+        // The scope a valid session cookie carries, or null. The cookie is
+        // <sub>:<scope>:<exp>.<hmac>; a two-part cookie predates per-account
+        // access and carries no scope, so it counts as signed out.
+        function sessionScope(request) {
           var jar = request.cookies || {};
           var session = jar.tick_session ? jar.tick_session.value : '';
           var split = session.lastIndexOf('.');
-
-          if (split > 0) {
-            var payload = session.substring(0, split);
-            var signature = session.substring(split + 1);
-            var expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
-            // <sub>:<scope>:<exp>. A two-part cookie predates per-account
-            // access and carries no scope, so it is sent to sign in again.
-            var parts = payload.split(':');
-            if (expected === signature && parts.length === 3
-                && parseInt(parts[2], 10) * 1000 > Date.now()) {
-              return authorize(request, parts[1]);
-            }
+          if (split <= 0) {
+            return null;
           }
-
-          return redirect('/auth/login?next=' + encodeURIComponent(asked));
+          var payload = session.substring(0, split);
+          var signature = session.substring(split + 1);
+          var expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
+          var parts = payload.split(':');
+          if (expected === signature && parts.length === 3
+              && parseInt(parts[2], 10) * 1000 > Date.now()) {
+            return parts[1];
+          }
+          return null;
         }
 
         // A signed-in viewer may open their own accounts and nothing else.
         // scope is "*" (admin) or the sorted, comma-joined slugs they hold.
-        // /login is served from the home the publisher rendered for exactly
-        // this scope; home/ is never reachable by its own name, and a page
-        // under another account's /<slug>/ sends the viewer back to their
-        // own home rather than confirming that the account exists.
+        // /accounts is served from the home the publisher rendered for
+        // exactly this scope; home/ is never reachable by its own name, and a
+        // page under another account's /<slug>/ sends the viewer back to their
+        // own home rather than confirming that the account exists. That makes
+        // "accounts", "home" and "login" unusable as company slugs.
         function authorize(request, scope) {
           var uri = request.uri;
-          if (uri === '/login/index.html') {
+          if (uri === '/accounts/index.html') {
             var key = crypto.createHash('sha256').update(scope).digest('hex').substring(0, 16);
             request.uri = '/home/' + key + '/index.html';
             return request;
@@ -615,12 +637,12 @@ Resources:
           }
           var account = uri.substring(1, slash);
           if (account === 'home') {
-            return redirect('/login');
+            return redirect('/accounts');
           }
           if (scope === '*' || (',' + scope + ',').indexOf(',' + account + ',') !== -1) {
             return request;
           }
-          return redirect('/login');
+          return redirect('/accounts');
         }
 
         function redirect(location) {

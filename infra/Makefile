@@ -5,9 +5,9 @@
 # The site bucket holds two kinds of page and only one of them is generated:
 #
 #   /            /docs  /demo      hand-authored marketing, this Makefile
-#   /login  /<slug>/dashboard.html rendered nightly by the publisher Lambda
+#   /accounts  /<slug>/dashboard.html rendered nightly by the publisher Lambda
 #
-# They never collide — the publisher writes login/index.html and <slug>/ keys
+# They never collide — the publisher writes home/<key>/index.html and <slug>/ keys
 # and nothing else, so it cannot overwrite these, and --delete is scoped to the
 # two generated-free prefixes so this cannot delete the app.
 #

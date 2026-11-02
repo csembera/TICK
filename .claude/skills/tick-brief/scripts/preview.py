@@ -50,7 +50,7 @@ def build(lake: str, briefs_dir: str, out: str) -> None:
     configs = os.path.join(lake, "configs")
     accounts = report.build_accounts(
         report.load_configs(configs if os.path.isdir(configs) else None, io), io)
-    pages = {"login/index.html": report.render_home(accounts),
+    pages = {"accounts/index.html": report.render_home(accounts),
              "404.html": report.render_404()}
     for a in accounts:
         if not a["has_pages"]:
@@ -87,7 +87,7 @@ def serve(out: str, port: int) -> None:
             self.end_headers()
             self.wfile.write(b'{"ok": true}')
 
-    print(f"serving http://127.0.0.1:{port}/login/", flush=True)
+    print(f"serving http://127.0.0.1:{port}/accounts/", flush=True)
     http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
