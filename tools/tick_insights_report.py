@@ -1040,14 +1040,22 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .section-label{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
 .wrap{max-width:1280px;margin:0 auto;padding:0 24px 60px}
 .wrap.narrow{max-width:940px}
-.nav{display:flex;align-items:center;gap:26px;padding:11px 24px;background:var(--color-accent-900);color:var(--color-bg);margin-bottom:0;flex-wrap:wrap}
-.nav-brand{font-family:var(--font-heading);font-weight:600;font-size:18px;letter-spacing:.06em}
-.nav-badge{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--color-accent);border:1px solid var(--color-accent);padding:2px 7px;font-family:var(--font-heading)}
-.nav-tabs{margin-left:auto;display:flex;gap:22px;align-items:center;flex-wrap:wrap}
-.nav-tabs a{color:color-mix(in srgb,#f2f2f3 82%,transparent);text-decoration:none;font-size:14px;padding-bottom:2px}
-.nav-tabs a:hover{color:#fff}
-.nav-tabs a[aria-current='page']{color:#fff;border-bottom:2px solid var(--color-accent)}
-.nav :focus-visible{outline-color:#fff}
+/* menu bar: a twin of the one in infra/site-static/demo/ (the source of truth),
+   colors pinned to that page's palette. Change both — see CLAUDE.md. */
+.nav{display:flex;align-items:center;gap:28px;padding:16px 32px;
+  background:#080d12;border-bottom:1px solid rgba(158,186,214,.14);margin-bottom:0;flex-wrap:wrap}
+.nav-brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-heading);font-weight:700;font-size:25px;letter-spacing:.14em;color:#eef2f5}
+.nav-brand svg{display:block;width:26px;height:26px;flex:none;color:#86aace}
+.nav-tabs{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.nav-tabs a{color:#9aa9b8;text-decoration:none;font-size:18px;padding-bottom:2px}
+.nav-tabs a:hover{color:#eef2f5}
+.nav-tabs a[aria-current='page']{color:#eef2f5;border-bottom:2px solid #86aace}
+/* min-height: the demo's Get started pill is 48px tall; without it the bar is
+   8px shorter here and the tabs jump between the demo and the app */
+.nav-auth{margin-left:auto;display:flex;align-items:center;gap:20px;min-height:48px}
+.nav-login{font-family:var(--font-body);font-size:18px;color:#9aa9b8;background:none;border:0;padding:6px 2px;cursor:pointer;text-decoration:none;display:inline-block}
+.nav-login:hover{color:#eef2f5}
+.nav :focus-visible{outline-color:#eef2f5}
 .crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:color-mix(in srgb,var(--color-text) 50%,transparent);margin:18px 0 12px}
 .hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--color-divider)}
 .blueprint{position:relative;border:1px solid var(--color-divider)}
@@ -1165,8 +1173,10 @@ a{color:var(--color-accent);text-underline-offset:3px}
 @media (max-width:980px){.grid,.grid.narrative{grid-template-columns:1fr}.stack-grid{grid-template-columns:1fr}}
 @media (max-width:620px){
   .wrap{padding:0 16px 44px}
-  .nav{gap:12px;padding:10px 16px}
-  .nav-tabs{gap:16px;margin-left:0;width:100%}
+  .nav{gap:10px 16px;padding:12px 20px}
+  .nav-tabs{order:3;flex:1 0 100%;flex-wrap:nowrap;overflow-x:auto;gap:22px;scrollbar-width:none}
+  .nav-tabs a{font-size:16px;white-space:nowrap}
+  .nav-auth{gap:14px}
   .tbl-controls input[type=search]{width:100%}
   .hdr h1{font-size:26px!important}
 }
@@ -1188,15 +1198,16 @@ a{color:var(--color-accent);text-underline-offset:3px}
 """
 
 
-# TICK mark: a rising step line on the navy field, so a pinned tab reads as the
-# product rather than as a blank page icon. Inlined as a data URI — one fewer
-# request, and no 404 when the site is served from a subdirectory.
+# TICK mark, the same step line as the menu bar's brand: navy on a light tab
+# strip, pale blue on a dark one. Identical to the icon on every page in
+# infra/site-static/ — change both. Inlined as a data URI: one fewer request,
+# and no 404 when the site is served from a subdirectory.
 _FAVICON = (
     "data:image/svg+xml,"
     "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E"
-    "%3Crect width='32' height='32' fill='%231d2d3d'/%3E"
-    "%3Cpath d='M6 22h5v-6h5v-4h5V7h5' fill='none' stroke='%235980a6'"
-    " stroke-width='2.6' stroke-linejoin='miter'/%3E%3C/svg%3E"
+    "%3Cstyle%3E.p%7Bstroke:%23456e99%7D@media(prefers-color-scheme:dark)%7B.p%7Bstroke:%2386aace%7D%7D%3C/style%3E"
+    "%3Cpath class='p' d='M2 19h6.5l4-12 4.5 17 3.5-10H30' fill='none' stroke-width='3'"
+    " stroke-linejoin='miter' stroke-linecap='square'/%3E%3C/svg%3E"
 )
 
 
@@ -1211,7 +1222,7 @@ def _head(title: str, description: str) -> str:
 <title>{t}</title>
 <meta name="description" content="{d}">
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#1d2d3d">
+<meta name="theme-color" content="#080d12">
 <meta name="robots" content="noindex, nofollow">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="TICK">
@@ -1424,21 +1435,30 @@ def _corners() -> str:
     return '<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>'
 
 
-def _nav(active: str, prefix: str = "") -> str:
-    """prefix is vestigial — the home page link is root-absolute now, because
-    "/" belongs to the public marketing page and the app starts at APP_HOME."""
+_NAV_MARK = ('<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">'
+             '<path d="M2 19h6.5l4-12 4.5 17 3.5-10H30" fill="none" stroke="currentColor" '
+             'stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/></svg>')
+
+
+def _nav(active: str, account: str = "", signed_in: bool = True) -> str:
+    """The menu bar of infra/site-static/demo/, with the app's links: account
+    pages get that account's Dashboard and Brief, and the right side says Sign
+    out where the demo says Log in / Get started. Links are root-absolute, so
+    they resolve the same from /<slug>/brief.html and an archive page. The 404
+    page cannot know whether its reader is signed in, so it offers Log in."""
     def tab(label, href, key):
         cur = ' aria-current="page"' if key == active else ""
         return f'<a href="{href}"{cur}>{label}</a>'
     tabs = [tab("Accounts", APP_HOME, "home")]
-    if active in ("dashboard", "brief"):
-        tabs += [tab("Dashboard", "dashboard.html", "dashboard"),
-                 tab("Brief", "brief.html", "brief")]
-    tabs += [tab("Sign out", "/auth/logout", "logout")]
-    return (f'<div class="nav"><a class="nav-brand" href="{APP_HOME}" '
-            f'style="color:inherit;text-decoration:none">TICK</a>'
-            f'<span class="nav-badge">Targeted Intelligence Companion Kit</span>'
-            f'<div class="nav-tabs">{"".join(tabs)}</div></div>')
+    if account:
+        tabs += [tab("Dashboard", f"/{account}/dashboard.html", "dashboard"),
+                 tab("Brief", f"/{account}/brief.html", "brief")]
+    tabs.append(tab("Docs", "/docs", "docs"))
+    auth = ('<a class="nav-login" href="/auth/logout">Sign out</a>' if signed_in
+            else f'<a class="nav-login" href="{APP_HOME}">Log in</a>')
+    return (f'<div class="nav"><a class="nav-brand" href="/" style="text-decoration:none">'
+            f'{_NAV_MARK}<span>TICK</span></a><div class="nav-tabs">{"".join(tabs)}</div>\n'
+            f'  <div class="nav-auth">\n    {auth}\n  </div>\n</div>')
 
 
 # Shared by the brief/dashboard copy buttons and the home page's command copier.
@@ -1688,7 +1708,7 @@ def render_archive_page(r: dict, company: str, company_name: str, generated: str
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-{_nav("archive")}
+{_nav("archive", company)}
 <div class="wrap narrow">
   <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><a href="{dash}">{html.escape(company_name)}</a><span>/</span><a href="{dash}#archive">Archive</a><span>/</span><span style="color:var(--color-text)">{html.escape(r["pid"])}</span></div>
   <main id="main">
@@ -1890,7 +1910,7 @@ def render_dashboard(lake: dict, company: str) -> str:
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-{_nav("dashboard", "../")}
+{_nav("dashboard", company)}
 <div class="wrap">
   <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Dashboard</span></div>
   <main id="main">
@@ -2324,7 +2344,7 @@ def render_brief(lake: dict, company: str) -> str:
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-{_nav("brief", "../")}
+{_nav("brief", company)}
 <div class="wrap narrow">
   <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Brief</span></div>
   <main id="main">
@@ -2680,7 +2700,7 @@ def render_ai_brief(brief: dict, evidence: dict) -> str:
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-{_nav("brief", "../")}
+{_nav("brief", evidence["company"]["slug"])}
 <div class="wrap narrow">
   <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Brief</span></div>
   <main id="main">
@@ -2743,7 +2763,7 @@ def render_404() -> str:
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-{_nav("none", "/")}
+{_nav("none", signed_in=False)}
 <div class="wrap narrow">
   <main id="main">
   <div class="hdr" style="border:0">

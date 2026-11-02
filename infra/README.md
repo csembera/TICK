@@ -391,6 +391,22 @@ the window — a board collecting for three days — it compares against the old
 snapshot it has and labels the real dates, so a short window is visible rather
 than being claimed as a full one.
 
+### One menu bar, several copies
+
+Every page shares the menu bar and tab icon of `/demo`, but nothing generates
+them from one file. They are copied into:
+
+| Copy | Where |
+|---|---|
+| Source of truth | `site-static/demo/**` (`.nav` CSS and markup, `<link rel="icon">`) |
+| Marketing and docs | `site-static/index.html`, `site-static/docs/index.html`: brand and icon (their tabs are their own) |
+| App pages | `_nav`, the `.nav` rules in `_STYLE`, and `_FAVICON` in `../tools/tick_insights_report.py` |
+| Auth error page | `page()` in `src/auth/app.py`: brand, Docs and icon only |
+
+Change them together. The app's bar differs from the demo's in its links only:
+each account's own Dashboard and Brief tabs, and **Sign out** where the demo
+has **Log in** / **Get started**.
+
 ### Render locally
 
 To see a branch or PR as a site, use
