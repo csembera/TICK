@@ -37,8 +37,9 @@ except ImportError as e:  # pragma: no cover
     print(f"missing dependency ({e}) — run: .venv/bin/pip install httpx pydantic", file=sys.stderr)
     sys.exit(1)
 
-from tick_common import (URL_TOKEN, collector_headers, description_html, format_report,
-                         locate_postings, merge_detail, prune_format, resolve_field, spread)
+from tick_common import (URL_TOKEN, collect_taleo, collector_headers, description_html,
+                         format_report, locate_postings, merge_detail, prune_format,
+                         resolve_field, spread)
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.7
 
@@ -46,12 +47,20 @@ CONFIDENCE_REVIEW_THRESHOLD = 0.7
 # postings_key of null means "the payload is the posting list". Emitting them
 # as null on every config would change what the collector does, so they are
 # written only when the draft set them.
-PASSTHROUGH_IF_SET = ("postings_key", "timeout_s", "description_field", "description_format", "synthetic")
+PASSTHROUGH_IF_SET = ("postings_key", "timeout_s", "description_field", "description_format",
+                      "portals", "synthetic")
 
 ATS = Literal[
     "workday", "greenhouse", "lever", "ashby", "workable",
-    "smartrecruiters", "adp", "dayforce", "other",
+    "smartrecruiters", "adp", "dayforce", "taleo", "other",
 ]
+
+
+class TaleoPortal(BaseModel):
+    """One Taleo career section: the portal id its search takes, and the
+    section code in its job page URLs (careersection/<section>/jobdetail.ftl)."""
+    portal: str
+    section: str
 
 
 class SchemaMap(BaseModel):
@@ -104,6 +113,7 @@ class SourceConfigDraft(BaseModel):
     postings_key: Optional[str] = None
     timeout_s: Optional[float] = None
     description_field: Optional[str] = None
+    portals: Optional[list[TaleoPortal]] = None
     schema_map: Optional[SchemaMap] = None
     description_format: Optional[DescriptionFormat] = None
     careers_url: Optional[str] = None
@@ -166,33 +176,11 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 
     # exactly the collector's headers: the gate re-executes the config as it will run
     hdrs = collector_headers(draft.model_dump())
     v.ran = True
-    try:
-        with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
-            r = c.request(draft.http_method, draft.endpoint, json=draft.request_body)
-    except Exception as e:
-        v.findings.append(f"endpoint unreachable: {type(e).__name__}: {e}")
-        return v
-
-    v.status = r.status_code
-    v.content_type = r.headers.get("content-type")
-    if r.status_code != 200:
-        v.findings.append(f"endpoint returned HTTP {r.status_code}, not 200")
-        return v
-    try:
-        data = r.json()
-    except Exception:
-        v.findings.append(
-            f"endpoint returned {v.content_type or 'non-JSON'}, not JSON — "
-            "the collector calls json.loads on this and will raise")
-        return v
-
-    v.parsed_json = True
-    postings, container = locate_postings(data)
+    postings = (_collect_taleo(draft, hdrs, v) if draft.ats == "taleo"
+                else _collect_one(draft, hdrs, v))
     v.postings_found = len(postings)
     if not postings:
-        v.findings.append("endpoint returned JSON but no posting list was found in it")
         return v
-    v.findings.append(f"{len(postings)} postings under '{container}'")
 
     sm = draft.schema_map
     if not sm:
@@ -260,6 +248,67 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 
     return v
 
 
+def _collect_one(draft: SourceConfigDraft, hdrs: dict, v: Verification) -> list:
+    """The posting list from one request to the endpoint, as the collector
+    makes it for every ATS without a paging branch."""
+    try:
+        with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
+            r = c.request(draft.http_method, draft.endpoint, json=draft.request_body)
+    except Exception as e:
+        v.findings.append(f"endpoint unreachable: {type(e).__name__}: {e}")
+        return []
+
+    v.status = r.status_code
+    v.content_type = r.headers.get("content-type")
+    if r.status_code != 200:
+        v.findings.append(f"endpoint returned HTTP {r.status_code}, not 200")
+        return []
+    try:
+        data = r.json()
+    except Exception:
+        v.findings.append(
+            f"endpoint returned {v.content_type or 'non-JSON'}, not JSON — "
+            "the collector calls json.loads on this and will raise")
+        return []
+
+    v.parsed_json = True
+    postings, container = locate_postings(data)
+    if not postings:
+        v.findings.append("endpoint returned JSON but no posting list was found in it")
+        return []
+    v.findings.append(f"{len(postings)} postings under '{container}'")
+    return postings
+
+
+def _collect_taleo(draft: SourceConfigDraft, hdrs: dict, v: Verification) -> list:
+    """Every page of every career section, through the collector's taleo.py.
+    A failed page, or a section short of its own total, raises there and the
+    collector's run fails; here it fails the gate."""
+    cfg = draft.model_dump()
+    if not cfg.get("portals"):
+        v.findings.append("taleo config lists no portals — the collector would collect nothing")
+        return []
+    try:
+        with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
+            def get_json(url, method="GET", body=None):
+                r = c.request(method, url, json=body)
+                v.status, v.content_type = r.status_code, r.headers.get("content-type")
+                r.raise_for_status()
+                return r.json()
+            postings, reported = collect_taleo(cfg, get_json)
+    except Exception as e:
+        v.findings.append(f"taleo collection failed: {type(e).__name__}: {e}")
+        return []
+
+    v.parsed_json = True
+    if not postings:
+        v.findings.append("every career section returned an empty posting list")
+        return []
+    v.findings.append(f"{len(postings)} postings across {len(cfg['portals'])} career sections "
+                      f"(the sections reported {reported})")
+    return postings
+
+
 def verify_descriptions(draft: SourceConfigDraft, postings: list, hdrs: dict, n: int) -> DescriptionCheck:
     """Sample descriptions as the collector fetches them and check the format.
 
@@ -272,9 +321,14 @@ def verify_descriptions(draft: SourceConfigDraft, postings: list, hdrs: dict, n:
             r = c.request(method, url, json=body)
             r.raise_for_status()
             return r.json()
+
+        def get_text(url):
+            r = c.get(url)
+            r.raise_for_status()
+            return r.text
         for posting in spread(postings, n):
             try:
-                h = description_html(cfg, posting, get_json)
+                h = description_html(cfg, posting, get_json, get_text)
             except Exception:
                 errors += 1
                 continue

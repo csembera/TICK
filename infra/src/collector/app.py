@@ -22,9 +22,9 @@ a run that fails partway leaves it untouched, and the retry recomputes the
 same changes.
 
 Descriptions keep their structure: raw/ holds each posting's original HTML
-(for Workday, fetched per posting and attached before raw/ is written), and
-every curated row carries `description`, its labelled sections (see
-description.py). The flat `description_raw` text is written only when parsing
+(for Workday and Taleo, fetched per posting and attached before raw/ is
+written), and every curated row carries `description`, its labelled sections
+(see description.py). The flat `description_raw` text is written only when parsing
 fails; readers go through the renderer's parsed_description()/full_text_of().
 Keywords come from the title and the role text, not the board's boilerplate.
 
@@ -42,6 +42,7 @@ import urllib.request
 from datetime import date, datetime, timezone
 
 import description
+import taleo
 
 BUCKET = os.environ.get("BUCKET_NAME")
 LOCAL_DIR = os.environ.get("LOCAL_OUTPUT_DIR")
@@ -108,6 +109,22 @@ def _http_json(url: str, method: str = "GET", body: dict | None = None,
         return json.loads(resp.read().decode())
 
 
+def _http_text(url: str, headers: dict | None = None, timeout: int | None = None) -> str:
+    """GET a page as text, with the same headers as _http_json, so the
+    evaluator's gate (which sends that one header set) fetches the same page."""
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": _UA,
+            **(headers or {}),
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout or _TIMEOUT_S) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
 def fetch_all(config: dict) -> tuple[list, int]:
     """Pull every live posting for one company, per its SourceConfig."""
     ats = config.get("ats")
@@ -165,6 +182,12 @@ def fetch_all(config: dict) -> tuple[list, int]:
             offset += limit
             pages += 1
         return postings, total
+
+    if ats == "taleo":
+        # Every career section in config['portals'], every page: see taleo.py.
+        return taleo.fetch_all(
+            config, lambda url, body: _http_json(url, "POST", body, headers, timeout),
+            MAX_PAGES)
 
     data = _http_json(endpoint, config.get("http_method", "GET"),
                       config.get("request_body"), headers, timeout)
@@ -224,6 +247,9 @@ def normalize(posting: dict, config: dict, captured: str) -> dict:
 
     title = f("title") or ""
     location = f("location") or ""
+    posted_on = f("posted_on")
+    if config.get("ats") == "taleo":
+        location, posted_on = taleo.location_text(location), taleo.iso_date(posted_on)
 
     # schema_map.url is either a field path ('externalPath') or a template with
     # {field} placeholders ('https://host/job?reqId={reqId}') for sources that
@@ -253,7 +279,7 @@ def normalize(posting: dict, config: dict, captured: str) -> dict:
         "location": location,
         "remote_flag": "remote" in f"{location} {title}".lower(),
         "url": url,
-        "posted_on": f("posted_on"),
+        "posted_on": posted_on,
         "date_trust": config.get("date_trust"),
         "captured_dt": captured,
         "description_raw": None,
@@ -288,6 +314,17 @@ def fetch_workday_description(config: dict, external_path) -> str | None:
     except Exception:
         return None
     return (data.get("jobPostingInfo") or {}).get("jobDescription") or None
+
+
+def fetch_taleo_description(config: dict, posting: dict) -> str | None:
+    """GET a Taleo posting's job page and return the description HTML it
+    embeds. None on any failure, as for Workday."""
+    try:
+        page = _http_text(taleo.detail_url(config["detail_endpoint"], posting),
+                          config.get("request_headers"), config.get("timeout_s"))
+    except Exception:
+        return None
+    return taleo.description(page)
 
 
 # Tech-stack / cloud taxonomy (design doc Phase 4). Categories are additive
@@ -365,6 +402,7 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
     # ADP descriptions arrive with the detail payload fetch_all already merged,
     # so there is nothing extra to fetch (and nothing to sleep between).
     adp = ats == "adp" and FETCH_DESCRIPTIONS
+    taleo_pages = ats == "taleo" and FETCH_DESCRIPTIONS and bool(config.get("detail_endpoint"))
     # description_field is a resolve_field expr naming a description already in
     # the posting payload, for boards that ship it inline with the listing. It
     # costs no extra request, so it wins over the per-ATS defaults.
@@ -381,6 +419,11 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
             time.sleep(_DETAIL_DELAY_S)
         elif adp:
             raw_html = posting.get("jobDescription")
+        elif taleo_pages:
+            raw_html = fetch_taleo_description(config, posting)
+            if raw_html:
+                posting["jobDescription"] = raw_html   # so raw/ keeps it
+            time.sleep(_DETAIL_DELAY_S)
         text = _html_text(raw_html) if isinstance(raw_html, str) else None
         if text:
             try:

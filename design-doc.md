@@ -38,6 +38,7 @@ Two collection modes, combined:
 - Greenhouse — predictable board URLs and a public JSON API per company
 - Lever — similar public postings endpoint per company
 - Ashby, Workday, Workable, SmartRecruiters — each has its own pattern
+- Oracle Taleo — a REST search per career section that pages at a fixed size; descriptions sit in each job page
 - Custom/hand-rolled pages — fall back to HTML parsing or a headless browser
 
 Direct collection is the backbone: it's the cleanest data and ties unambiguously to one company.
