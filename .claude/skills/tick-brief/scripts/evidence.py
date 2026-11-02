@@ -83,10 +83,17 @@ def build(source: str, slug: str, week_end: str | None = None) -> dict:
                            for l in get_text(key).splitlines() if l.strip()}
         return _cache[key]
 
+    # postings that opened and closed between two runs on one day (collector)
+    departed_keys = {_dt(k): k for k in keys if k.endswith("departed.jsonl") and f"company={slug}/" in k}
+
     def latest_record(pid: str, on_or_before: str) -> dict | None:
         for k in curated_keys:
-            if _dt(k) <= on_or_before and pid in curated_at(k):
-                return curated_at(k)[pid]
+            if _dt(k) <= on_or_before:
+                if pid in curated_at(k):
+                    return curated_at(k)[pid]
+                dk = departed_keys.get(_dt(k))
+                if dk and pid in curated_at(dk):
+                    return curated_at(dk)[pid]
         return None
 
     board_now = curated_at(curated_keys[0]) if curated_keys else {}

@@ -181,8 +181,10 @@ def open_lake(source: str) -> dict:
         # followlinks: tools/preview.py stages draft briefs over a lake of symlinks
         keys = [os.path.join(dp, f) for dp, _, files in os.walk(source, followlinks=True)
                 for f in files]
-        get = lambda k: json.load(open(k))
-        get_text = lambda k: open(k).read()
+        def get_text(k):
+            with open(k) as f:
+                return f.read()
+        get = lambda k: json.loads(get_text(k))
     return {"keys": keys, "get": get, "get_text": get_text}
 
 
@@ -318,6 +320,9 @@ def load_lake(source: str, company: str, lake_io: dict | None = None,
     # Each partition is read once however many closed reqs it holds.
     closed_ids = {pid: st for pid, st in state.items() if st.get("closed_on")}
     curated_by_dt = _partition_map(keys, "postings.jsonl", company)
+    # a req that opened and closed between two runs on the same day is in that
+    # day's departed.jsonl, not its postings.jsonl (see the collector)
+    departed_by_dt = _partition_map(keys, "departed.jsonl", company)
     loaded = {}
     if curateds:
         loaded[curated_dt] = curated
@@ -329,9 +334,12 @@ def load_lake(source: str, company: str, lake_io: dict | None = None,
             continue
         if dt not in loaded:
             loaded[dt] = _read_curated(curated_by_dt[dt])
+        day = loaded[dt]
+        if dt in departed_by_dt:
+            day = {**_read_curated(departed_by_dt[dt]), **day}
         for pid, st in closed_ids.items():
-            if st.get("last_seen") == dt and pid in loaded[dt]:
-                archive[pid] = loaded[dt][pid]
+            if st.get("last_seen") == dt and pid in day:
+                archive[pid] = day[pid]
     return {"curr": curr, "prev": prev, "series": series, "history": history,
             "diff": diff, "state": state, "curated": curated,
             "curated_dt": curated_dt, "curated_prev": curated_prev, "people": people,
