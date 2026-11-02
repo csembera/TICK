@@ -393,6 +393,12 @@ than being claimed as a full one.
 
 ### Render locally
 
+To see a branch or PR as a site, use
+[../tools/preview.py](../tools/preview.py). It syncs the lake into
+`local-data/lake`, renders with that version's renderer and serves the result
+alongside `site-static/` on localhost: `python tools/preview.py <branch|PR#>`
+from the repo root.
+
 The renderer is [../tools/tick_insights_report.py](../tools/tick_insights_report.py) — the
 same file the Lambda runs, symlinked in as `src/publisher/report.py` so there
 is no second copy to drift. It reads S3 or a local lake:

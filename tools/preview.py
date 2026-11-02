@@ -1,0 +1,145 @@
+"""
+Serve any version of TICK on localhost: the public pages from site-static/
+plus the app pages rendered from the lake, laid out as the site bucket is.
+
+    python tools/preview.py               # the working tree, uncommitted edits included
+    python tools/preview.py my-branch     # any branch, tag or commit
+    python tools/preview.py 12            # pull request #12
+      --refresh     sync the data bucket into local-data/lake first
+      --lake PATH   render from another local lake
+      --port N      default 8000
+
+A ref is checked out into a temporary git worktree and rendered with its own
+copy of the renderer, so the preview shows that version's code against
+today's data. The lake is a local copy of the data bucket (raw/ skipped: the
+renderer never reads it) under the gitignored local-data/; nothing leaves the
+machine and the server binds to 127.0.0.1 only.
+
+Not previewed: the CloudFront edge, Cognito sign-in and per-viewer scoping.
+/login lists every account, and the account-request form gets a stub 200.
+"""
+
+import argparse
+import functools
+import http.server
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import webbrowser
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LAKE = os.path.join(ROOT, "local-data", "lake")
+OUT = os.path.join(ROOT, "local-data", "preview-site")
+STACK = "tick-collector"
+STATIC = ["index.html", "og-image.png", "docs", "demo"]   # what make publish-static deploys
+
+
+def run(*cmd, **kw) -> str:
+    return subprocess.run(cmd, check=True, text=True, capture_output=True, **kw).stdout.strip()
+
+
+def sync_lake(lake: str) -> None:
+    bucket = run("aws", "cloudformation", "describe-stacks", "--stack-name", STACK,
+                 "--query", "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue",
+                 "--output", "text")
+    print(f"→ syncing s3://{bucket} into {os.path.relpath(lake, ROOT)} (raw/ skipped)", flush=True)
+    subprocess.run(["aws", "s3", "sync", f"s3://{bucket}/", lake, "--exclude", "raw/*",
+                    "--delete", "--only-show-errors"], check=True)
+
+
+def checkout(ref: str) -> tuple[str, str]:
+    """(worktree dir, commit) for a branch, tag, commit or PR number."""
+    if ref.isdigit():
+        run("git", "fetch", "-q", "origin", f"pull/{ref}/head", cwd=ROOT)
+        commit = run("git", "rev-parse", "FETCH_HEAD", cwd=ROOT)
+    else:
+        subprocess.run(["git", "fetch", "-q", "origin"], cwd=ROOT)   # offline is fine
+        try:
+            commit = run("git", "rev-parse", "--verify", f"origin/{ref}^{{commit}}", cwd=ROOT)
+        except subprocess.CalledProcessError:
+            commit = run("git", "rev-parse", "--verify", f"{ref}^{{commit}}", cwd=ROOT)
+    tree = tempfile.mkdtemp(prefix="tick-preview-")
+    run("git", "worktree", "add", "-q", "--detach", tree, commit, cwd=ROOT)
+    return tree, commit
+
+
+def build(code: str, lake: str, out: str) -> None:
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    static = os.path.join(code, "infra", "site-static")
+    for name in STATIC:
+        src = os.path.join(static, name)
+        if os.path.isdir(src):
+            shutil.copytree(src, os.path.join(out, name))
+        elif os.path.isfile(src):
+            shutil.copy2(src, out)
+    configs = os.path.join(lake, "configs")
+    subprocess.run([sys.executable, os.path.join(code, "tools", "tick_insights_report.py"), lake,
+                    "--out-dir", out, *(["--configs", configs] if os.path.isdir(configs) else [])],
+                   check=True, cwd=code)
+
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def do_POST(self):   # /api/join and /api/account-request
+        self.rfile.read(int(self.headers.get("content-length", 0)))
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"ok": true}')
+
+    def send_error(self, code, message=None, explain=None):
+        page = os.path.join(self.directory, "404.html")
+        if code != 404 or not os.path.isfile(page):
+            return super().send_error(code, message, explain)
+        body = open(page, "rb").read()
+        self.send_response(404)
+        self.send_header("content-type", "text/html; charset=utf-8")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Serve a branch, PR or the working tree on localhost")
+    ap.add_argument("ref", nargs="?", help="branch, tag, commit or PR number (default: the working tree)")
+    ap.add_argument("--refresh", action="store_true", help="sync the data bucket into the lake first")
+    ap.add_argument("--lake", default=LAKE, help="local lake to render from (default: local-data/lake)")
+    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--no-open", action="store_true", help="do not open a browser")
+    args = ap.parse_args()
+
+    lake = os.path.abspath(args.lake)
+    if args.refresh or not os.path.isdir(lake):
+        if lake != LAKE:
+            sys.exit(f"{lake} does not exist (--refresh only syncs into {LAKE})")
+        sync_lake(lake)
+
+    tree = None
+    try:
+        if args.ref:
+            tree, commit = checkout(args.ref)
+            label = f"{args.ref} @ {commit[:7]}"
+        else:
+            label = "working tree"
+        build(tree or ROOT, lake, OUT)
+    finally:
+        if tree:   # the render is on disk; the checkout is no longer needed
+            subprocess.run(["git", "worktree", "remove", "--force", tree], cwd=ROOT)
+
+    url = f"http://127.0.0.1:{args.port}"
+    print(f"\nTICK preview of {label}\n  {url}/          public pages\n  {url}/login/    accounts home\n"
+          "Ctrl-C to stop.", flush=True)
+    server = http.server.ThreadingHTTPServer(
+        ("127.0.0.1", args.port), functools.partial(Handler, directory=OUT))
+    if not args.no_open:
+        webbrowser.open(f"{url}/login/")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
