@@ -20,7 +20,7 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 | `tools/tick_insights_report.py` | The renderer. `infra/src/publisher/report.py` is a **symlink** to it |
 | `tools/evaluator.py` | Writes a company's SourceConfig |
 | `configs/` | Gitignored local copy of the SourceConfigs. The data bucket's `configs/` prefix is the source of truth |
-| `.claude/skills/` | `tick-evaluator` (onboard a company), `tick-brief` (tune the brief prompt) |
+| `.claude/skills/` | `tick-evaluator` (onboard a company), `tick-brief` (write, check and publish every account's weekly brief; tune its prompt) |
 
 ## Invariants. Do not break these without saying so in the plan
 
@@ -36,6 +36,10 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 - **The two halves of the site bucket never overlap.** The publisher writes only
   `home/` and `<slug>/` keys. `publish-static` uses `--delete` only on
   `docs/` and `demo/`. New keys must keep that separation.
+- **Briefs are written by a model, never by code.** The site shows the
+  newest brief the tick-brief skill published to the lake's `briefs/` prefix,
+  or "No brief yet". A brief reaches the bucket only through `publish.py`,
+  after `check.py` passes it; never hand-fix or hand-upload one.
 - **One company failing never affects the others.** Each company gets its own
   invocation. Keep it that way.
 - **Collected data and configs stay out of git** (`out/`, `site/`, `local-data/`

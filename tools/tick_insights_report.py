@@ -15,8 +15,11 @@ page compares the latest snapshot against the most recent one at least that
 old, and plots every snapshot in between. Where history is shorter than the
 window it compares against the oldest snapshot there is and labels the real
 dates, so a short window reads as itself.
-  - Brief — per account, a narrative summary with numbered citations, each
-    pointing at the posting (or snapshot) it was derived from.
+  - Brief — per account, the newest weekly brief a model wrote with the
+    tick-brief skill and uploaded to the lake's briefs/ prefix (see
+    load_brief), its citations numbered against the evidence pack it was
+    written from. No Python writes brief prose; an account with no uploaded
+    brief gets a "No brief yet" page.
   - Archive — per closed req, its last recorded description and dates, at a
     stable address the brief can cite once the board's own link is dead.
 
@@ -33,8 +36,9 @@ Layout written under --out-dir:
 public pages in infra/site-static/, deployed separately. This renderer
 only ever writes pages that are behind the session check.
 
-No fabricated narrative — every claim in both pages traces back to a real
-posting, snapshot count, or diff. Where the lake can't support a claim
+No fabricated narrative — every claim on the dashboard traces back to a real
+posting, snapshot count, or diff, and every claim in a brief carries a
+citation that check.py verified before the brief was uploaded. Where the lake can't support a claim
 (motivations, budget ownership, etc.), it's left out rather than invented.
 
 Usage:
@@ -167,7 +171,9 @@ def open_lake(source: str) -> dict:
         get = lambda k: json.loads(s3.get_object(Bucket=bucket, Key=k)["Body"].read())
         get_text = lambda k: s3.get_object(Bucket=bucket, Key=k)["Body"].read().decode()
     else:
-        keys = [os.path.join(dp, f) for dp, _, files in os.walk(source) for f in files]
+        # followlinks: tools/preview.py stages draft briefs over a lake of symlinks
+        keys = [os.path.join(dp, f) for dp, _, files in os.walk(source, followlinks=True)
+                for f in files]
         get = lambda k: json.load(open(k))
         get_text = lambda k: open(k).read()
     return {"keys": keys, "get": get, "get_text": get_text}
@@ -517,11 +523,6 @@ _LEADERSHIP_RE = re.compile(
 )
 
 
-def leadership_postings(new_rows: list[dict]) -> list[dict]:
-    """New-since-last-crawl postings whose title reads as director/leadership level."""
-    return [r for r in new_rows if _LEADERSHIP_RE.search(r["title"])]
-
-
 _REQ_RE = re.compile(r"(?i)\b(requirements?|qualifications?)\b\s*[:.]?\s*(.+)")
 
 
@@ -667,23 +668,6 @@ def action_items(lead_closed: list[dict], lead_new: list[dict], themes: list[dic
     return items
 
 
-_NUMBER_WORDS = ("no", "one", "two", "three", "four", "five", "six", "seven",
-                 "eight", "nine", "ten")
-
-
-def _num(n: int, cap: bool = False) -> str:
-    """Small counts read better spelled out, especially at the start of a sentence."""
-    w = _NUMBER_WORDS[n] if 0 <= n < len(_NUMBER_WORDS) else str(n)
-    return w[0].upper() + w[1:] if cap and w[0].isalpha() else w
-
-
-def _join_semi(items: list[str]) -> str:
-    """Join clauses that already contain commas, so the sentence stays parseable."""
-    if len(items) <= 1:
-        return items[0] if items else ""
-    return "; ".join(items[:-1]) + f"; and {items[-1]}"
-
-
 def _join_en(items: list[str]) -> str:
     """Oxford-comma join, so generated prose reads as prose."""
     if len(items) <= 1:
@@ -758,93 +742,6 @@ def _days_between(a: str | None, b: str | None) -> int | None:
     if not a or not b:
         return None
     return (date.fromisoformat(b) - date.fromisoformat(a)).days
-
-
-def leadership_closed(rows: list[dict]) -> list[dict]:
-    """Closed reqs whose title reads as leadership level."""
-    return [r for r in rows if _LEADERSHIP_RE.search(r["title"])]
-
-
-# Initiative themes: the taxonomy is organised for matching, not for reading, so
-# terms are regrouped into the handful of programmes a reader actually cares
-# about. Specific terms win over their category (sagemaker is AI work, not AWS).
-_THEME_TERMS = {
-    "AI and machine learning": {
-        "machine learning", "generative ai", "genai", "llm", "sagemaker",
-        "bedrock", "vertex ai",
-    },
-    "legacy modernization": {
-        "migration", "modernization", "re-architect", "digital transformation",
-        "greenfield", "cloud-native",
-    },
-}
-_THEME_CATS = {
-    "cloud platform": {"cloud_aws", "cloud_azure", "cloud_gcp", "infra_devops"},
-    "data platform": {"data_platform", "analytics_tools"},
-}
-_THEME_ORDER = ["cloud platform", "data platform", "AI and machine learning",
-                "legacy modernization"]
-
-
-def initiative_themes(curr_stack: dict, cutoff: str | None = None,
-                      first_seen: dict | None = None) -> list[dict]:
-    """Group the live stack into named programmes, each with the postings
-    backing it and whichever of its terms are newly adopted.
-
-    reach = distinct postings mentioning any of the theme's terms, which is the
-    honest measure of how much of the board a programme actually touches. A term
-    list alone cannot say that: five terms in one posting is one posting.
-
-    "New" here is the term's age against `cutoff`, NOT membership of the adopting
-    bucket. Adopting excludes anything whose count dipped this window, so a
-    single closed req could push 'generative ai' into receding and quietly drop
-    it from the AI programme — reading a filled seat as fading interest."""
-    seen = first_seen or {}
-    themes: dict[str, dict] = {}
-    for cat, terms in (curr_stack or {}).items():
-        for term, pids in terms.items():
-            theme = next((t for t, ts in _THEME_TERMS.items() if term in ts), None)
-            if theme is None:
-                theme = next((t for t, cs in _THEME_CATS.items() if cat in cs), None)
-            if theme is None:
-                continue
-            e = themes.setdefault(theme, {"theme": theme, "terms": {}, "pids": set(),
-                                          "hits": {},
-                                          "new_terms": [], "dates": [], "new_dates": []})
-            e["terms"][term] = len(pids)
-            e["pids"].update(pids)
-            # how many of this theme's terms each posting carries, so the brief can
-            # cite the req that best exemplifies the theme rather than just any one
-            for pid in pids:
-                e["hits"][pid] = e["hits"].get(pid, 0) + 1
-            d = seen.get((cat, term))
-            if d:
-                e["dates"].append(d)
-                if cutoff and d > cutoff:
-                    e["new_terms"].append(term)
-                    e["new_dates"].append(d)
-    out = []
-    for t in _THEME_ORDER:
-        e = themes.get(t)
-        if not e:
-            continue
-        e["reach"] = len(e["pids"])
-        # Freeze the set into a stable order. Callers pick an exemplar posting to
-        # cite out of this collection, and iterating a set handed them a different
-        # posting on every run — three renders of one lake produced three
-        # different citations. Ordering by theme coverage makes the pick both
-        # reproducible and the most representative req available, with the id as
-        # a tie-break so equally-good candidates still resolve the same way.
-        e["pids"] = sorted(e["pids"], key=lambda pid: (-e["hits"].get(pid, 0), pid))
-        e["top_terms"] = sorted(e["terms"], key=lambda k: (-e["terms"][k], k))
-        e["new_terms"].sort(key=lambda k: (-e["terms"][k], k))
-        # when the programme first showed up at all, and when its newest piece did
-        e["since"] = min(e["dates"], default=None)
-        e["new_since"] = min(e["new_dates"], default=None)
-        e["all_new"] = len(e["new_terms"]) == len(e["terms"])
-        out.append(e)
-    out.sort(key=lambda e: -e["reach"])
-    return out
 
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
@@ -2034,375 +1931,6 @@ def render_dashboard(lake: dict, company: str) -> str:
 
 # ---------------------------------------------------------------- brief page
 
-def render_brief(lake: dict, company: str) -> str:
-    curr, prev, diff, state = lake["curr"], lake["prev"], lake["diff"], lake["state"]
-    company_name = curr["company"]
-    curr_dt, prev_dt = curr["captured_dt"], prev["captured_dt"]
-    age_cutoff = stack_age_cutoff(lake)
-    buckets = categorize_terms(curr["stack"], prev["stack"],
-                               lake.get("term_first_seen"), age_cutoff)
-    new_rows = new_postings_with_signals(diff, curr["stack"], curr["postings"], lake["curated"])
-    tech_new = [r for r in new_rows if r["is_tech_role"]]
-    domain = board_domain(curr["postings"])
-    counts = (diff or {}).get("counts", {})
-    delta = curr["postings_total"] - prev["postings_total"]
-    pct = round(100 * delta / prev["postings_total"], 1) if prev["postings_total"] else 0
-
-    cx = Citations()
-    paras = []
-    days = (date.fromisoformat(curr_dt) - date.fromisoformat(prev_dt)).days
-    period = "week" if 5 <= days <= 9 else f"{days} days"
-    opened_n, closed_n = counts.get("new", 0), counts.get("closed", 0)
-
-    closed_rows = closed_postings(diff, state)
-    lead_new = leadership_postings(new_rows)
-    lead_closed = leadership_closed(closed_rows)
-    prev_tech_ids = set((prev or {}).get("tech_role_ids", []))
-
-    def posting_url(pid: str) -> str | None:
-        """A req still on the board is cited to the board; one that has left it
-        to its archive page, since the board's own URL now answers "role not
-        found"."""
-        if pid in curr["postings"]:
-            return curr["postings"][pid].get("url")
-        if (state.get(pid) or {}).get("closed_on"):
-            return archive_href(company, pid)
-        return None
-
-    closed_tech_n = sum(1 for r in closed_rows if r["pid"] in prev_tech_ids)
-
-    diff_label = (f"Diff rollup over {days} days: {opened_n} opened, {closed_n} closed, "
-                  f"{counts.get('reopened', 0)} reopened; {curr['postings_total']} open at close of period.")
-
-    # ---------------------------------------------------------- leadership para
-    # The net-change clause used to close this sentence. It restated the delta the
-    # rail card already carries, and the paragraph reads better opening on the
-    # movement rather than on the arithmetic.
-    # Paragraph two names every opening, so stating the count here as well made the
-    # brief lead on a number the reader meets again two sentences later. This
-    # paragraph owns the closures; that one owns the openings.
-    split = (f', {_num(closed_tech_n)} of them technical'
-             if closed_rows and closed_tech_n else "")
-    lead = [
-        f'<p>Over the past {period} {html.escape(company_name)} closed {_num(closed_n)} '
-        f'role{"s" if closed_n != 1 else ""}{split}{cx.cite(diff_label)}.'
-    ]
-
-    if lead_closed:
-        named = []
-        for r in lead_closed[:3]:
-            held = f', open {r["days_open"]} days' if r["days_open"] else ""
-            named.append(f'{html.escape(r["title"])}{cx.cite(f"{r["pid"]} — {r["title"]}, closed after {r["days_open"]} days on the board." if r["days_open"] else f"{r["pid"]} — {r["title"]}, closed.", posting_url(r["pid"]))}')
-        longest = lead_closed[0]
-        lead.append(
-            f' The notable movement is at the top: {_join_en(named)} came off the board. '
-            f'A leadership req that disappears without being reposted is far more often a '
-            f'filled seat than an abandoned search'
-            f'{f", and this one had been advertised for {longest["days_open"]} days" if longest["days_open"] else ""} — '
-            f'so read {"these" if len(lead_closed) > 1 else "this"} as '
-            f'{"hires" if len(lead_closed) > 1 else "a hire"} landing, and expect the '
-            f'agenda that seat owns to start moving.')
-    if closed_rows:
-        longest_all = closed_rows[0]
-        # The leadership sentence already gives this req's age when the longest
-        # closure is also the leadership one — the usual case, and it printed
-        # "154 days" twice in consecutive sentences.
-        said_age = bool(lead_closed and lead_closed[0]["pid"] == longest_all["pid"]
-                        and lead_closed[0]["days_open"])
-        age = (f' The longest had sat open {longest_all["days_open"]} days.'
-               if longest_all["days_open"] and not said_age else "")
-        lead.append(
-            f'{age} Roles leaving the board are the half of the picture a headcount number '
-            f'hides: they say what is finished, or abandoned, not what is starting.')
-
-    if lead_new:
-        named = []
-        for r in lead_new[:3]:
-            named.append(f'{html.escape(r["title"])}{cx.cite(f"{r["pid"]} — {r["title"]}, opened this period.", r["url"])}')
-        lead.append(
-            f' Going the other way, {_join_en(named)} {"were" if len(lead_new) > 1 else "was"} '
-            f'put out this {period.split()[-1] if "day" not in period else "period"} — '
-            f'seats being created rather than backfilled, which is where the next '
-            f'budget has already been committed.')
-    if not lead_closed and not lead_new:
-        lead.append(' Nothing moved at director level or above, so the week is an '
-                    'execution week rather than a structural one.')
-    paras.append("".join(lead) + "</p>")
-
-    # ------------------------------------------------------- tech/initiative para
-    themes = initiative_themes(curr["stack"], age_cutoff, lake.get("term_first_seen"))
-    # The paragraph is about THIS WEEK's openings and the stack they moved, not a
-    # census of the standing board. Reach counts over all 39 open roles described
-    # a company rather than a week, and read the same however little had happened.
-    newest = max((e for e in themes if e["since"]), key=lambda e: e["since"], default=None)
-    prev_terms = {t for terms in (prev.get("stack") or {}).values() for t in terms}
-    board_n = {t: len(pids) for terms in (curr.get("stack") or {}).values()
-               for t, pids in terms.items()}
-    carried: list[str] = []
-
-    if new_rows:
-        named = []
-        for r in new_rows[:5]:
-            named.append(f'{html.escape(r["title"])}'
-                         + cx.cite(f'{r["pid"]} — {r["title"]} ({r["location"]}), opened this '
-                                   f'period.', r["url"]))
-        more = len(new_rows) - len(named)
-        if more > 0:
-            named.append(f'{_num(more)} other{"s" if more != 1 else ""}')
-        # semicolons, not commas: job titles carry their own commas ("Senior Data
-        # Platform Engineer, Databricks"), so a comma-joined list of them reads as
-        # one run-on and you cannot see where a title ends
-        roll = _join_semi(named) if len(named) > 1 else named[0]
-        n_tech = sum(1 for r in new_rows if r["is_tech_role"])
-        span = period.split()[-1] if "day" not in period else "period"
-        one = len(new_rows) == 1
-        tail = ""
-        if n_tech:
-            tail = (" &mdash; a technical role" if one
-                    else f" &mdash; {_num(n_tech)} of them technical")
-        tech = (f'<p>{_num(len(new_rows), cap=True)} role{"" if one else "s"} '
-                f'opened this {span}: {roll}{tail}.')
-
-        # What the openings ask for, split by whether the board was already asking.
-        opened_terms = sorted({t for r in new_rows for t in r["terms"]})
-        fresh = [t for t in opened_terms if t not in prev_terms]
-        carried = [t for t in opened_terms if t in prev_terms]
-
-        if not opened_terms:
-            tech += (' None of them carry stack terms, so this week says nothing about the '
-                     'technical direction &mdash; it is hiring outside engineering.')
-        else:
-            tech += (f'{" It asks" if one else " Between them they ask"} for '
-                     f'{_num(len(opened_terms))} stack '
-                     f'term{"s" if len(opened_terms) != 1 else ""}')
-            if not fresh:
-                tech += (f', every one of which the board was already hiring against. '
-                         f'Read that as depth rather than direction: '
-                         f'{"the opening staffs" if one else "the openings staff"} an '
-                         f'existing push harder, and nothing this week points somewhere new.')
-            else:
-                # name the req that brought the new term in — that is the thing to read
-                bringer = next((r for r in new_rows if fresh[0] in r["terms"]), None)
-                fresh_txt = _join_en([html.escape(t) for t in fresh[:4]])
-                if len(fresh) <= 2 and carried:
-                    tech += (f', and only {fresh_txt} '
-                             f'{"are" if len(fresh) > 1 else "is"} new to the board &mdash; the '
-                             f'other {_num(len(carried))} were already being hired against. Read that '
-                             f'as depth rather than direction: the week staffs an existing push '
-                             f'harder')
-                    # naming the req again here repeated a title from the list above;
-                    # point back into that list instead, and only spell the title out
-                    # when the roll was truncated and the reader has not seen it
-                    listed = bringer in new_rows[:5] if bringer else False
-                    where = ("a single req" if listed
-                             else f'{html.escape(bringer["title"])}' if bringer else "")
-                    tech += (f', and {"it arrives" if len(fresh) == 1 else "they arrive"} '
-                             f'inside {where} rather than as a program of its own.'
-                             if bringer else '.')
-                else:
-                    all_fresh = len(fresh) == len(opened_terms)
-                    shown_items = [html.escape(t) for t in fresh[:4]]
-                    if len(fresh) > 4:
-                        shown_items.append(f'{_num(len(fresh) - 4)} more')
-                    shown = _join_en(shown_items)
-                    tech += (f', {"all" if all_fresh else _num(len(fresh))} of them new to '
-                             f'the board: {shown}. '
-                             f'That is a wider change than a week of backfill produces')
-                    tech += (f', and {html.escape(bringer["title"])} is where most of it '
-                             f'lands &mdash; worth reading in full.' if bringer else '.')
-    else:
-        tech = (f'<p>Nothing opened this '
-                f'{period.split()[-1] if "day" not in period else "period"}, so the stack the '
-                f'board is hiring against is unchanged.')
-
-    # What the board keeps re-buying. A term asked for again in several of this
-    # week's reqs, on top of an already-wide base, is a settled commitment rather
-    # than an evaluation — which is the more useful read than the receding side,
-    # where a single closing req moves three terms and says nothing about intent.
-    if new_rows and carried:
-        span = period.split()[-1] if "day" not in period else "period"
-        week_n = {t: sum(1 for r in new_rows if t in r["terms"]) for t in carried}
-        ranked = sorted(carried, key=lambda t: (-week_n[t], -board_n.get(t, 0), t))
-        top = [t for t in ranked if week_n[t] > 1][:3] or ranked[:3]
-        total = curr["postings_total"]
-        # one list, so the serial comma is consistent across all three entries
-        items = ([f'{html.escape(top[0])} is now named in {board_n.get(top[0], 0)} of the '
-                  f'{total} open postings']
-                 + [f'{html.escape(t)} in {board_n.get(t, 0)}' for t in top[1:]])
-        again = (f'all {_num(len(top))} asked for again this {span}' if len(top) > 1
-                 else f'and it was asked for again this {span}')
-        tech += (f' The board keeps re-buying the same signals: {_join_en(items)}, {again}. '
-                 f'Terms that survive that much repetition are settled decisions rather than '
-                 f'live evaluations &mdash; the ground a conversation opens on, not the thing '
-                 f'to sell.')
-
-    paras.append(tech + "</p>")
-
-    # ---- Leadership: new director/leadership-level postings since last crawl ----
-    # (hiring events, not hires — the pipeline tracks posting lifecycle, not who
-    # actually got hired, so "new hires" isn't a claim this can support.)
-    # ---- Action items: the roles themselves are gone from the body; what
-    #      survives is what to do about them, cited back to the req.
-    acts = action_items(lead_closed, lead_new, themes, lake.get("curated_prev", {}),
-                        company_name, lake["curated"], lake.get("people"))
-    act_html = []
-    for a in acts:
-        mark = ""
-        if a["pid"]:
-            mark = cx.cite(f'{a["pid"]} — {a["title"]}: {a["why"]}.', posting_url(a["pid"]))
-        profile = ""
-        who = a.get("person")
-        if who:
-            conf = who.get("confidence")
-            why = "".join(f'<li style="margin-top:4px">{html.escape(v)}</li>'
-                          for v in who.get("why_matched", []))
-            profile += (
-                f'<div style="margin:10px 0 0;padding:11px 12px;'
-                f'background:color-mix(in srgb,var(--color-accent) 7%,transparent)">'
-                f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">'
-                f'<span style="font-family:var(--font-heading);font-weight:600;font-size:14px">'
-                f'{html.escape(who["name"])}</span>'
-                f'<span class="tag tag-neutral tag-flag">'
-                f'{html.escape(who.get("status", "unconfirmed"))}'
-                f'{f" &middot; {round(conf * 100)}%" if conf is not None else ""}</span></div>'
-                f'<p style="margin:6px 0 0;font-size:12.5px;line-height:1.55">'
-                f'{html.escape(who.get("background", ""))}</p>'
-                f'{f"<ul style=\"margin:8px 0 0;padding-left:17px;font-size:12px;line-height:1.5\" class=\"text-muted\">{why}</ul>" if why else ""}'
-                f'</div>')
-        if a["profile"]:
-            profile += (f'<p style="margin:9px 0 0;font-size:12.5px;line-height:1.55">'
-                       f'<span class="text-muted">Profile they hired against &mdash; </span>'
-                       f'<span style="font-style:italic">&ldquo;{html.escape(a["profile"])}'
-                       f'&rdquo;</span></p>')
-        if a.get("quote"):
-            qsrc = curr["postings"].get(a["quote_pid"]) or {}
-            qmark = cx.cite(f'{a["quote_pid"]} — {qsrc.get("title", "?")}, from the job '
-                            f'description.', posting_url(a["quote_pid"]))
-            profile += (f'<p style="margin:9px 0 0;font-size:12.5px;line-height:1.55">'
-                        f'<span class="text-muted">In their words &mdash; </span>'
-                        f'<span style="font-style:italic">&ldquo;'
-                        f'{html.escape(a["quote"])}&rdquo;</span>{qmark}</p>')
-        steps = "".join(f'<li style="margin-top:6px">{t}</li>' for t in a["steps"])
-        act_html.append(
-            f'<div class="card blueprint" style="padding:14px 16px;margin-bottom:12px">'
-            f'{_corners()}'
-            f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">'
-            f'<div style="font-size:14.5px;font-weight:600;font-family:var(--font-heading)">'
-            f'{html.escape(a["title"])}{mark}</div>'
-            f'<span class="tag tag-{"solid" if a["kind"] == "match" else "neutral"} tag-flag">'
-            f'{a["kind"]}</span></div>'
-            f'<p class="text-muted" style="margin:5px 0 0;font-size:12.5px">{a["why"]}.</p>'
-            f'{profile}'
-            f'<ul style="margin:9px 0 0;padding-left:17px;font-size:12.5px;line-height:1.55">'
-            f'{steps}</ul></div>')
-    actions_html = "".join(act_html) or (
-        '<p class="text-muted" style="margin:0;font-size:12.5px">'
-        'Nothing moved this period that warrants an approach.</p>')
-
-    # Evidence weight — each bar is a share of the open board, so the three are
-    # actually comparable. The adopting bar used to sum per-term posting counts,
-    # which double-counts any posting carrying several terms and pinned the bar
-    # at a meaningless 100%; count distinct postings instead.
-    total = max(curr["postings_total"], 1)
-    adopt_pids = set()
-    for r in buckets["adopting"]:
-        adopt_pids.update(r.get("pids") or [])
-    bars = [
-        ("Adopting stack", len(adopt_pids),
-         f'{len(adopt_pids)} of {total} postings'),
-        ("New tech roles", len(tech_new), f'{len(tech_new)} of {total} postings'),
-        ("Leadership moves", len(lead_new) + len(lead_closed),
-         f'{len(lead_new)} opened / {len(lead_closed)} closed'),
-    ]
-    bars_html = ""
-    for label, support, denom_label in bars:
-        width = min(100, round(100 * support / total)) if total else 0
-        bars_html += (f'<div><div style="display:flex;justify-content:space-between;margin-bottom:3px">'
-                       f'<span>{label}</span><span class="text-muted">{denom_label}</span></div>'
-                       f'<div class="bar-track"><div class="bar-fill" style="width:{width}%"></div></div></div>')
-
-    # Plot the trailing half-year, not just the two ends of the comparison window:
-    # two points can only ever draw a straight line, which said nothing about the
-    # shape of the year the paragraph above it is describing.
-    spark_pts = (lake.get("history") or lake["series"])[-26:]
-    sparkline = _trend_svg(spark_pts)
-    spark_span = (f'{spark_pts[0]["dt"]} &rarr; {spark_pts[-1]["dt"]}'
-                  if spark_pts else f'{prev_dt} &rarr; {curr_dt}')
-
-    def _plain(x):
-        return html.unescape(re.sub(r"<[^>]+>", "", x)).replace("&rarr;", "->")
-
-    plain_paras = [_plain(p) for p in paras]
-    plain_actions = ["Action items:"] + [
-        f'- {a["title"]} — {a["why"]}.' + "".join(f"\n    * {_plain(t)}" for t in a["steps"])
-        for a in acts] if acts else ["Action items: none this period."]
-    brief_text = (f"{company_name} — account brief\n\n" + "\n\n".join(plain_paras)
-                  + "\n\n" + "\n".join(plain_actions))
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{_head(f"{company_name} — TICK brief",
-       f"What {company_name} is hiring for and what changed this period, "
-       f"read out of {curr['postings_total']} open postings as of {curr_dt}.")}
-</head>
-<body>
-<a class="skip-link" href="#main">Skip to content</a>
-{_nav("brief", company)}
-<div class="wrap narrow">
-  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Brief</span></div>
-  <main id="main">
-  <div class="hdr">
-    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">Account brief</h1>
-      <p class="text-muted" style="margin:6px 0 0;font-size:13px">Week to {curr_dt} &middot; every claim carries a citation</p></div>
-    <button class="btn btn-primary" type="button" id="copy-brief">Copy brief</button>
-  </div>
-  <div class="grid narrative">
-    <div class="prose">
-      {"".join(paras)}
-      <div style="margin-top:26px">
-        <h2 class="section-label text-muted" style="margin-bottom:6px">Action items</h2>
-        <p class="text-muted" style="margin:0 0 12px;font-size:12.5px;max-width:62ch">Each one is anchored to a
-          posting event this period; the citation goes back to the req it came from.</p>
-        {actions_html}
-      </div>
-      <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-divider)">
-        <h2 class="section-label text-muted" style="margin-bottom:10px">Sources &middot; {len(cx.items)} citations</h2>
-        <div style="display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.5">{cx.render_list()}</div>
-      </div>
-    </div>
-    <div class="right-col">
-      <div class="card blueprint">{_corners()}
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles, {spark_span}</span>
-        {sparkline}
-        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;flex-wrap:wrap;
-                    padding-top:9px;border-top:1px solid var(--color-divider)">
-          <span class="text-muted">{prev_dt} &rarr; {curr_dt}</span>
-          <span>{prev['postings_total']} &rarr; {curr['postings_total']}
-            <b style="color:{'var(--color-accent-700)' if delta >= 0 else 'inherit'}">{delta:+d} ({pct:+.1f}%)</b></span>
-        </div>
-      </div>
-      <div class="card blueprint">{_corners()}
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:9px" class="text-muted">Evidence weight</span>
-        <p class="text-muted" style="margin:0 0 10px;font-size:11.5px;line-height:1.45">How much of the
-        {curr['postings_total']}-posting board stands behind each claim above.</p>
-        <div style="display:flex;flex-direction:column;gap:9px;font-size:12.5px">{bars_html}</div>
-      </div>
-      <div class="card blueprint">{_corners()}
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:9px" class="text-muted">Generated</span>
-        <p style="margin:0;font-size:12.5px;line-height:1.55" class="text-muted">{fmt_dt(curr['captured_at'])}, from {curr['postings_total']} postings on {html.escape(domain)}.
-        Every claim above carries a citation; nothing is inferred beyond the postings and snapshot counts.</p>
-      </div>
-    </div>
-  </div>
-  </main>
-  {_footer(fmt_dt(curr['captured_at']), domain)}
-</div>
-{_copy_script('copy-brief', brief_text)}
-</body>
-</html>
-"""
-
 
 # ---------------------------------------------------------------- home page
 
@@ -2599,12 +2127,72 @@ def render_home(accounts: list[dict]) -> str:
 
 # ---------------------------------------------------------------- AI brief page
 
+_BRIEF_RE = re.compile(r"(?:^|/)briefs/company=([^/]+)/week=(\d{4}-\d{2}-\d{2})/(brief|evidence)\.json$")
+
+
+def load_brief(lake_io: dict, company: str) -> tuple[dict, dict] | None:
+    """(brief, evidence) for the newest week the lake holds both files for,
+    or None. Briefs live at briefs/company=<slug>/week=<window end>/ and get
+    there only through the tick-brief skill's publish.py, which uploads a
+    brief only after check.py passes it — so a brief here is already
+    verified, and nothing on this side re-writes or repairs one."""
+    weeks: dict[str, dict[str, str]] = {}
+    for k in lake_io["keys"]:
+        m = _BRIEF_RE.search(k.replace(os.sep, "/"))
+        if m and m.group(1) == company:
+            weeks.setdefault(m.group(2), {})[m.group(3)] = k
+    for week in sorted(weeks, reverse=True):
+        files = weeks[week]
+        if "brief" in files and "evidence" in files:
+            return lake_io["get"](files["brief"]), lake_io["get"](files["evidence"])
+    return None
+
+
+def render_account_brief(lake_io: dict, lake: dict, company: str, company_name: str) -> str:
+    """An account's brief.html: its newest uploaded brief, else the page
+    saying there is none yet. The one entry point for the CLI and the
+    publisher, so the two cannot disagree about which brief is current."""
+    found = load_brief(lake_io, company)
+    if found:
+        return render_ai_brief(*found)
+    return render_no_brief(company, company_name, fmt_dt(lake["curr"]["captured_at"]))
+
+
+def render_no_brief(company: str, company_name: str, generated: str) -> str:
+    """The brief page of an account with no uploaded brief yet. It holds the
+    account's /brief.html address, so the Brief tab and the home card's link
+    never 404, and says when one will appear rather than filling the space."""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{_head(f"{company_name} — TICK brief", f"The weekly brief for {company_name} has not been written yet.")}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+{_nav("brief", company)}
+<div class="wrap narrow">
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Brief</span></div>
+  <main id="main">
+  <div class="hdr" style="border:0">
+    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">No brief yet</h1></div>
+  </div>
+  <p style="margin:6px 0 0;max-width:62ch">Briefs are written weekly from the movement on this
+  account's job board, and every claim in one cites the posting it rests on.
+  This account's first brief has not been published. Until it is, the
+  <a href="/{company}/dashboard.html">dashboard</a> has everything the board shows today.</p>
+  </main>
+  {_footer(generated)}
+</div>
+</body>
+</html>
+"""
+
+
 _AI_CITE_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 
 
 def render_ai_brief(brief: dict, evidence: dict) -> str:
-    """The weekly brief a model wrote (see .claude/skills/tick-brief), in the
-    same page as render_brief. The model's text is escaped like any other
+    """The weekly brief a model wrote (see .claude/skills/tick-brief). The model's text is escaped like any other
     untrusted input; its [[id]] citations become numbered sources resolved
     against the evidence pack it was written from."""
     company_name = evidence["company"]["name"]
@@ -2847,7 +2435,7 @@ if __name__ == "__main__":
         with open(dash_path, "w") as f:
             f.write(render_dashboard(lake, a["slug"]))
         with open(brief_path, "w") as f:
-            f.write(render_brief(lake, a["slug"]))
+            f.write(render_account_brief(lake_io, lake, a["slug"], a["name"]))
         print(f"wrote {dash_path}")
         print(f"wrote {brief_path}")
         archive = render_archive_pages(lake, a["slug"])

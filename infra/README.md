@@ -15,12 +15,15 @@ EventBridge Scheduler (daily)
               └─► DLQ after 3 failed attempts ── CloudWatch alarm
                      = "re-run the evaluator for this company"
 
+tick-brief skill (weekly, from a laptop: model-written, check.py-verified)
+  └─► briefs/company=<slug>/week=<date>/{brief,evidence}.json   in the same lake
+
 EventBridge Scheduler (daily, 30 min later)
   └─► Publisher Lambda ── reads the lake + s3://<bucket>/configs/*.json
         └─► S3 site bucket (private)
               ├─ home/<key>/index.html         an accounts home per viewer scope (/accounts)
               ├─ <slug>/dashboard.html
-              ├─ <slug>/brief.html
+              ├─ <slug>/brief.html             newest published brief, or "No brief yet"
               └─ <slug>/archive/<pid>/index.html   one per closed req
 
 site-static/ ── make publish-static ──► the same bucket
@@ -374,7 +377,22 @@ lake as it stands — a removed account or a rolled-back snapshot cannot leave a
 stale page behind — followed by a CloudFront invalidation. Pages carry
 `max-age=300`, so even a failed invalidation self-corrects within 5 minutes.
 
-Republish immediately (after uploading a config, say):
+### Briefs
+
+No code writes brief prose. Each account's brief is written by a model with
+the tick-brief skill (`.claude/skills/tick-brief/`), verified by its
+`check.py` (every citation exists, every quote is verbatim, the length limits
+hold) and uploaded by its `publish.py` to
+`briefs/company=<slug>/week=<window end>/` in the data bucket: `brief.json`
+plus the `evidence.json` it was written from, which the page resolves its
+citations against. A brief that fails the check is never uploaded.
+
+Each publish renders the newest week holding both files per account; an
+account with none gets a "No brief yet" page at the same address. A skipped
+week leaves last week's brief up, dated. To see a new brief before the
+nightly run, invoke the publisher.
+
+Republish immediately (after uploading a config or a brief, say):
 
 ```bash
 aws lambda invoke --function-name tick-collector-publisher /dev/stdout
