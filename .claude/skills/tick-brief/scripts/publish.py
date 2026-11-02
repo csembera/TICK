@@ -36,10 +36,14 @@ STACK = "tick-collector"
 
 
 def data_bucket() -> str:
-    return subprocess.run(
+    r = subprocess.run(
         ["aws", "cloudformation", "describe-stacks", "--stack-name", STACK, "--query",
          "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue", "--output", "text"],
-        check=True, text=True, capture_output=True).stdout.strip()
+        text=True, capture_output=True)
+    if r.returncode != 0:   # most often an expired session: say so, upload nothing
+        sys.exit(f"could not read the data bucket from stack {STACK}: "
+                 f"{r.stderr.strip() or r.stdout.strip()}\nNothing was uploaded.")
+    return r.stdout.strip()
 
 
 def pick_week(slug_dir: str, week_end: str | None) -> str | None:
