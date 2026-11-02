@@ -41,6 +41,13 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 - **Collected data and configs stay out of git** (`out/`, `site/`, `local-data/`
   and `configs/` are gitignored). They live in the data bucket. The repo is
   public: never commit a SourceConfig or real lake data.
+- **The menu bar and tab icon are copied, not shared.** `/demo` is the source
+  of truth. Copies live in the static pages (`infra/site-static/demo/**`, and
+  the brand and icon on `/` and `/docs`), in the renderer (`_nav`, the `.nav`
+  rules in `_STYLE`, `_FAVICON` in `tools/tick_insights_report.py`), and in the
+  auth Lambda's error page (`page()` in `infra/src/auth/app.py`). A change to
+  any one is a change to all of them, in the same PR. Check with
+  `tools/preview.py`, which serves the demo and the app pages side by side.
 - **Cognito hosted-UI styling is not a CloudFormation resource.** It belongs to
   `make publish-cognito-ui`. Declaring it in the template makes the deploy fail
   with `AlreadyExists`.

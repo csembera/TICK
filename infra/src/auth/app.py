@@ -141,6 +141,22 @@ def redirect(location: str, cookies: list[str] | None = None) -> dict:
     return resp
 
 
+# The menu bar and tab icon of infra/site-static/demo/, cut down to the brand
+# and Docs: which way out is right depends on the error, so the page's own link
+# carries it. A third copy, with tools/tick_insights_report.py; see CLAUDE.md.
+_FAVICON = (
+    "data:image/svg+xml,"
+    "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E"
+    "%3Cstyle%3E.p%7Bstroke:%23456e99%7D@media(prefers-color-scheme:dark)%7B.p%7Bstroke:%2386aace%7D%7D%3C/style%3E"
+    "%3Cpath class='p' d='M2 19h6.5l4-12 4.5 17 3.5-10H30' fill='none' stroke-width='3'"
+    " stroke-linejoin='miter' stroke-linecap='square'/%3E%3C/svg%3E"
+)
+_NAV = ('<div class="nav"><a class="nav-brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true" '
+        'focusable="false"><path d="M2 19h6.5l4-12 4.5 17 3.5-10H30" fill="none" stroke="currentColor" '
+        'stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/></svg><span>TICK</span></a>'
+        '<div class="nav-tabs"><a href="/docs">Docs</a></div></div>')
+
+
 def page(status: int, title: str, message: str, link: tuple[str, str] | None = None) -> dict:
     href = f'<p><a href="{link[0]}">{link[1]}</a></p>' if link else ""
     return {
@@ -148,11 +164,22 @@ def page(status: int, title: str, message: str, link: tuple[str, str] | None = N
         "headers": {"content-type": "text/html; charset=utf-8", "cache-control": "no-store"},
         "body": f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>TICK — {title}</title>
-<style>body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:#f2f2f3;color:#1d1f20;font-family:system-ui,sans-serif;line-height:1.55}}
-main{{max-width:34rem;padding:2rem;border:1px solid rgba(29,31,32,.16)}}
+<meta name="theme-color" content="#080d12"><link rel="icon" href="{_FAVICON}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&amp;family=Barlow+Condensed:wght@400;600;700&amp;display=swap">
+<style>body{{margin:0;min-height:100vh;display:flex;flex-direction:column;
+background:#f2f2f3;color:#1d1f20;font-family:"Barlow",system-ui,sans-serif;line-height:1.55}}
+.nav{{display:flex;align-items:center;gap:28px;padding:16px 32px;background:#080d12;
+border-bottom:1px solid rgba(158,186,214,.14)}}
+.nav-brand{{display:inline-flex;align-items:center;gap:10px;font-family:"Barlow Condensed",system-ui,sans-serif;
+font-weight:700;font-size:25px;letter-spacing:.14em;color:#eef2f5;text-decoration:none}}
+.nav-brand svg{{display:block;width:26px;height:26px;flex:none;color:#86aace}}
+.nav-tabs{{display:flex;align-items:center;gap:28px;min-height:48px}}.nav-tabs a{{color:#9aa9b8;text-decoration:none;font-size:18px}}
+.nav-tabs a:hover{{color:#eef2f5}}
+.center{{flex:1;display:flex;align-items:center;justify-content:center}}
+main{{max-width:34rem;margin:2rem;padding:2rem;border:1px solid rgba(29,31,32,.16)}}
 h1{{font-size:1.4rem;margin:0 0 .6rem}}p{{margin:.6rem 0 0;font-size:.95rem}}
-a{{color:#5980a6}}</style></head><body><main><h1>{title}</h1><p>{message}</p>{href}</main></body></html>""",
+main a{{color:#5980a6}}</style></head><body>{_NAV}<div class="center"><main><h1>{title}</h1>
+<p>{message}</p>{href}</main></div></body></html>""",
     }
 
 

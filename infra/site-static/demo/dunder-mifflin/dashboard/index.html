@@ -47,7 +47,9 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .section-label{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
 .wrap{max-width:1280px;margin:0 auto;padding:0 24px 60px}
 .wrap.narrow{max-width:940px}
-/* menu bar: cloned from /tick (static), colors pinned to that page's palette */
+/* menu bar: cloned from /tick (static), colors pinned to that page's palette.
+   The source of truth for the app's bar too: tools/tick_insights_report.py
+   carries a twin (_nav, _STYLE). Change both — see CLAUDE.md. */
 .nav{display:flex;align-items:center;gap:28px;padding:16px 32px;
   background:#080d12;border-bottom:1px solid rgba(158,186,214,.14);margin-bottom:0;flex-wrap:wrap}
 .nav-brand{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-heading);font-weight:700;font-size:25px;letter-spacing:.14em;color:#eef2f5}
@@ -169,8 +171,9 @@ a{color:var(--color-accent);text-underline-offset:3px}
 @media (max-width:980px){.grid,.grid.narrative{grid-template-columns:1fr}.stack-grid{grid-template-columns:1fr}}
 @media (max-width:620px){
   .wrap{padding:0 16px 44px}
-  .nav{gap:16px;padding:12px 20px}
-  .nav-tabs{display:none}
+  .nav{gap:10px 16px;padding:12px 20px}
+  .nav-tabs{order:3;flex:1 0 100%;flex-wrap:nowrap;overflow-x:auto;gap:22px;scrollbar-width:none}
+  .nav-tabs a{font-size:16px;white-space:nowrap}
   .nav-auth{gap:14px}
   .tbl-controls input[type=search]{width:100%}
   .hdr h1{font-size:26px!important}
