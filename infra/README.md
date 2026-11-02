@@ -474,8 +474,7 @@ inline boards carry it in the posting payload. The original HTML is kept in
 written), so descriptions can be re-parsed without refetching. Every curated
 row gets:
 
-- `description_raw` — plain-text job description
-- `description` — the same description in labelled sections, parsed by
+- `description` — the description in labelled sections, parsed by
   [src/collector/description.py](src/collector/description.py):
   `summary`, `responsibilities`, `qualifications`, `preferred_qualifications`,
   `work_arrangement`, `compensation`, `benefits`, `company_intro`, `eeo`, and
@@ -485,11 +484,32 @@ row gets:
   `description_format` (the aliases and boilerplate the evaluator learned for
   that board) first, then generic patterns. A parser error costs the row its
   `description`, never the run.
+- `description_raw` — the flat text, written only when parsing failed. The
+  sections hold every line, so curated no longer stores each description twice.
+  Rows collected before structured descriptions hold only this field.
 - `keywords` — `{category: [matched terms]}` from the tech-stack taxonomy in
   [src/collector/app.py](src/collector/app.py) (`cloud_aws` / `cloud_azure` /
   `cloud_gcp` / `data_platform` / `infra_devops` / `languages` /
   `analytics_tools` / `signal_terms`)
 - `is_tech_role` — true on any hit outside `signal_terms`/`analytics_tools`
+
+Keywords come from the title and the role text, never the board's intro,
+benefits or equal-opportunity text, which repeat on every posting.
+
+**Reading descriptions.** Every reader goes through the renderer's accessors in
+[../tools/tick_insights_report.py](../tools/tick_insights_report.py):
+`parsed_description()`, `role_text_of()`, `full_text_of()` and `pay_of()`. They
+use the collector's sections when a row has them, and otherwise rebuild
+approximate sections from the old flat text (`description.from_text()`: known
+headings found inside the text, the board's shared opening sentences filed as
+its intro). Nothing in the lake is rewritten; the rebuild happens on read and is
+marked `approximate`. The publisher Lambda gets the parser the way it gets the
+renderer, through a symlink (`src/publisher/description.py`).
+
+Where it shows: archive pages lay a description out in its sections, with the
+board's boilerplate left out and a pay range; the dashboard's open-roles table
+has a Pay column; and the weekly brief's evidence pack sends each posting's
+role text and `pay` (prompt v8).
 
 Each run's summary reports `description_coverage`, the average share of
 description text filed under a known section. A drop means the board's layout

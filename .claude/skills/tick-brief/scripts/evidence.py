@@ -93,8 +93,14 @@ def build(source: str, slug: str, week_end: str | None = None) -> dict:
     bp_n = report.detect_boilerplate_prefix(board_now) if board_now else 0
 
     def describe(rec: dict | None) -> str:
-        text = " ".join(report.split_sentences((rec or {}).get("description_raw", ""))[bp_n:])
+        # role text only: the board's intro, benefits and equal-opportunity text
+        # are the same on every posting and tell the writer nothing
+        text = report.role_text_of(rec, bp_n)
         return text if len(text) <= DESC_CHARS else text[:DESC_CHARS].rsplit(" ", 1)[0] + " …"
+
+    def pay(rec: dict | None) -> dict | None:
+        p = report.pay_of(rec)
+        return {k: p[k] for k in ("min", "max", "currency", "period")} if p else None
 
     # ---- the window's movement, straight from the daily diffs
     diff_keys = {_dt(k): k for k in keys if k.endswith("diff.json") and f"company={slug}/" in k}
@@ -146,6 +152,7 @@ def build(source: str, slug: str, week_end: str | None = None) -> dict:
             "first_seen": s.get("first_seen") or (rec or {}).get("first_seen"),
             "stack_terms": terms_for(pid, rec),
             **extra,
+            "pay": pay(rec),
             "description": describe(rec),
         }
 

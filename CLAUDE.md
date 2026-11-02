@@ -13,7 +13,7 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 | `infra/template.yaml` | The one SAM stack, `tick-collector` (us-east-1): Lambdas, SQS, S3, Cognito, CloudFront, alarms |
 | `infra/src/dispatcher/` | Fans the daily run out: one SQS message per `configs/*.json` |
 | `infra/src/collector/` | Fetches, normalizes, diffs one company. Also runs locally (`LOCAL_OUTPUT_DIR`). `description.py` parses each description into labelled sections |
-| `infra/src/publisher/` | Renders the whole lake to static HTML in the site bucket, then invalidates |
+| `infra/src/publisher/` | Renders the whole lake to static HTML in the site bucket, then invalidates. `report.py` and `description.py` are symlinks to the renderer and the collector's parser |
 | `infra/src/auth/` | Cognito code exchange; mints the HMAC session cookie |
 | `infra/src/join/` | `/api/join` waitlist and `/api/account-request` |
 | `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `make publish-static` |
@@ -31,7 +31,11 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
   per-function `requirements.txt` files. Adding a dependency means changing
   the build, so it needs a decision first.
 - **Edit the renderer in `tools/`, never through the symlink path.** It is one
-  file run two ways: by the CLI and by the publisher Lambda.
+  file run two ways: by the CLI and by the publisher Lambda. The same goes for
+  `description.py`, which lives in `infra/src/collector/`.
+- **Read descriptions through the renderer's accessors** (`parsed_description`,
+  `role_text_of`, `full_text_of`, `pay_of`), never `description_raw` directly:
+  new rows carry only `description`, old rows only `description_raw`.
 - **Guarded paths must never serve without a session.** A 200 on `/accounts` or
   `/<slug>/*` without a cookie is a client-data leak, not a cosmetic bug.
 - **The two halves of the site bucket never overlap.** The publisher writes only

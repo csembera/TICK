@@ -60,6 +60,13 @@ import re
 import sys
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
+
+try:   # the publisher Lambda packages it beside this file (a symlink, like report.py)
+    import description
+except ImportError:   # the CLI, from tools/
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "..", "infra", "src", "collector"))
+    import description
 from urllib.parse import urlparse
 
 _CAT_LABELS = {
@@ -493,6 +500,7 @@ def open_postings(lake: dict, days: int = NEW_ROLE_DAYS) -> list[dict]:
             "terms": sorted(set(term_by_pid.get(pid, []))),
             "first_seen": fs,
             "is_new": opening_window(dts, curr_dt, fs, days),
+            "pay": pay_of(rec) if rec is not st else None,
         })
     # Newest first by first-seen date; postings with no date sink to the end.
     # Within a day: tech roles, then the richest stack evidence, and title breaks
@@ -526,6 +534,63 @@ _LEADERSHIP_RE = re.compile(
 _REQ_RE = re.compile(r"(?i)\b(requirements?|qualifications?)\b\s*[:.]?\s*(.+)")
 
 
+# ------------------------------------------------------------ descriptions
+#
+# Every reader goes through these. A row the collector parsed carries
+# `description` (labelled sections) and no `description_raw`; an older row
+# carries only `description_raw`, rebuilt into approximate sections here.
+
+
+def parsed_description(rec: dict | None, boilerplate_n: int = 0) -> dict | None:
+    """rec's description in sections: the collector's parse, else a rebuild
+    from its flat text. boilerplate_n is how many leading sentences the board
+    repeats (detect_boilerplate_prefix): they are filed as its intro whenever
+    the parse did not already find one, which is every flat row and every row
+    parsed before the board had a learned intro rule."""
+    if not rec:
+        return None
+    parsed = rec.get("description")
+    if not parsed:
+        return description.from_text(rec.get("description_raw"), skip_sentences=boilerplate_n)
+    if not boilerplate_n or "company_intro" in parsed["boilerplate"] or not parsed["sections"].get("summary"):
+        return parsed
+    sents = split_sentences(" ".join(parsed["sections"]["summary"]))
+    intro, rest = sents[:boilerplate_n], sents[boilerplate_n:]
+    sections = {**parsed["sections"], "company_intro": intro, "summary": [" ".join(rest)] if rest else []}
+    if not rest:
+        del sections["summary"]
+    return {**parsed, "sections": sections, "boilerplate": [*parsed["boilerplate"], "company_intro"]}
+
+
+def full_text_of(rec: dict | None) -> str:
+    """The whole description as one string, boilerplate included."""
+    if not rec:
+        return ""
+    return rec.get("description_raw") or description.full_text(rec.get("description"))
+
+
+def role_text_of(rec: dict | None, boilerplate_n: int = 0) -> str:
+    """The description without the board's intro, benefits and EEO text."""
+    return description.role_text(parsed_description(rec, boilerplate_n))
+
+
+def pay_of(rec: dict | None) -> dict | None:
+    """The posted pay range, {min, max, currency, period, text}, if any."""
+    return (parsed_description(rec) or {}).get("compensation")
+
+
+def pay_label(pay: dict | None, short: bool = False) -> str | None:
+    """"$85,000–$110,000 a year", or "$85K–$110K" for a table cell."""
+    if not pay:
+        return None
+    def money(x):
+        if short and pay["period"] == "year" and x >= 1000:
+            return f"${x / 1000:.0f}K" if x % 1000 == 0 or x >= 10000 else f"${x / 1000:.1f}K"
+        return f"${x:,.2f}".replace(".00", "") if isinstance(x, float) else f"${x:,}"
+    rng = f'{money(pay["min"])}–{money(pay["max"])}' if pay["min"] != pay["max"] else money(pay["min"])
+    return rng if short else f'{rng} {"an hour" if pay["period"] == "hour" else "a year"}'
+
+
 def hiring_profile(rec: dict | None, max_len: int = 260) -> str | None:
     """The candidate profile a req was written against, lifted from its own
     'Requirements:' sentence.
@@ -533,7 +598,11 @@ def hiring_profile(rec: dict | None, max_len: int = 260) -> str | None:
     This is the closest TICK can honestly get to "who did they hire": the lake
     holds postings, never people. It says what the seat was advertised for, and
     the brief has to label it that way rather than as a named individual."""
-    text = (rec or {}).get("description_raw") or ""
+    quals = (parsed_description(rec) or {}).get("sections", {}).get("qualifications") or []
+    if quals and not (parsed_description(rec) or {}).get("approximate"):
+        body = "; ".join(q.rstrip(".;") for q in quals[:3])
+        return body if len(body) <= max_len else body[:max_len].rsplit(" ", 1)[0] + "\u2026"
+    text = full_text_of(rec)
     for sent in split_sentences(text):
         m = _REQ_RE.search(sent)
         if m:
@@ -628,8 +697,7 @@ def action_items(lead_closed: list[dict], lead_new: list[dict], themes: list[dic
                 curated[pid].get("keywords") or {}))), pid))
         for pid in cands:
             rec = curated[pid]
-            ex = pick_excerpt(rec.get("description_raw", ""),
-                              flat_terms(rec.get("keywords") or {}), boiler)
+            ex = pick_excerpt(role_text_of(rec, boiler), flat_terms(rec.get("keywords") or {}), 0)
             if not ex:
                 continue
             # prefer a sentence that actually names the programme being pitched
@@ -708,6 +776,9 @@ def archived_postings(lake: dict) -> list[dict]:
     whose final crawl predates curated descriptions still gets a row, just a
     thinner one, and the detail panel says so rather than looking empty."""
     state, archive = lake.get("state") or {}, lake.get("archive") or {}
+    # leading sentences the board repeats, filed as its intro when an old flat
+    # description is rebuilt into sections
+    boiler = detect_boilerplate_prefix(lake.get("curated") or archive)
     rows = []
     for pid, st in state.items():
         if not st.get("closed_on"):
@@ -725,7 +796,9 @@ def archived_postings(lake: dict) -> list[dict]:
             "remote": bool(rec.get("remote_flag")),
             "is_tech_role": bool(rec.get("is_tech_role")),
             "terms": flat_terms(rec.get("keywords")),
-            "description": rec.get("description_raw"),
+            "description": full_text_of(rec) or None,
+            "parsed": parsed_description(rec, boiler),
+            "pay": pay_of(rec),
             "first_seen": st.get("first_seen"),
             "last_seen": st.get("last_seen"),
             "closed_on": st["closed_on"],
@@ -754,7 +827,7 @@ def split_sentences(text: str) -> list[str]:
 def detect_boilerplate_prefix(curated: dict, max_check: int = 6, threshold: float = 0.7) -> int:
     """How many leading sentences are shared company-boilerplate (e.g. "Join Dunder Mifflin,
     a global leader...") across most postings, so excerpts can skip past them."""
-    sent_lists = [split_sentences(r.get("description_raw", "")) for r in curated.values()]
+    sent_lists = [split_sentences(full_text_of(r)) for r in curated.values()]
     sent_lists = [s for s in sent_lists if s]
     if not sent_lists:
         return 0
@@ -1063,6 +1136,11 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .arch-fields dt{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
 .arch-fields dd{margin:0;overflow-wrap:anywhere}
 .arch-desc{white-space:pre-wrap;font-size:13.5px;line-height:1.6;max-width:72ch}
+.arch-desc-sections{max-width:72ch;font-size:13.5px;line-height:1.6}
+.arch-sec{font-family:var(--font-heading);font-weight:600;font-size:14px;margin:14px 0 4px}
+.arch-sec:first-child{margin-top:0}
+.arch-list{margin:0;padding-left:18px}
+.arch-para{margin:0}
 .pager [role=status]{font-size:12px;font-variant-numeric:tabular-nums}
 .pager button[disabled]{opacity:.4;cursor:default}
 .site-foot{border-top:1px solid var(--color-divider);margin-top:38px;padding-top:14px;
@@ -1564,7 +1642,9 @@ def _archive_record(r: dict, href: str | None = None, heading: str = "h2") -> st
         link = '<span class="text-muted">Not captured</span>'
     page = (f'<dt>TICK page</dt><dd><a href="{html.escape(href)}">{html.escape(href)}</a></dd>'
             if href else "")
-    if r["description"]:
+    if r.get("parsed"):
+        desc = _description_sections(r["parsed"])
+    elif r["description"]:
         desc = f'<div class="arch-desc">{html.escape(r["description"])}</div>'
     elif r["has_record"]:
         desc = ('<p class="text-muted" style="margin:0;font-size:12.5px">The board served no '
@@ -1580,12 +1660,53 @@ def _archive_record(r: dict, href: str | None = None, heading: str = "h2") -> st
             f'{field("Location", r["location"])}{field("Team", r["team"])}'
             f'{field("Posted on", posted)}{field("First seen", r["first_seen"])}'
             f'{field("Last seen", r["last_seen"])}{field("Closed on", r["closed_on"])}'
-            f'{field("Days open", days)}{field("Source", r["source"])}'
+            f'{field("Days open", days)}{field("Pay range", pay_label(r.get("pay")))}'
+            f'{field("Source", r["source"])}'
             f'{field("Posting ID", r["pid"])}'
             f'<dt>Original posting</dt><dd>{link}</dd>{page}'
             f'<dt>Stack signals</dt><dd>{terms}</dd>'
             f'</dl>'
             f'<h3 class="section-label text-muted" style="margin:18px 0 8px">Description</h3>{desc}')
+
+
+_SECTION_LABELS = {
+    "summary": "Summary", "responsibilities": "Responsibilities", "qualifications": "Qualifications",
+    "preferred_qualifications": "Preferred qualifications", "work_arrangement": "Work arrangement",
+    "compensation": "Compensation",
+}
+
+
+_PROSE_SECTIONS = ("summary", "work_arrangement", "compensation")
+
+
+def _description_sections(parsed: dict) -> str:
+    """A description in its labelled sections, role content only: the board's
+    intro, benefits and equal-opportunity text are said to be left out, not
+    shown. An approximate rebuild says so."""
+    secs = parsed["sections"]
+    out = []
+    for kind, label in _SECTION_LABELS.items():
+        lines = secs.get(kind) or []
+        if not lines:
+            continue
+        if kind in _PROSE_SECTIONS:   # prose reads as paragraphs, not one bullet per sentence
+            body = f'<p class="arch-para">{html.escape(" ".join(lines))}</p>'
+        else:
+            body = '<ul class="arch-list">' + "".join(f"<li>{html.escape(t)}</li>" for t in lines) + "</ul>"
+        out.append(f'<h4 class="arch-sec">{label}</h4>{body}')
+    for o in secs.get("other") or []:
+        items = "".join(f"<li>{html.escape(t)}</li>" for t in o["lines"])
+        out.append(f'<h4 class="arch-sec">{html.escape(o["heading"])}</h4><ul class="arch-list">{items}</ul>')
+    notes = []
+    left_out = [k.replace("_", " ") for k in description.BOILERPLATE if secs.get(k)]
+    if left_out:
+        notes.append(f'The board\'s {_join_en(left_out)} text is left out.')
+    if parsed.get("approximate"):
+        notes.append("Sections were rebuilt from the posting's flattened text, so a heading "
+                     "the board worded unusually may sit inside the text above it.")
+    note = (f'<p class="text-muted" style="margin:10px 0 0;font-size:11.5px">{" ".join(notes)}</p>'
+            if notes else "")
+    return f'<div class="arch-desc-sections">{"".join(out)}</div>{note}'
 
 
 def _archive_detail(r: dict, i: int, href: str) -> str:
@@ -1721,11 +1842,13 @@ def render_dashboard(lake: dict, company: str) -> str:
         terms = "".join(f'<span class="tag tag-outline" style="margin:0 4px 4px 0">{html.escape(t)}</span>'
                         for t in r["terms"]) or "&mdash;"
         seen = html.escape(r["first_seen"] or "—")
+        pay = html.escape(pay_label(r.get("pay"), short=True) or "—")
         return (f'<tr data-new="{int(r["is_new"])}" '
                 f'data-q="{html.escape((r["title"] + " " + r["location"]).lower(), quote=True)}">'
                 f'<td>{link}{badges}</td>'
                 f'<td class="text-muted">{html.escape(r["location"])}</td>'
                 f'<td class="text-muted" style="white-space:nowrap">{seen}</td>'
+                f'<td class="text-muted" style="white-space:nowrap">{pay}</td>'
                 f'<td>{terms}</td></tr>')
 
     open_table_rows = "".join(_open_row(r) for r in open_rows)
@@ -1840,8 +1963,8 @@ def render_dashboard(lake: dict, company: str) -> str:
           <table class="table" id="open-roles">
             <caption class="visually-hidden">Open roles on the {curr_dt} board. Titles link to the
               posting on the company&rsquo;s job board and open in a new tab.</caption>
-            <thead><tr><th scope="col">Posting</th><th scope="col">Location</th><th scope="col">First seen</th><th scope="col">Stack signals matched</th></tr></thead>
-            <tbody>{open_table_rows or '<tr><td colspan="4" class="text-muted">No open postings on this crawl.</td></tr>'}</tbody>
+            <thead><tr><th scope="col">Posting</th><th scope="col">Location</th><th scope="col">First seen</th><th scope="col">Pay</th><th scope="col">Stack signals matched</th></tr></thead>
+            <tbody>{open_table_rows or '<tr><td colspan="5" class="text-muted">No open postings on this crawl.</td></tr>'}</tbody>
           </table>
           <p class="tbl-empty text-muted" id="no-match" hidden>No open role matches that filter. Clear the search box, or untick &ldquo;New in last {NEW_ROLE_DAYS} days&rdquo;, to see the full board.</p>
         </div>
