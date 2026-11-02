@@ -11,6 +11,11 @@ Per invocation:
     fetch (paginate) -> raw/  -> normalize via schema_map -> diff vs state
     -> curated/ (+first_seen/last_seen) -> derived/snapshots/ + state
 
+Descriptions keep their structure: raw/ holds each posting's original HTML
+(for Workday, fetched per posting and attached before raw/ is written), and
+every curated row carries `description`, its labelled sections (see
+description.py), next to the flat `description_raw` text.
+
 Local dry run (no AWS): set LOCAL_OUTPUT_DIR to write files to disk:
     LOCAL_OUTPUT_DIR=./out python3 app.py ../../../configs/<slug>_config.json
 """
@@ -23,6 +28,8 @@ import re
 import time
 import urllib.request
 from datetime import date, datetime, timezone
+
+import description
 
 BUCKET = os.environ.get("BUCKET_NAME")
 LOCAL_DIR = os.environ.get("LOCAL_OUTPUT_DIR")
@@ -238,6 +245,7 @@ def normalize(posting: dict, config: dict, captured: str) -> dict:
         "date_trust": config.get("date_trust"),
         "captured_dt": captured,
         "description_raw": None,
+        "description": None,
     }
 
 
@@ -254,7 +262,7 @@ def _html_text(raw: str | None) -> str | None:
 
 
 def fetch_workday_description(config: dict, external_path) -> str | None:
-    """GET the CXS per-posting detail and return the description as plain text.
+    """GET the CXS per-posting detail and return the description's HTML.
 
     Detail endpoint = collection endpoint minus '/jobs', plus the posting's
     externalPath. Returns None on any failure — one bad detail page must not
@@ -267,7 +275,7 @@ def fetch_workday_description(config: dict, external_path) -> str | None:
         data = _http_json(base[: -len("/jobs")] + external_path, "GET")
     except Exception:
         return None
-    return _html_text((data.get("jobPostingInfo") or {}).get("jobDescription"))
+    return (data.get("jobPostingInfo") or {}).get("jobDescription") or None
 
 
 # Tech-stack / cloud taxonomy (design doc Phase 4). Categories are additive
@@ -331,11 +339,12 @@ def extract_keywords(text: str) -> dict[str, list[str]]:
 
 
 def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
-    """Attach description_raw + keyword fields to curated rows in place.
+    """Attach description_raw, description and keyword fields to rows in place.
 
     Returns the number of descriptions fetched. Keywords are extracted from
     title + description, so rows still get title-level keywords when a detail
-    fetch fails (or for ATSes without a detail path yet).
+    fetch fails (or for ATSes without a detail path yet). The description's
+    HTML stays on the posting, so raw/ keeps it for every ATS.
     """
     fetched = 0
     ats = config.get("ats")
@@ -347,23 +356,27 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
     # the posting payload, for boards that ship it inline with the listing. It
     # costs no extra request, so it wins over the per-ATS defaults.
     desc_expr = config.get("description_field") if FETCH_DESCRIPTIONS else None
+    fmt = config.get("description_format")
     for posting, row in zip(postings, rows):
+        raw_html = None
         if desc_expr:
-            text = _html_text(resolve_field(posting, desc_expr))
-            if text:
-                row["description_raw"] = text
-                fetched += 1
+            raw_html = resolve_field(posting, desc_expr)
         elif workday:
-            text = fetch_workday_description(config, posting.get("externalPath"))
-            if text:
-                row["description_raw"] = text
-                fetched += 1
+            raw_html = fetch_workday_description(config, posting.get("externalPath"))
+            if raw_html:
+                posting["jobDescription"] = raw_html   # so raw/ keeps it
             time.sleep(_DETAIL_DELAY_S)
         elif adp:
-            text = _html_text(posting.get("jobDescription"))
-            if text:
-                row["description_raw"] = text
-                fetched += 1
+            raw_html = posting.get("jobDescription")
+        text = _html_text(raw_html) if isinstance(raw_html, str) else None
+        if text:
+            row["description_raw"] = text
+            try:
+                row["description"] = description.parse(raw_html, fmt)
+            except Exception as exc:   # a parser bug costs the structure, never the run
+                print(json.dumps({"description_parse_error": row["posting_id"],
+                                  "error": f"{type(exc).__name__}: {exc}"}))
+            fetched += 1
         kw = extract_keywords(f"{row['title']} {row['description_raw'] or ''}")
         row["keywords"] = kw
         row["is_tech_role"] = any(
@@ -485,6 +498,12 @@ def collect_company(config: dict) -> dict:
     return {"company_slug": slug, "collected": len(rows),
             "total_reported": total_reported,
             "descriptions_fetched": descriptions_fetched,
+            # share of description text filed under a known section, averaged;
+            # a drop is the sign the board's layout moved and the evaluator's
+            # description_format needs relearning
+            "description_coverage": round(
+                sum(description.coverage(r["description"]) for r in rows if r.get("description"))
+                / max(1, sum(1 for r in rows if r.get("description"))), 3),
             "tech_roles": sum(1 for r in rows if r.get("is_tech_role")),
             "new": len(diff["new"]),
             "closed": len(diff["closed"]), "reopened": len(diff["reopened"])}

@@ -12,13 +12,14 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 |---|---|
 | `infra/template.yaml` | The one SAM stack, `tick-collector` (us-east-1): Lambdas, SQS, S3, Cognito, CloudFront, alarms |
 | `infra/src/dispatcher/` | Fans the daily run out: one SQS message per `configs/*.json` |
-| `infra/src/collector/` | Fetches, normalizes, diffs one company. Also runs locally (`LOCAL_OUTPUT_DIR`) |
+| `infra/src/collector/` | Fetches, normalizes, diffs one company. Also runs locally (`LOCAL_OUTPUT_DIR`). `description.py` parses each description into labelled sections |
 | `infra/src/publisher/` | Renders the whole lake to static HTML in the site bucket, then invalidates |
 | `infra/src/auth/` | Cognito code exchange; mints the HMAC session cookie |
 | `infra/src/join/` | `/api/join` waitlist and `/api/account-request` |
 | `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `make publish-static` |
 | `tools/tick_insights_report.py` | The renderer. `infra/src/publisher/report.py` is a **symlink** to it |
 | `tools/evaluator.py` | Writes a company's SourceConfig |
+| `tests/` | `python3 -m unittest discover tests`; stdlib only, synthetic fixtures (the repo is public) |
 | `configs/` | Gitignored local copy of the SourceConfigs. The data bucket's `configs/` prefix is the source of truth |
 | `.claude/skills/` | `tick-evaluator` (onboard a company), `tick-brief` (write, check and publish every account's weekly brief; tune its prompt) |
 
@@ -92,8 +93,15 @@ Never commit directly to `main`.
 
 ### 3. Build and test locally
 
-No automated test suite exists yet. Prove the change locally before opening
-the PR. For anything that changes what a page shows, serve the site on
+Run the tests, then prove the change locally before opening the PR. The suite
+is young (the description parser only), so it backs up a local check rather
+than replacing one:
+
+```bash
+python3 -m unittest discover tests
+```
+
+For anything that changes what a page shows, serve the site on
 localhost (public pages plus every account, from a local copy of the lake):
 
 ```bash

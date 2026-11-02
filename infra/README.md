@@ -468,15 +468,32 @@ DATA_BUCKET=<DataBucketName> SITE_BUCKET=- LOCAL_OUTPUT_DIR=../../../site python
 ## Descriptions & keyword enrichment
 
 For Workday sources the collector fetches each posting's full description
-(CXS detail endpoint, one GET per posting, 0.1s politeness gap) and enriches
-every curated row with:
+(CXS detail endpoint, one GET per posting, 0.1s politeness gap); ADP and
+inline boards carry it in the posting payload. The original HTML is kept in
+`raw/` for every ATS (Workday's is attached to the posting before `raw/` is
+written), so descriptions can be re-parsed without refetching. Every curated
+row gets:
 
 - `description_raw` — plain-text job description
+- `description` — the same description in labelled sections, parsed by
+  [src/collector/description.py](src/collector/description.py):
+  `summary`, `responsibilities`, `qualifications`, `preferred_qualifications`,
+  `work_arrangement`, `compensation`, `benefits`, `company_intro`, `eeo`, and
+  `other` for a heading nothing recognises (kept, never dropped); plus
+  `compensation` as `{min, max, currency, period, text}`, the boilerplate kinds
+  found, and the unmatched headings. Headings match the SourceConfig's
+  `description_format` (the aliases and boilerplate the evaluator learned for
+  that board) first, then generic patterns. A parser error costs the row its
+  `description`, never the run.
 - `keywords` — `{category: [matched terms]}` from the tech-stack taxonomy in
   [src/collector/app.py](src/collector/app.py) (`cloud_aws` / `cloud_azure` /
   `cloud_gcp` / `data_platform` / `infra_devops` / `languages` /
   `analytics_tools` / `signal_terms`)
 - `is_tech_role` — true on any hit outside `signal_terms`/`analytics_tools`
+
+Each run's summary reports `description_coverage`, the average share of
+description text filed under a known section. A drop means the board's layout
+moved and its `description_format` needs relearning.
 
 Set `FETCH_DESCRIPTIONS=0` on the collector function to skip detail fetches
 (keywords then come from titles only). Keyword matching is word-bounded and
