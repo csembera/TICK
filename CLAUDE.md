@@ -21,7 +21,7 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 | `tools/evaluator.py` | Writes a company's SourceConfig |
 | `tests/` | `python3 -m unittest discover tests`; stdlib only, synthetic fixtures (the repo is public) |
 | `configs/` | Gitignored local copy of the SourceConfigs. The data bucket's `configs/` prefix is the source of truth |
-| `.claude/skills/` | `tick-evaluator` (onboard a company), `tick-brief` (write, check and publish every account's weekly brief; tune its prompt) |
+| `.claude/skills/` | `tick-evaluator` (onboard a company; learn its description format), `tick-brief` (write, check and publish every account's weekly brief; tune its prompt) |
 
 ## Invariants. Do not break these without saying so in the plan
 

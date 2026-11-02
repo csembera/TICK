@@ -1,13 +1,14 @@
 ---
 name: tick-evaluator
-description: Discover and verify a company's job-posting collection endpoint, emitting a verified TICK SourceConfig JSON for the deterministic daily collector. Use when asked to evaluate, onboard, or re-evaluate a target company for TICK, to find a company's ATS or careers API (Workday, Greenhouse, Lever, Ashby, ADP, Dayforce), or when a collector run fails and its config must be rebuilt.
+description: Discover and verify a company's job-posting collection endpoint, and learn how its job descriptions are laid out, emitting a verified TICK SourceConfig JSON for the deterministic daily collector. Use when asked to evaluate, onboard, or re-evaluate a target company for TICK, to find a company's ATS or careers API (Workday, Greenhouse, Lever, Ashby, ADP, Dayforce), to learn or relearn a board's description format, or when a collector run fails and its config must be rebuilt.
 ---
 
 # TICK Evaluator
 
 The one-time discovery layer of a job-posting intelligence pipeline. Runs ONCE
 per target company, plus on collector failure. The only output is a verified
-SourceConfig artifact.
+SourceConfig artifact: where the postings are, and how this board lays out a
+description, so the collector can file each one into labelled sections.
 
     Evaluator (you, reasoning)  →  SourceConfig (JSON)  →  Collector (dumb, deterministic)
 
@@ -34,6 +35,7 @@ Run every command from the project root. `$PY` below means `.venv/bin/python`
     $PY $S/tick_tools.py bundle <js-url> [--pattern REGEX]... [--max-hits 30]
     $PY $S/tick_tools.py probe <url> [--method POST] [--body '{...}'] [--headers '{...}']
     $PY $S/tick_tools.py fingerprint "<html-or-url>"     # or pipe text on stdin
+    $PY $S/tick_tools.py descriptions <draft.json> [--n 12] [--save DIR]
 
 Each prints a JSON object and exits 0 even on a transport error — read the JSON,
 not the exit code. `fetch` truncates the body at 8000 chars, so it cannot search
@@ -107,6 +109,13 @@ job). Fill every field you verified:
     "team": null,
     "posted_on": null
   },
+  "description_format": {
+    "aliases": {"responsibilities": ["SKILLS"]},
+    "boilerplate": [
+      {"kind": "company_intro", "contains": "is a regional paper company that serves"},
+      {"kind": "eeo", "starts_with": "Dunder Mifflin is an equal opportunity employer"}
+    ]
+  },
   "careers_url": "https://...",
   "identity_notes": "Parent company, rebrand, or multi-board notes. Sourced, not inferred.",
   "date_trust": "high",
@@ -133,6 +142,42 @@ Field rules that cost real data when broken:
   `location` is silent, permanent corruption.
 - Prefer one large page over paging when the total fits. Before trusting a paged
   config, read the total twice and confirm it is stable.
+
+### Description format — how this board lays out a description
+
+Once the endpoint works, learn the description layout. The collector parses
+every description into sections (`summary`, `responsibilities`,
+`qualifications`, `preferred_qualifications`, `work_arrangement`,
+`compensation`, `benefits`, `company_intro`, `eeo`, plus `other`) using
+generic heading patterns. `description_format` tells it where this board
+differs.
+
+    $PY $S/tick_tools.py descriptions draft.json --n 12
+
+This samples descriptions the way the collector fetches them and prints:
+each heading with how many postings use it and how the generic patterns file
+it; `repeated_blocks`, the paragraphs most postings share (boilerplate
+candidates); pay sentences; and `role_sections`, how often summary,
+responsibilities and qualifications were found. `--save DIR` writes the
+sampled HTML if you need to read one.
+
+Write only what the generic patterns get wrong:
+
+- **aliases** — a heading this board uses that `generic` misfiles or leaves
+  `null`, under the section it really opens. Copy the heading verbatim. Read
+  what follows it in a saved sample before deciding: a board's "SKILLS" label
+  may head the duties. Only alias headings at least a quarter of the sample
+  uses; a heading one posting invented is that posting's, not the board's.
+- **boilerplate** — the board's repeated company intro, benefits blurb and
+  equal-opportunity text, from `repeated_blocks` (a block on most postings).
+  Kinds are `company_intro`, `benefits`, `eeo`. Match with `starts_with` or
+  `contains`, and **copy the words verbatim from the inventory, never
+  paraphrase**: one changed word ("health" for "medical") and the rule
+  matches nothing. When postings word the same paragraph two ways, use
+  `contains` with the phrase the variants share, at least six words long.
+  Skip `eeo` blocks the inventory already marks `generic_kind: eeo`.
+- Leave out what already works. An empty `description_format` is fine for a
+  board the generic patterns read correctly; the gate reports it either way.
 
 ### Evidence discipline — this is what makes the artifact auditable
 
@@ -184,3 +229,27 @@ If the gate reports a fixable defect (a `schema_map` path resolving on 40% of
 rows, a revision-id warning, an unresolved URL template), fix the draft and
 re-run phase C. If it reports the endpoint returning no postings at all, go back
 to phase A — the endpoint is wrong, not the draft.
+
+The gate also samples fresh descriptions and writes
+`verification.descriptions`: coverage with and without your format, how often
+each role section was found, which boilerplate rules and aliases actually
+matched (`rule_hits`, `alias_hits`), and headings still unrecognised. It drops
+boilerplate rules that matched no sampled posting. Report the `descriptions:`
+line and its findings too. Aim for responsibilities and qualifications on most
+postings and every boilerplate rule matching most of the sample; a rule that
+matches a few postings is role text, so remove it. Descriptions never change
+the tier or the confidence: a board with an imperfect format still collects.
+
+## Relearning one board's description format
+
+When a collector run reports `description_coverage` dropping, or a board's
+descriptions file badly, relearn just the format. There is no need to rediscover
+the endpoint:
+
+    cp configs/<slug>_config.json /tmp/draft.json         # the current config is a valid draft
+    $PY $S/tick_tools.py descriptions /tmp/draft.json --n 12
+    # edit description_format in /tmp/draft.json per the rules above
+    $PY $S/verify.py /tmp/draft.json --out configs/<slug>_config.json
+
+The new config reaches the collector only once it is uploaded to the data
+bucket's `configs/` prefix. That is production: ask before uploading.

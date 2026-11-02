@@ -11,6 +11,12 @@ phase exists.
 Nothing the agent says about its own endpoint is taken on trust. The agent does
 not write the final artifact; this script does.
 
+A draft's description_format gets the same treatment: the gate samples fresh
+descriptions, parses them with and without the format, records the coverage
+and which rules and aliases actually matched, and drops boilerplate rules that
+matched nothing. Descriptions are enrichment, not collection, so this informs
+the reviewer and never moves the tier or the confidence.
+
     .venv/bin/python .claude/skills/tick-evaluator/scripts/verify.py \
         draft.json --out configs/dunder-mifflin_config.json
 """
@@ -20,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import date
 from typing import Any, Literal, Optional
 
@@ -30,9 +37,16 @@ except ImportError as e:  # pragma: no cover
     print(f"missing dependency ({e}) — run: .venv/bin/pip install httpx pydantic", file=sys.stderr)
     sys.exit(1)
 
-from tick_common import BROWSER_HEADERS, URL_TOKEN, locate_postings, resolve_field
+from tick_common import (BROWSER_HEADERS, URL_TOKEN, description_html, format_report,
+                         locate_postings, prune_format, resolve_field, spread)
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.7
+
+# Optional fields the collector tests for presence, not truthiness: a present
+# postings_key of null means "the payload is the posting list". Emitting them
+# as null on every config would change what the collector does, so they are
+# written only when the draft set them.
+PASSTHROUGH_IF_SET = ("postings_key", "timeout_s", "description_field", "description_format", "synthetic")
 
 ATS = Literal[
     "workday", "greenhouse", "lever", "ashby", "workable",
@@ -50,6 +64,28 @@ class SchemaMap(BaseModel):
     posted_on: Optional[str] = None
 
 
+SectionKind = Literal["summary", "responsibilities", "qualifications", "preferred_qualifications",
+                      "work_arrangement", "compensation", "benefits", "company_intro", "eeo"]
+
+
+class BoilerplateRule(BaseModel):
+    """A paragraph the board repeats on most postings. Match on a distinctive
+    prefix or phrase copied from a real description, not a paraphrase."""
+    kind: Literal["company_intro", "benefits", "eeo"]
+    starts_with: Optional[str] = None
+    contains: Optional[str] = None
+
+
+class DescriptionFormat(BaseModel):
+    """How this board lays out a description, for the collector's parser.
+
+    aliases: headings this board uses that the generic patterns miss or misfile,
+    per section kind, copied verbatim. boilerplate: the board's repeated intro,
+    benefits and equal-opportunity paragraphs."""
+    aliases: dict[SectionKind, list[str]] = Field(default_factory=dict)
+    boilerplate: list[BoilerplateRule] = Field(default_factory=list)
+
+
 class SourceConfigDraft(BaseModel):
     """What the agent emits. Provenance and rubric fields are NOT in here —
     they are stamped below so the agent cannot assert its own verification."""
@@ -64,12 +100,31 @@ class SourceConfigDraft(BaseModel):
     request_headers: Optional[dict] = None
     detail_endpoint: Optional[str] = None
     pagination: Optional[str] = None
+    # read by the collector, so they must survive re-verification
+    postings_key: Optional[str] = None
+    timeout_s: Optional[float] = None
+    description_field: Optional[str] = None
     schema_map: Optional[SchemaMap] = None
+    description_format: Optional[DescriptionFormat] = None
     careers_url: Optional[str] = None
     identity_notes: Optional[str] = None
     date_trust: Literal["high", "low", "lowest"]
     confidence: float = Field(ge=0.0, le=1.0)
     evidence: list[str] = Field(default_factory=list)
+    synthetic: Optional[bool] = None
+
+
+class DescriptionCheck(BaseModel):
+    """What sampling the board's descriptions showed. Written by code."""
+    sampled: int = 0
+    coverage_generic: Optional[float] = None
+    coverage_with_format: Optional[float] = None
+    role_sections: dict[str, float] = Field(default_factory=dict)
+    pay_found: int = 0
+    rule_hits: list[dict] = Field(default_factory=list)
+    alias_hits: dict[str, dict[str, int]] = Field(default_factory=dict)
+    unmatched_headings: list[str] = Field(default_factory=list)
+    findings: list[str] = Field(default_factory=list)
 
 
 class Verification(BaseModel):
@@ -82,6 +137,7 @@ class Verification(BaseModel):
     field_coverage: dict[str, float] = Field(default_factory=dict)
     posting_id_unique: Optional[bool] = None
     findings: list[str] = Field(default_factory=list)
+    descriptions: Optional[DescriptionCheck] = None
 
     @property
     def collects(self) -> bool:
@@ -95,7 +151,7 @@ class SourceConfig(SourceConfigDraft):
     evaluated_on: str
 
 
-def verify_draft(draft: SourceConfigDraft, sample: int = 25) -> Verification:
+def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 12) -> Verification:
     """Re-execute the emitted config and report what it actually collects.
 
     This is the gate an earlier run needed: that config asserted a
@@ -186,7 +242,53 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25) -> Verification:
         built = URL_TOKEN.sub(lambda m: str(resolve_field(rows[0], m.group(1)) or ""), sm.url)
         if "{" in built or built.endswith("="):
             v.findings.append(f"schema_map.url template did not fully resolve: {built!r}")
+
+    v.descriptions = verify_descriptions(draft, postings, hdrs, desc_sample)
     return v
+
+
+def verify_descriptions(draft: SourceConfigDraft, postings: list, hdrs: dict, n: int) -> DescriptionCheck:
+    """Sample descriptions as the collector fetches them and check the format.
+
+    Prunes, in place, boilerplate rules that matched no sampled posting."""
+    d = DescriptionCheck()
+    cfg = draft.model_dump()
+    htmls, errors = [], 0
+    with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
+        def get_json(url, method="GET", body=None):
+            r = c.request(method, url, json=body)
+            r.raise_for_status()
+            return r.json()
+        for posting in spread(postings, n):
+            try:
+                h = description_html(cfg, posting, get_json)
+            except Exception:
+                errors += 1
+                continue
+            if h:
+                htmls.append(h)
+            time.sleep(0.2)
+    fmt = draft.description_format.model_dump(exclude_none=True) if draft.description_format else None
+    rep = format_report(htmls, fmt)
+    d.sampled = rep["sampled"]
+    if not htmls:
+        d.findings.append("no descriptions could be sampled — the collector will store none for this board"
+                          + (f" ({errors} detail fetches failed)" if errors else ""))
+        return d
+    d.coverage_generic = rep["coverage_generic"]
+    d.coverage_with_format = rep.get("coverage_with_format")
+    d.role_sections = rep["role_sections"]
+    d.pay_found = rep["pay_found"]
+    d.rule_hits = rep.get("rule_hits", [])
+    d.alias_hits = rep.get("alias_hits", {})
+    d.unmatched_headings = [h["text"] for h in rep["headings"]
+                            if (h.get("with_format", h["generic"])) is None and h["postings"] >= 2][:10]
+    d.findings = rep["findings"]
+    if not fmt:
+        d.findings.append("no description_format: the collector falls back to generic headings")
+    elif any(r["postings"] == 0 for r in d.rule_hits):
+        draft.description_format = DescriptionFormat.model_validate(prune_format(fmt, rep))
+    return d
 
 
 def finalize(draft: SourceConfigDraft, v: Verification) -> SourceConfig:
@@ -228,6 +330,8 @@ def main() -> None:
     p.add_argument("draft", nargs="?", default="-", help="path to the draft JSON, or '-' for stdin")
     p.add_argument("--out", default=None, help="write the verified config here (default: stdout)")
     p.add_argument("--sample", type=int, default=25, help="postings to sample for coverage")
+    p.add_argument("--desc-sample", type=int, default=12,
+                   help="descriptions to sample when checking the description_format")
     args = p.parse_args()
 
     raw = sys.stdin.read() if args.draft == "-" else open(args.draft).read()
@@ -238,8 +342,12 @@ def main() -> None:
         print(e, file=sys.stderr)
         sys.exit(1)
 
-    cfg = finalize(draft, verify_draft(draft, sample=args.sample))
-    payload = cfg.model_dump_json(indent=2)
+    cfg = finalize(draft, verify_draft(draft, sample=args.sample, desc_sample=args.desc_sample))
+    data = json.loads(cfg.model_dump_json())
+    for k in PASSTHROUGH_IF_SET:
+        if k not in draft.model_fields_set:
+            data.pop(k, None)
+    payload = json.dumps(data, indent=2, ensure_ascii=False)
     if args.out:
         with open(args.out, "w") as f:
             f.write(payload)
@@ -252,6 +360,12 @@ def main() -> None:
           f"postings={v.postings_found} coverage={v.field_coverage}", file=sys.stderr)
     for f in v.findings:
         print(f"  - {f}", file=sys.stderr)
+    if v.descriptions:
+        d = v.descriptions
+        print(f"descriptions: sampled={d.sampled} coverage generic={d.coverage_generic} "
+              f"with_format={d.coverage_with_format} role_sections={d.role_sections}", file=sys.stderr)
+        for f in d.findings:
+            print(f"  - {f}", file=sys.stderr)
     if cfg.needs_human_review:
         print(f"⚠ confidence {cfg.confidence:.2f} — flagged for human review", file=sys.stderr)
         sys.exit(2)
