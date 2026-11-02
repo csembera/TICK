@@ -3,9 +3,9 @@ TICK tech-stack report — renders a derived tech_stack.json into a readable
 account-planning summary, with every claim linked to the postings it came from.
 
 Usage:
-    python tech_report.py <path-to-tech_stack.json>
-    python tech_report.py <lake-root-dir> [--company SLUG]   # picks latest dt
-    python tech_report.py s3://bucket [--company SLUG]       # same, from S3
+    python3 tech_report.py <path-to-tech_stack.json>
+    python3 tech_report.py <lake-root-dir> [--company SLUG]   # picks latest dt
+    python3 tech_report.py s3://bucket [--company SLUG]       # same, from S3
 
 Pure stdlib for local files; boto3 (runtime-provided / in .venv) only when
 reading from S3.

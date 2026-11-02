@@ -1,10 +1,11 @@
+#!/usr/bin/env python3
 """
 Serve any version of TICK on localhost: the public pages from site-static/
 plus the app pages rendered from the lake, laid out as the site bucket is.
 
-    python tools/preview.py               # the working tree, uncommitted edits included
-    python tools/preview.py my-branch     # any branch, tag or commit
-    python tools/preview.py 12            # pull request #12
+    python3 tools/preview.py               # the working tree, uncommitted edits included
+    python3 tools/preview.py my-branch     # any branch, tag or commit
+    python3 tools/preview.py 12            # pull request #12
       --refresh     sync the data bucket into local-data/lake first
       --lake PATH   render from another local lake
       --port N      default 8000
