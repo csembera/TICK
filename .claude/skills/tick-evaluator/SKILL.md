@@ -130,7 +130,23 @@ Field rules that cost real data when broken:
   append a `-1` suffix and create false duplicates. Body
   `{"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": ""}`,
   pagination `offset`.
-- **Dayforce**: `jobReqId`, not `jobPostingId` — every save mints a new one.
+- **Dayforce** (`jobs.dayforcehcm.com/<namespace>/<board>`): `ats: "dayforce"`.
+  The board's own search (`POST /api/geo/<namespace>/jobposting/search`)
+  sits behind a bot rule that answers 403; do not try to get past it.
+  Collect from the job feed Dayforce publishes for job boards instead:
+  `GET https://www.dayforcehcm.com/Api/<namespace>/V1/JobFeeds`, no body, no
+  `request_headers`, no `detail_endpoint`. It answers without credentials
+  only when the tenant has enabled external job board sourcing. If it does
+  not answer, the board has no tier-1 source: say so, and do not fall back
+  to the search route. The feed sends one row per posting per location, and
+  a company often posts one requisition once per office. The collector
+  groups the rows into one posting per requisition, so map the grouped
+  record: `posting_id` `ParentRequisitionCode` (never `ReferenceNumber`,
+  the board's `jobPostingId`, which every save mints anew), `title` `Title`,
+  `location` `Location`, `url` `JobDetailsUrl`, `team` `JobFamily`,
+  `posted_on` `DatePosted`. Descriptions arrive in the feed as plain text,
+  which the collector rewrites as paragraphs and lists. A board's template
+  headings then appear as `heading_candidates`, to alias.
 - **Taleo** (`<tenant>.taleo.net/careersection/...`): `ats: "taleo"`. Endpoint
   `https://<tenant>.taleo.net/careersection/rest/jobboard/searchjobs?lang=en`,
   `POST`, with no `portal` in the URL. Each career section's portal id is the
@@ -254,8 +270,9 @@ to phase A — the endpoint is wrong, not the draft.
 The gate re-executes the config exactly as the collector will: the collector's
 headers, not the browser set the discovery tools send (some boards answer a
 browser `Accept-Language` with an empty posting list), for ADP each
-posting's detail merged in before `schema_map` is checked, and for Taleo
-every page of every career section, with the collector's own code. A Taleo
+posting's detail merged in before `schema_map` is checked, for Taleo
+every page of every career section, and for Dayforce the feed grouped into
+requisitions, both with the collector's own code. A Taleo
 section that returns fewer postings than it reports fails the gate, as it
 would fail the collector's run.
 

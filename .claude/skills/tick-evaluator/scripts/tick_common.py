@@ -15,7 +15,9 @@ exactly as the collector will apply it.
 
 Taleo boards page across career sections, and their descriptions sit in each
 job page. Both are read with the collector's own taleo.py, imported the same
-way, so the gate pages a Taleo board exactly as the collector does.
+way, so the gate pages a Taleo board exactly as the collector does. Dayforce
+job feeds are grouped into requisitions by the collector's dayforce.py, for
+the same reason.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from typing import Any, Callable, Optional
 
 sys.path.insert(0, os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "infra", "src", "collector")))
+import dayforce  # noqa: E402  the collector's job-feed grouping
 import description  # noqa: E402  the collector's parser, not a copy
 import taleo  # noqa: E402  the collector's Taleo paging and job-page reader
 
@@ -150,6 +153,8 @@ def description_html(cfg: dict, posting: dict, get_json: GetJson,
             row = (get_json(cfg["detail_endpoint"].replace("{posting_id}", str(rid)))
                    .get("jobRequisitions") or [None])[0]
             return (row or {}).get("jobDescription")
+    if cfg.get("ats") == "dayforce":
+        return posting.get(dayforce.DESCRIPTION_KEY)
     if cfg.get("ats") == "taleo" and cfg.get("detail_endpoint") and get_text:
         return taleo.description(get_text(taleo.detail_url(cfg["detail_endpoint"], posting)))
     return None
@@ -159,6 +164,12 @@ def collect_taleo(cfg: dict, get_json: GetJson) -> tuple[list, int]:
     """A Taleo board's postings and reported total, paged by the collector's
     own code: every career section, every page."""
     return taleo.fetch_all(cfg, lambda url, body: get_json(url, "POST", body))
+
+
+def collect_dayforce(cfg: dict, get_json: GetJson) -> tuple[list, int]:
+    """A Dayforce job feed's requisitions and their count, grouped by the
+    collector's own code."""
+    return dayforce.fetch_all(cfg, get_json)
 
 
 def merge_detail(cfg: dict, posting: dict, get_json: GetJson) -> dict:
