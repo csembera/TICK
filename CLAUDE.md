@@ -80,15 +80,21 @@ Never commit directly to `main`.
 ### 3. Build and test locally
 
 No automated test suite exists yet. Prove the change locally before opening
-the PR:
+the PR. For anything that changes what a page shows, serve the site on
+localhost (public pages plus every account, from a local copy of the lake):
+
+```bash
+python tools/preview.py --refresh   # first run, or for today's data: sync the bucket into local-data/lake
+python tools/preview.py             # the working tree, uncommitted edits included
+python tools/preview.py <branch>    # any branch or commit;  python tools/preview.py <PR#>  for a PR
+```
+
+Not every change needs a preview. The edge, Cognito and per-viewer scoping
+only run on AWS. Other checks, as they apply:
 
 ```bash
 # Collector against a live board, writing to disk instead of S3
 cd infra/src/collector && LOCAL_OUTPUT_DIR=../../../out python app.py ../../../configs/<slug>_config.json
-
-# Render the site from a local lake, or from the real bucket (read only)
-python tools/tick_insights_report.py out --configs configs --out-dir site && open site/index.html
-python tools/tick_insights_report.py s3://<DataBucketName> --out-dir site
 
 # Exactly what the publisher Lambda renders, written to disk
 cd infra/src/publisher && DATA_BUCKET=<DataBucketName> SITE_BUCKET=- LOCAL_OUTPUT_DIR=../../../site python app.py
@@ -100,8 +106,8 @@ cd infra && sam validate --lint && sam build
 ### 4. Pull request
 
 Push the branch and open a PR against `main` with `gh pr create`. The PR
-description says what changed and why, and gives the local preview steps a
-reviewer can run (the commands from step 3 that apply). It also flags any
+description says what changed and why, and says how to check it: `python tools/preview.py <PR#>` when pages change,
+otherwise the step 3 commands that apply. It also flags any
 change to `template.yaml`, the edge function, auth or deploy order.
 
 ### 5. Merge → production
