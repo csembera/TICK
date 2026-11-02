@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover
     sys.exit(0)
 
 from tick_common import (BROWSER_HEADERS, BUNDLE_PATTERNS, FINGERPRINTS, _UA,
-                         collect_taleo, collector_headers, description_html,
+                         collect_dayforce, collect_taleo, collector_headers, description_html,
                          format_report, locate_postings, spread)
 
 
@@ -147,7 +147,9 @@ def cmd_probe(a) -> dict:
     if postings:
         sample = postings[0]
         out["sample_keys"] = list(sample) if isinstance(sample, dict) else None
-        out["sample"] = json.loads(json.dumps(sample)[:1500])
+        # long values cut one by one: cutting the serialized JSON leaves it unparseable
+        out["sample"] = ({k: v[:300] + "…" if isinstance(v, str) and len(v) > 300 else v
+                          for k, v in sample.items()} if isinstance(sample, dict) else sample)
     return out
 
 
@@ -204,6 +206,8 @@ def cmd_descriptions(a) -> dict:
         try:
             if cfg.get("ats") == "taleo":
                 postings = collect_taleo(cfg, get_json)[0]
+            elif cfg.get("ats") == "dayforce":
+                postings = collect_dayforce(cfg, get_json)[0]
             else:
                 data = get_json(cfg["endpoint"], cfg.get("http_method") or "GET", cfg.get("request_body"))
                 postings = (data.get(cfg["postings_key"]) if cfg.get("postings_key") and isinstance(data, dict)

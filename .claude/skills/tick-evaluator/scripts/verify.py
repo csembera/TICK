@@ -37,9 +37,9 @@ except ImportError as e:  # pragma: no cover
     print(f"missing dependency ({e}) — run: .venv/bin/pip install httpx pydantic", file=sys.stderr)
     sys.exit(1)
 
-from tick_common import (URL_TOKEN, collect_taleo, collector_headers, description_html,
-                         format_report, locate_postings, merge_detail, prune_format,
-                         resolve_field, spread)
+from tick_common import (URL_TOKEN, collect_dayforce, collect_taleo, collector_headers,
+                         dayforce, description_html, format_report, locate_postings,
+                         merge_detail, prune_format, resolve_field, spread)
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.7
 
@@ -177,6 +177,7 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 
     hdrs = collector_headers(draft.model_dump())
     v.ran = True
     postings = (_collect_taleo(draft, hdrs, v) if draft.ats == "taleo"
+                else _collect_dayforce(draft, hdrs, v) if draft.ats == "dayforce"
                 else _collect_one(draft, hdrs, v))
     v.postings_found = len(postings)
     if not postings:
@@ -306,6 +307,31 @@ def _collect_taleo(draft: SourceConfigDraft, hdrs: dict, v: Verification) -> lis
         return []
     v.findings.append(f"{len(postings)} postings across {len(cfg['portals'])} career sections "
                       f"(the sections reported {reported})")
+    return postings
+
+
+def _collect_dayforce(draft: SourceConfigDraft, hdrs: dict, v: Verification) -> list:
+    """The job feed grouped into requisitions by the collector's dayforce.py:
+    the gate checks schema_map against the postings the collector will write,
+    not the feed's one-row-per-location list."""
+    try:
+        with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
+            def get_json(url, method="GET", body=None):
+                r = c.request(method, url, json=body)
+                v.status, v.content_type = r.status_code, r.headers.get("content-type")
+                r.raise_for_status()
+                return r.json()
+            postings, _ = collect_dayforce(draft.model_dump(), get_json)
+    except Exception as e:
+        v.findings.append(f"dayforce job feed failed: {type(e).__name__}: {e}")
+        return []
+
+    v.parsed_json = True
+    if not postings:
+        v.findings.append("the job feed returned an empty list")
+        return []
+    rows = sum(len(p[dayforce.ROWS_KEY]) for p in postings)
+    v.findings.append(f"{len(postings)} requisitions, grouped from {rows} feed rows")
     return postings
 
 
