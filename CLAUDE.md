@@ -45,6 +45,10 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
   newest brief the tick-brief skill published to the lake's `briefs/` prefix,
   or "No brief yet". A brief reaches the bucket only through `publish.py`,
   after `check.py` passes it; never hand-fix or hand-upload one.
+- **A company can run more than once a day without losing movement.** The
+  collector merges a re-run into the day's change record and writes
+  `state.json` last. Never write a dated file from a single run's view alone;
+  check with `python3 tools/audit_diffs.py <lake>` after any re-crawl.
 - **One company failing never affects the others.** Each company gets its own
   invocation. Keep it that way.
 - **Collected data and configs stay out of git** (`out/`, `site/`, `local-data/`

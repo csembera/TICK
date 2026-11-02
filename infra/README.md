@@ -465,6 +465,33 @@ DATA_BUCKET=<DataBucketName> SITE_BUCKET=- LOCAL_OUTPUT_DIR=../../../site python
 - The collector also fails deliberately when it collects 0 postings for a
   company whose state shows open ones (drift detection, not layoffs).
 
+### Running a company more than once a day
+
+A manual re-crawl, an SQS retry or a duplicate delivery can run a company
+twice on one date, and every file the collector writes is keyed by that date.
+The day's change record (`derived/snapshots/.../dt=<day>/diff.json`) is what the
+dashboard's "this window" counts and the weekly brief add up, and a later run
+only sees what changed since the earlier one. So the collector:
+
+- **merges** a re-run into the day's change record: new, closed and reopened
+  are the union of every run that day, and `runs` lists each run's time. A
+  re-run that finds nothing leaves the record as it was.
+- keeps `curated/.../postings.jsonl` as the board as of the **latest** run (the
+  site lists it as open roles), and puts postings an earlier run saw that are
+  gone now in `departed.jsonl` beside it, where the archive and the brief find
+  a closed req's last record.
+- writes `state.json` **last**: a run that fails partway leaves state as it
+  was, so the retry recomputes the same changes instead of finding none.
+
+Check any day after a re-crawl:
+
+```bash
+python3 tools/audit_diffs.py s3://<DataBucketName>   # or a synced local lake
+```
+
+It compares each posting's `first_seen` and `closed_on` in state with that
+day's change record, and exits 1 listing any opening or closure a record lost.
+
 ## Descriptions & keyword enrichment
 
 For Workday sources the collector fetches each posting's full description

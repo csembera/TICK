@@ -9,7 +9,17 @@ DLQ is the "re-run the evaluator" signal.
 
 Per invocation:
     fetch (paginate) -> raw/  -> normalize via schema_map -> diff vs state
-    -> curated/ (+first_seen/last_seen) -> derived/snapshots/ + state
+    -> curated/ (+first_seen/last_seen) -> derived/tech_stack/
+    -> derived/snapshots/ (the day's changes) -> state, written last
+
+Safe to run more than once a day (a manual re-crawl, an SQS retry, a
+duplicate delivery). Files are keyed by date, and the day's changes would
+otherwise be overwritten by the later run's, which sees only what changed
+since the earlier one. So a re-run merges into the day's change record, and
+postings the earlier run saw that are gone now are kept in departed.jsonl,
+while curated/ stays the board as of the latest run. State is written last:
+a run that fails partway leaves it untouched, and the retry recomputes the
+same changes.
 
 Descriptions keep their structure: raw/ holds each posting's original HTML
 (for Workday, fetched per posting and attached before raw/ is written), and
@@ -428,6 +438,34 @@ def build_tech_summary(rows: list[dict], config: dict, today: str, ts: str) -> d
 
 # --------------------------------------------------------------------- diff
 
+def merge_day_diff(earlier: dict | None, now: dict) -> dict:
+    """One day's changes across every run that day: the union of each run's
+    new, closed and reopened, in the order first seen. A re-run that finds
+    nothing new leaves the day's record as it was."""
+    if not earlier:
+        return now
+    return {k: list(dict.fromkeys([*(earlier.get(k) or []), *now[k]]))
+            for k in ("new", "closed", "reopened")}
+
+
+def departed_rows(earlier_curated: str | None, earlier_departed: str | None,
+                  rows: list[dict]) -> list[dict]:
+    """Rows an earlier run today saw that this run did not: a posting that
+    opened and closed between two same-day runs. curated/ must stay the board
+    as of the latest run (the site reads it as the open roles), so these are
+    kept beside it, where the archive and the brief look for a closed req's
+    last record."""
+    now = {r["posting_id"] for r in rows}
+    kept: dict[str, dict] = {}
+    for blob in (earlier_departed, earlier_curated):   # the later blob wins
+        for line in (blob or "").splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                if rec["posting_id"] not in now:
+                    kept[rec["posting_id"]] = rec
+    return list(kept.values())
+
+
 def apply_diff(state: dict, rows: list[dict], today: str) -> dict:
     """Update per-posting state in place; return today's diff events.
 
@@ -490,20 +528,34 @@ def collect_company(config: dict) -> dict:
         r["first_seen"] = state[r["posting_id"]]["first_seen"]
         r["last_seen"] = today
 
+    curated_key = f"curated/company={slug}/dt={today}/postings.jsonl"
+    departed_key = f"curated/company={slug}/dt={today}/departed.jsonl"
+    diff_key = f"derived/snapshots/company={slug}/dt={today}/diff.json"
+    # A run already happened today if the day's change record exists: merge
+    # into it rather than overwrite it (see the module docstring).
+    earlier_diff = json.loads(_read(diff_key) or "null")
+    earlier_departed = _read(departed_key)
+    departed = departed_rows(_read(curated_key) if earlier_diff else None, earlier_departed, rows)
+    day = merge_day_diff(earlier_diff, diff)
+    runs = [*((earlier_diff or {}).get("runs") or
+              ([earlier_diff["captured_at"]] if earlier_diff else [])), ts]
+
     _write(f"raw/company={slug}/dt={today}/postings.json", json.dumps(
         {"captured_at": ts, "total_reported": total_reported, "postings": postings},
         ensure_ascii=False))
-    _write(f"curated/company={slug}/dt={today}/postings.jsonl",
-           "\n".join(json.dumps(r, ensure_ascii=False) for r in rows))
-    _write(f"derived/snapshots/company={slug}/dt={today}/diff.json", json.dumps(
-        {"captured_at": ts, "company_slug": slug,
-         "counts": {"collected": len(rows), "total_reported": total_reported,
-                    "new": len(diff["new"]), "closed": len(diff["closed"]),
-                    "reopened": len(diff["reopened"])},
-         **diff}, ensure_ascii=False))
-    _write(state_key, json.dumps(state, ensure_ascii=False))
+    _write(curated_key, "\n".join(json.dumps(r, ensure_ascii=False) for r in rows))
+    if departed or earlier_departed is not None:
+        _write(departed_key, "\n".join(json.dumps(r, ensure_ascii=False) for r in departed))
     _write(f"derived/tech_stack/company={slug}/dt={today}/tech_stack.json",
            json.dumps(build_tech_summary(rows, config, today, ts), ensure_ascii=False))
+    _write(diff_key, json.dumps(
+        {"captured_at": ts, "company_slug": slug, "runs": runs,
+         "counts": {"collected": len(rows), "total_reported": total_reported,
+                    "new": len(day["new"]), "closed": len(day["closed"]),
+                    "reopened": len(day["reopened"])},
+         **day}, ensure_ascii=False))
+    # last: until state is written, a retry recomputes exactly these changes
+    _write(state_key, json.dumps(state, ensure_ascii=False))
 
     return {"company_slug": slug, "collected": len(rows),
             "total_reported": total_reported,
@@ -515,8 +567,10 @@ def collect_company(config: dict) -> dict:
                 sum(description.coverage(r["description"]) for r in rows if r.get("description"))
                 / max(1, sum(1 for r in rows if r.get("description"))), 3),
             "tech_roles": sum(1 for r in rows if r.get("is_tech_role")),
+            # this run's changes; the day's record holds every run's
             "new": len(diff["new"]),
-            "closed": len(diff["closed"]), "reopened": len(diff["reopened"])}
+            "closed": len(diff["closed"]), "reopened": len(diff["reopened"]),
+            "runs_today": len(runs)}
 
 
 def handler(event, context):
