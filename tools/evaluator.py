@@ -13,8 +13,8 @@ Tier preference (lowest number wins):
     3  Web search / headless render                            — date_trust: lowest
 
 Usage:
-    python evaluator.py "Dunder Mifflin"
-    python evaluator.py "Dunder Mifflin" --careers-url https://dundermifflin.wd1.myworkdayjobs.com/...
+    python3 evaluator.py "Dunder Mifflin"
+    python3 evaluator.py "Dunder Mifflin" --careers-url https://dundermifflin.wd1.myworkdayjobs.com/...
 
 Requires:
     pip install strands-agents httpx pydantic

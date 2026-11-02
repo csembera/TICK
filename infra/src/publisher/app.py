@@ -163,7 +163,7 @@ def handler(event, context):
 
 if __name__ == "__main__":
     # Local dry run against the real lake: writes to ./out-site instead of S3.
-    #   DATA_BUCKET=<bucket> SITE_BUCKET=- python app.py
+    #   DATA_BUCKET=<bucket> SITE_BUCKET=- python3 app.py
     import pathlib
     out = pathlib.Path(os.environ.get("LOCAL_OUTPUT_DIR", "out-site"))
     for key, html in render_site(f"s3://{DATA_BUCKET}").items():

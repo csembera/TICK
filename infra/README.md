@@ -158,7 +158,7 @@ not synced — `make cognito-banner` re-renders the PNG from it after a copy edi
 The evaluator's output goes in the bucket's `configs/` prefix:
 
 ```bash
-python ../tools/evaluator.py "Dunder Mifflin" --out dunder-mifflin_config.json
+python3 ../tools/evaluator.py "Dunder Mifflin" --out dunder-mifflin_config.json
 aws s3 cp dunder-mifflin_config.json s3://<DataBucketName>/configs/dunder-mifflin.json
 ```
 
@@ -176,7 +176,7 @@ The collector worker doubles as a local script — writes to disk instead of S3:
 
 ```bash
 cd src/collector
-LOCAL_OUTPUT_DIR=../../out python app.py ../../../configs/<slug>_config.json
+LOCAL_OUTPUT_DIR=../../out python3 app.py ../../../configs/<slug>_config.json
 ```
 
 Or simulate the full SQS invocation:
@@ -396,7 +396,7 @@ than being claimed as a full one.
 To see a branch or PR as a site, use
 [../tools/preview.py](../tools/preview.py). It syncs the lake into
 `local-data/lake`, renders with that version's renderer and serves the result
-alongside `site-static/` on localhost: `python tools/preview.py <branch|PR#>`
+alongside `site-static/` on localhost: `python3 tools/preview.py <branch|PR#>`
 from the repo root.
 
 The renderer is [../tools/tick_insights_report.py](../tools/tick_insights_report.py) — the
@@ -404,8 +404,8 @@ same file the Lambda runs, symlinked in as `src/publisher/report.py` so there
 is no second copy to drift. It reads S3 or a local lake:
 
 ```bash
-python ../tools/tick_insights_report.py s3://<DataBucketName> --out-dir site
-python ../tools/tick_insights_report.py . --configs ../configs --out-dir site   # local dry-run lake
+python3 ../tools/tick_insights_report.py s3://<DataBucketName> --out-dir site
+python3 ../tools/tick_insights_report.py . --configs ../configs --out-dir site   # local dry-run lake
 open site/index.html
 ```
 
@@ -413,7 +413,7 @@ Or exercise exactly what the Lambda renders, writing to disk instead of S3:
 
 ```bash
 cd src/publisher
-DATA_BUCKET=<DataBucketName> SITE_BUCKET=- LOCAL_OUTPUT_DIR=../../../site python app.py
+DATA_BUCKET=<DataBucketName> SITE_BUCKET=- LOCAL_OUTPUT_DIR=../../../site python3 app.py
 ```
 
 ## Failure semantics
@@ -450,6 +450,6 @@ term mapped to the posting IDs it appeared in, plus a posting evidence index.
 Render it for account planning with [../tools/tech_report.py](../tools/tech_report.py):
 
 ```bash
-python ../tools/tech_report.py out --company dunder-mifflin      # local dry-run output
-python ../tools/tech_report.py s3://<DataBucketName> --company dunder-mifflin
+python3 ../tools/tech_report.py out --company dunder-mifflin      # local dry-run output
+python3 ../tools/tech_report.py s3://<DataBucketName> --company dunder-mifflin
 ```

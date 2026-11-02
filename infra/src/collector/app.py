@@ -12,7 +12,7 @@ Per invocation:
     -> curated/ (+first_seen/last_seen) -> derived/snapshots/ + state
 
 Local dry run (no AWS): set LOCAL_OUTPUT_DIR to write files to disk:
-    LOCAL_OUTPUT_DIR=./out python app.py ../../../configs/<slug>_config.json
+    LOCAL_OUTPUT_DIR=./out python3 app.py ../../../configs/<slug>_config.json
 """
 
 import hashlib
@@ -500,7 +500,7 @@ def handler(event, context):
 
 
 if __name__ == "__main__":
-    # Local dry run: python app.py <path-to-source-config.json>
+    # Local dry run: python3 app.py <path-to-source-config.json>
     import sys
 
     if not LOCAL_DIR:

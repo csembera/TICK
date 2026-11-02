@@ -38,8 +38,8 @@ posting, snapshot count, or diff. Where the lake can't support a claim
 (motivations, budget ownership, etc.), it's left out rather than invented.
 
 Usage:
-    python tick_insights_report.py <lake-root-dir> [--company SLUG] [--out-dir DIR]
-    python tick_insights_report.py s3://bucket [--company SLUG] [--out-dir DIR]
+    python3 tick_insights_report.py <lake-root-dir> [--company SLUG] [--out-dir DIR]
+    python3 tick_insights_report.py s3://bucket [--company SLUG] [--out-dir DIR]
 
 With no --company, every company in the lake with two snapshots is rendered.
 
