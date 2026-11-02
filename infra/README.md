@@ -479,7 +479,10 @@ row gets:
   `summary`, `responsibilities`, `qualifications`, `preferred_qualifications`,
   `work_arrangement`, `compensation`, `benefits`, `company_intro`, `eeo`, and
   `other` for a heading nothing recognises (kept, never dropped); plus
-  `compensation` as `{min, max, currency, period, text}`, the boilerplate kinds
+  `compensation` as `{min, max, currency, period, text}` (a range, a single
+  figure in a sentence about pay where `min == max`, or "up to $X" where `min`
+  is null; figures in the millions, business figures such as premium or
+  revenue, and malformed numbers are never pay), the boilerplate kinds
   found, and the unmatched headings. Headings match the SourceConfig's
   `description_format` (the aliases and boilerplate the evaluator learned for
   that board) first, then generic patterns. A parser error costs the row its

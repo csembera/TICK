@@ -66,9 +66,24 @@ _GENERIC_RE = [(kind, re.compile(rx, re.I)) for kind, rx in _GENERIC]
 _EEO_TEXT = re.compile(r"equal (employment )?opportunit|without regard to (race|age|sex|religion)"
                        r"|\be-?verify\b|reasonable accommodation", re.I)
 
-_MONEY = r"\$\s?(\d[\d,]*(?:\.\d+)?)\s*([kK])?"
-_PAY_RE = re.compile(_MONEY + r"\s*(?:-|–|—|to)\s*" + _MONEY)
+# digits with comma groups, never a trailing comma ("$96,000, which includes")
+_NUM = r"(\d+(?:,\d+)*(?:\.\d+)?)\s*([kK])?"
+_CUR = r"(?:USD|CAD|US|CA)?"
+# the second figure's "$" is optional ("$60,000-70,000"), and a currency code
+# can stand where the dash would ("$130,000.00 CAD$150,000.00 CAD")
+_RANGE_RE = re.compile(r"\$\s?" + _NUM + r"\s*" + _CUR
+                       + r"(?:\s*(?:-|–|—|to|and)\s*|\s*(?=\$))" + _CUR + r"\$?\s?" + _NUM)
+_ONE_RE = re.compile(r"(up to|maximum of|a maximum|max\.?)?\s*\$\s?" + _NUM, re.I)
 _HOURLY = re.compile(r"per hour|an hour|/\s?h(ou)?r\b|hourly", re.I)
+# "$2 billion in premiums" is never pay
+_SCALE = re.compile(r"\s*(million|billion|mm\b|bn\b|[mb]\b)", re.I)
+# a single figure counts as pay only in a sentence about pay
+_PAY_WORDS = re.compile(r"salar|compensat|\bpay\b|\bwages?\b|\branges?\b|\bbase\b|hourly|per hour"
+                        r"|/\s?h(ou)?r\b|per year|/\s?year|estimate", re.I)
+# a figure followed by one of these is the business's, not the hire's
+_BUSINESS = re.compile(r"\W{0,3}(annual\s+)?(gross\s+)?(written\s+)?(premiums?|revenue|budget|portfolio|"
+                       r"in (sales|assets|claims|losses)|of (business|premium)|book)", re.I)
+_CAD = re.compile(r"\bCAD\b|C\$|\bCA\$", re.I)
 
 _BLOCK_TAGS = {"p", "div", "li", "br", "tr", "ul", "ol", "table", "section", "article",
                "h1", "h2", "h3", "h4", "h5", "h6"}
@@ -163,24 +178,77 @@ def boilerplate_kind(text: str, fmt: dict | None) -> str | None:
     return "eeo" if _EEO_TEXT.search(text) else None
 
 
-def compensation(text: str) -> dict | None:
-    """The first pay range in text: {"min", "max", "currency", "period", "text"}."""
-    m = _PAY_RE.search(text or "")
-    if not m:
+_GROUPED = re.compile(r"^(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$")
+
+
+def _num(v: str, k: str | None) -> int | float | None:
+    """A figure's value, or None when its digits are malformed ("$110,00"):
+    a typo is not a number to report."""
+    if not _GROUPED.match(v):
         return None
+    x = float(v.replace(",", ""))
+    if k:
+        x *= 1000
+    return int(x) if x.is_integer() else x
 
-    def num(v, k):
-        x = float(v.replace(",", ""))
-        return int(x * 1000) if k else (int(x) if x.is_integer() else x)
 
-    lo, hi = num(m.group(1), m.group(2)), num(m.group(3), m.group(4))
-    around = text[max(0, m.start() - 80):m.end() + 80]
-    period = "hour" if _HOURLY.search(around) or max(lo, hi) < 500 else "year"
-    # the sentence holding the range, so the figure is never read out of context
-    dot = text.rfind(". ", 0, m.start())
-    end = text.find(". ", m.end())
-    return {"min": min(lo, hi), "max": max(lo, hi), "currency": "USD", "period": period,
-            "text": text[dot + 2 if dot >= 0 else 0:end + 1 if end >= 0 else len(text)].strip()}
+def _sentence(text: str, a: int, b: int) -> str:
+    """The sentence holding text[a:b], so a figure is never read out of context."""
+    dot = text.rfind(". ", 0, a)
+    end = text.find(". ", b)
+    return text[dot + 2 if dot >= 0 else 0:end + 1 if end >= 0 else len(text)].strip()
+
+
+def compensation(text: str) -> dict | None:
+    """The pay a text states: {"min", "max", "currency", "period", "text"}.
+
+    A range wins ("$85,000 - $110,000", "$60,000-70,000", "$85K–$110K"). Without
+    one, a single figure counts when its sentence is about pay ("the current
+    range is $170,000"); "up to $120,000" sets only the max. Implausible ranges
+    (a typo like "$150-000") and figures in the millions are not pay."""
+    text = text or ""
+    for m in _RANGE_RE.finditer(text):
+        if _SCALE.match(text, m.end()) or _BUSINESS.match(text, m.end()):
+            continue
+        lo, hi = _num(m.group(1), m.group(2)), _num(m.group(3), m.group(4))
+        if lo is None or hi is None or not (0 < lo <= hi <= 10 * lo):
+            continue
+        return _pay(text, m.start(), m.end(), lo, hi)
+    for m in _ONE_RE.finditer(text):
+        if _SCALE.match(text, m.end()) or _BUSINESS.match(text, m.end()):
+            continue
+        sent = _sentence(text, m.start(), m.end())
+        if not _PAY_WORDS.search(sent):
+            continue
+        x = _num(m.group(2), m.group(3))
+        hourly = _HOURLY.search(text[max(0, m.start() - 80):m.end() + 80])
+        if x is None or x <= 0 or (x < 1000 and not hourly):   # "$150" alone is no salary
+            continue
+        return _pay(text, m.start(), m.end(), None if m.group(1) else x, x)
+    return None
+
+
+def _pay(text: str, a: int, b: int, lo, hi) -> dict:
+    around = text[max(0, a - 80):b + 80]
+    period = "hour" if _HOURLY.search(around) or hi < 500 else "year"
+    sent = _sentence(text, a, b)
+    return {"min": lo, "max": hi, "currency": "CAD" if _CAD.search(sent) else "USD",
+            "period": period, "text": sent}
+
+
+def find_pay(parsed: dict | None) -> dict | None:
+    """The first pay any line of a parsed description states, read afresh, so
+    an improved extractor reaches rows stored before it existed."""
+    if not parsed:
+        return None
+    secs = parsed["sections"]
+    lines = [t for k in ("compensation", *SECTIONS) for t in secs.get(k, [])]
+    lines += [t for o in secs.get("other", []) for t in [o["heading"], *o["lines"]]]
+    for line in lines:
+        found = compensation(line)
+        if found:
+            return found
+    return None
 
 
 def blocks(raw_html: str) -> list[tuple[str, bool, bool]]:

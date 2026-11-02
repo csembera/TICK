@@ -104,6 +104,14 @@ class Accessors(unittest.TestCase):
         self.assertEqual(report.pay_label(yearly), "$50,000–$60,000 a year")
         self.assertEqual(report.pay_label(yearly, short=True), "$50K–$60K")
         self.assertIsNone(report.pay_label(None))
+        single = description.compensation("A reasonable estimate of the current range is $170,000")
+        self.assertEqual(report.pay_label(single), "$170,000 a year")
+        self.assertEqual(report.pay_label(single, short=True), "$170K")
+        bound = description.compensation("Within a range up to $120,000.00")
+        self.assertEqual(report.pay_label(bound), "up to $120,000 a year")
+        self.assertEqual(report.pay_label(bound, short=True), "up to $120K")
+        cad = description.compensation("between $130,000.00 CAD$150,000.00 CAD")
+        self.assertEqual(report.pay_label(cad), "$130,000–$150,000 CAD a year")
 
     def test_hiring_profile_uses_qualifications(self):
         self.assertEqual(report.hiring_profile(NEW_ROW),

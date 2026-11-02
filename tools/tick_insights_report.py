@@ -575,19 +575,30 @@ def role_text_of(rec: dict | None, boilerplate_n: int = 0) -> str:
 
 
 def pay_of(rec: dict | None) -> dict | None:
-    """The posted pay range, {min, max, currency, period, text}, if any."""
-    return (parsed_description(rec) or {}).get("compensation")
+    """The posted pay, {min, max, currency, period, text}, if any. Read afresh
+    from the description rather than taken from what the collector stored, so
+    an improved extractor reaches every row already in the lake. min is None
+    for "up to $X"; min == max for a single figure."""
+    return description.find_pay(parsed_description(rec))
 
 
 def pay_label(pay: dict | None, short: bool = False) -> str | None:
-    """"$85,000–$110,000 a year", or "$85K–$110K" for a table cell."""
+    """"$85,000–$110,000 a year", "$170,000 a year", "up to $120,000 a year",
+    or "$85K–$110K" for a table cell."""
     if not pay:
         return None
     def money(x):
         if short and pay["period"] == "year" and x >= 1000:
             return f"${x / 1000:.0f}K" if x % 1000 == 0 or x >= 10000 else f"${x / 1000:.1f}K"
         return f"${x:,.2f}".replace(".00", "") if isinstance(x, float) else f"${x:,}"
-    rng = f'{money(pay["min"])}–{money(pay["max"])}' if pay["min"] != pay["max"] else money(pay["min"])
+    if pay["min"] is None:
+        rng = f'up to {money(pay["max"])}'
+    elif pay["min"] == pay["max"]:
+        rng = money(pay["max"])
+    else:
+        rng = f'{money(pay["min"])}–{money(pay["max"])}'
+    if pay.get("currency", "USD") != "USD":
+        rng = f'{rng} {pay["currency"]}'
     return rng if short else f'{rng} {"an hour" if pay["period"] == "hour" else "a year"}'
 
 
