@@ -250,7 +250,9 @@ validation ever wedges a deploy.
 The accounts home at `/accounts` lists every account in `s3://<DataBucketName>/configs/` — the
 same list the dispatcher collects from — so an account shows up the moment its
 config is uploaded, marked `Not collected` until its first crawl and
-`First crawl` until it has the two snapshots the dashboard and brief compare.
+`Reporting` from then on. A first crawl's dashboard shows the open board
+without change figures, which start with the second crawl. Briefs wait for that
+second crawl too, since they write up a week of movement.
 
 ### Access
 

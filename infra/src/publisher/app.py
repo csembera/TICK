@@ -104,9 +104,9 @@ def viewer_scopes() -> set[str]:
 
 def render_site(source: str, scopes: set[str] | None = None) -> dict[str, str]:
     """{key: html} for the guarded half of the site — one accounts home per
-    viewer scope plus a dashboard and brief for every account with two
-    snapshots to compare. The public pages are deployed separately and are
-    never keys here."""
+    viewer scope plus a dashboard and brief for every account with at least
+    one snapshot. The public pages are deployed separately and are never keys
+    here."""
     lake_io = report.open_lake(source)
     accounts = report.build_accounts(report.load_configs(None, lake_io), lake_io)
     if not accounts:
