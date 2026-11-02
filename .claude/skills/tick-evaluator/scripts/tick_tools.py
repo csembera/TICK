@@ -37,7 +37,8 @@ except ImportError:  # pragma: no cover
     sys.exit(0)
 
 from tick_common import (BROWSER_HEADERS, BUNDLE_PATTERNS, FINGERPRINTS, _UA,
-                         description_html, format_report, locate_postings, spread)
+                         collector_headers, description_html, format_report,
+                         locate_postings, spread)
 
 
 def _json_arg(raw: Optional[str], what: str) -> Optional[dict]:
@@ -188,7 +189,7 @@ def cmd_descriptions(a) -> dict:
         cfg = json.load(open(a.config))
     except Exception as e:
         return {"error": f"cannot read {a.config}: {type(e).__name__}: {e}"}
-    hdrs = {**BROWSER_HEADERS, "Content-Type": "application/json", **(cfg.get("request_headers") or {})}
+    hdrs = collector_headers(cfg)   # what the collector sends, so the sample is what it collects
     errors: list[str] = []
     with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
         def get_json(url, method="GET", body=None):

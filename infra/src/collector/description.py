@@ -47,7 +47,8 @@ _GENERIC = [
     ("compensation", r"\b(compensation|salary|pay range|pay|wages?)\b"),
     ("eeo", r"equal (employment )?opportunit|\beeo\b|diversity|inclusion|accommodation"),
     ("benefits", r"\bbenefits?\b|how we value you|what.?s in it for you|perks|total rewards|we offer"),
-    ("company_intro", r"^about (us|the company)\b|company overview|who we are|^why\b|our (company|culture|mission)"),
+    ("company_intro", r"^about (us|the company)\b|company overview|who we are|our (company|culture|mission)"
+                      r"|^why\b(?!.*\b(role|position|job|work)\b)"),   # "Why <company>?", not "Why this role matters"
     ("work_arrangement", r"\blocation\b|work.at.home|\bremote\b|\bhybrid\b|\btravel\b|\bschedule\b|work environment"),
     ("preferred_qualifications", r"\bpreferred\b|nice to have|\bbonus\b|\bdesired\b"),
     ("responsibilities", r"responsibilit|\bduties\b|what you.?ll (be )?do|your role|role and impact"
@@ -124,6 +125,19 @@ def is_heading(text: str, bold: bool, li: bool) -> bool:
     return bold or text.endswith(":") or (text.isupper() and words <= 5)
 
 
+def _alias_set(fmt: dict | None) -> set[str]:
+    return {normalize(a) for kind, aliases in ((fmt or {}).get("aliases") or {}).items()
+            if kind in SECTIONS for a in aliases}
+
+
+def heading_in(text: str, bold: bool, li: bool, fmt: dict | None = None) -> bool:
+    """is_heading, plus any non-bullet line that exactly matches one of the
+    board's learned aliases: some boards set their template headings ("Job
+    Summary", "Work Location") as plain paragraphs, with nothing to mark them."""
+    return is_heading(text, bold, li) or (
+        not li and bool(fmt) and normalize(text.rstrip(":")) in _alias_set(fmt))
+
+
 def classify_heading(heading: str, fmt: dict | None = None) -> str | None:
     """The section a heading opens, or None when nothing recognises it."""
     n = normalize(heading)
@@ -196,7 +210,7 @@ def parse(raw_html: str | None, fmt: dict | None = None) -> dict | None:
     pay = None
 
     for text, bold, li in bl:
-        if is_heading(text, bold, li):
+        if heading_in(text, bold, li, fmt):
             kind = classify_heading(text.rstrip(":").strip(), fmt)
             if kind:
                 current, current_other = kind, None

@@ -59,6 +59,17 @@ BUNDLE_PATTERNS: list[str] = [
     r"https?://[a-zA-Z0-9.\-]+/[A-Za-z0-9/_.\-{}$]{0,120}",
 ]
 
+def collector_headers(cfg: dict) -> dict:
+    """The headers the collector sends — keep in step with _http_json in
+    infra/src/collector/app.py. Re-executing a config must send exactly these,
+    not the browser set: some boards answer a browser's Accept-Language with an
+    empty posting list, so a gate using browser headers would fail a config the
+    collector runs fine (and the reverse). Discovery tools keep the browser set;
+    a config that needs it carries it in request_headers."""
+    return {"Content-Type": "application/json", "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (tick-collector)", **(cfg.get("request_headers") or {})}
+
+
 # Every container key a supported ATS puts its posting list under.
 POSTING_KEYS = ("jobPostings", "jobRequisitions", "jobs", "data", "results",
                 "postings", "items")
@@ -134,6 +145,25 @@ def description_html(cfg: dict, posting: dict, get_json: GetJson) -> Optional[st
     return None
 
 
+def merge_detail(cfg: dict, posting: dict, get_json: GetJson) -> dict:
+    """posting with its per-posting detail merged in, as the collector's
+    fetch_all does for ADP before normalize() sees the row: team and
+    posted_on live only in the detail payload there, so checking schema_map
+    against the bare listing would report them missing on a config that
+    collects them every night."""
+    if cfg.get("ats") != "adp" or not cfg.get("detail_endpoint"):
+        return posting
+    rid = resolve_field(posting, ((cfg.get("schema_map") or {}).get("posting_id")) or "reqId")
+    if not rid:
+        return posting
+    try:
+        row = (get_json(cfg["detail_endpoint"].replace("{posting_id}", str(rid)))
+               .get("jobRequisitions") or [None])[0]
+    except Exception:
+        return posting   # the collector skips a failed detail the same way
+    return {**posting, **row} if isinstance(row, dict) else posting
+
+
 def spread(items: list, n: int) -> list:
     """n items evenly spaced through the list, so a sample spans teams, not one."""
     if len(items) <= n:
@@ -162,6 +192,27 @@ def _repeated_blocks(htmls: list[str], min_share: float = 0.4) -> list[dict]:
             for k, c in seen.most_common() if c >= floor]
 
 
+def _heading_candidates(htmls: list[str], fmt: Optional[dict], min_share: float = 0.4) -> list[dict]:
+    """Short plain lines most postings repeat that the parser does not treat
+    as headings: a board's template headings set as ordinary paragraphs
+    ("Job Summary", "Work Location"). Alias the ones that head content."""
+    seen: Counter = Counter()
+    label = {}
+    for h in htmls:
+        found = {}
+        for text, bold, li in description.blocks(h):
+            words = len(text.split())
+            if (not li and 1 <= words <= 6 and not text.rstrip().endswith((".", "!", "?"))
+                    and not text.startswith("#") and not description.heading_in(text, bold, li, fmt)):
+                found.setdefault(description.normalize(text.rstrip(":")), text.rstrip(":").strip())
+        for key, text in found.items():
+            seen[key] += 1
+            label.setdefault(key, text)
+    floor = max(2, int(min_share * len(htmls) + 0.999))
+    return [{"text": label[k], "postings": c, "generic": description.classify_heading(label[k])}
+            for k, c in seen.most_common() if c >= floor]
+
+
 def format_report(htmls: list[str], fmt: Optional[dict] = None) -> dict:
     """What a board's descriptions look like, and what a description_format does to them.
 
@@ -179,7 +230,7 @@ def format_report(htmls: list[str], fmt: Optional[dict] = None) -> dict:
     for h in htmls:
         found = {}
         for text, bold, li in description.blocks(h):
-            if description.is_heading(text, bold, li):
+            if description.heading_in(text, bold, li, fmt):
                 found.setdefault(description.normalize(text.rstrip(":")), text.rstrip(":").strip())
         for key, text in found.items():
             heads[key] += 1
@@ -198,6 +249,7 @@ def format_report(htmls: list[str], fmt: Optional[dict] = None) -> dict:
         "coverage_generic": round(sum(description.coverage(p) for p in generic) / n, 3),
         "headings": headings,
         "repeated_blocks": _repeated_blocks(htmls),
+        "heading_candidates": _heading_candidates(htmls, fmt),
         "pay_found": len(pays),
         "pay_examples": pays[:3],
         "role_sections": {k: share(learned, k) for k in ("summary", "responsibilities", "qualifications")},

@@ -53,6 +53,15 @@ class Inventory(unittest.TestCase):
         self.assertEqual(self.rep["pay_found"], 4)
         self.assertEqual(self.rep["role_sections"]["responsibilities"], 0.0)
 
+    def test_plain_template_headings_are_candidates(self):
+        board = [f"<p>Job Summary</p><p>{d}</p>" for d in ("Sell paper.", "Deliver paper.", "Count paper.")]
+        cands = {c["text"]: c["postings"] for c in tick_common.format_report(board)["heading_candidates"]}
+        self.assertEqual(cands.get("Job Summary"), 3)
+        fmt = {"aliases": {"summary": ["Job Summary"]}}
+        rep = tick_common.format_report(board, fmt)
+        self.assertEqual(rep["alias_hits"]["summary"]["Job Summary"], 3)   # counted once it is aliased
+        self.assertNotIn("Job Summary", {c["text"] for c in rep["heading_candidates"]})
+
     def test_empty_sample(self):
         self.assertEqual(tick_common.format_report([])["sampled"], 0)
 
@@ -87,6 +96,20 @@ class FormatCheck(unittest.TestCase):
         fmt = {"boilerplate": [{"kind": "benefits", "contains": "joins the Stamford branch"}]}
         rep = tick_common.format_report(board, fmt)
         self.assertTrue(any("likely role text" in f for f in rep["findings"]))
+
+
+class CollectorHeaders(unittest.TestCase):
+    def test_gate_sends_what_the_collector_sends(self):
+        import types
+        sys.modules.setdefault("boto3", types.SimpleNamespace(client=lambda *a, **k: None))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "infra", "src", "collector"))
+        import app
+        h = tick_common.collector_headers({"request_headers": {"orgoid": "X1", "Accept": "text/plain"}})
+        self.assertEqual(h["User-Agent"], app._UA)          # drift here breaks the mirror
+        self.assertEqual(h["orgoid"], "X1")                  # config headers win, as in _http_json
+        self.assertEqual(h["Accept"], "text/plain")
+        # a browser Accept-Language empties some boards' posting lists
+        self.assertNotIn("Accept-Language", h)
 
 
 class Sampling(unittest.TestCase):

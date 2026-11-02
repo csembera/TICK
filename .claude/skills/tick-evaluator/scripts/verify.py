@@ -37,8 +37,8 @@ except ImportError as e:  # pragma: no cover
     print(f"missing dependency ({e}) — run: .venv/bin/pip install httpx pydantic", file=sys.stderr)
     sys.exit(1)
 
-from tick_common import (BROWSER_HEADERS, URL_TOKEN, description_html, format_report,
-                         locate_postings, prune_format, resolve_field, spread)
+from tick_common import (URL_TOKEN, collector_headers, description_html, format_report,
+                         locate_postings, merge_detail, prune_format, resolve_field, spread)
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.7
 
@@ -163,8 +163,8 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 
         v.findings.append("no endpoint in draft — nothing to verify")
         return v
 
-    hdrs = {**BROWSER_HEADERS, "Content-Type": "application/json",
-            **(draft.request_headers or {})}
+    # exactly the collector's headers: the gate re-executes the config as it will run
+    hdrs = collector_headers(draft.model_dump())
     v.ran = True
     try:
         with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
@@ -200,6 +200,19 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 
         return v
 
     rows = postings[:sample]
+    if draft.ats == "adp" and draft.detail_endpoint:
+        # the collector merges each posting's detail before normalizing; so must the gate
+        with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
+            def get_json(url, method="GET", body=None):
+                r = c.request(method, url, json=body)
+                r.raise_for_status()
+                return r.json()
+            merged = []
+            for p in rows:
+                merged.append(merge_detail(draft.model_dump(), p, get_json))
+                time.sleep(0.1)
+        rows = merged
+        v.findings.append(f"merged the detail payload into {len(rows)} sampled postings, as the collector does")
     for name in ("posting_id", "title", "location", "team", "posted_on"):
         expr = getattr(sm, name)
         if not expr:
