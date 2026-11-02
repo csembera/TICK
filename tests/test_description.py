@@ -149,6 +149,20 @@ class Parse(unittest.TestCase):
         self.assertEqual(d["unmatched_headings"], [])
         self.assertEqual(d["sections"]["responsibilities"], ["Sell paper.", "#LI-DM1"])
 
+    def test_plain_line_alias_is_a_heading(self):
+        # a board whose template headings are ordinary paragraphs
+        page = "<p>Job Summary</p><p>Sell paper to regional accounts.</p><p>Work Location</p><p>Scranton.</p>"
+        fmt = {"aliases": {"summary": ["Job Summary"], "work_arrangement": ["Work Location"]}}
+        s = description.parse(page, fmt)["sections"]
+        self.assertEqual(s["summary"], ["Sell paper to regional accounts."])
+        self.assertEqual(s["work_arrangement"], ["Scranton."])
+        # without the board's format they are just text
+        self.assertIn("Work Location", description.parse(page)["sections"]["summary"])
+
+    def test_why_this_role_is_not_the_company_intro(self):
+        self.assertEqual(description.classify_heading("Why Dunder Mifflin?"), "company_intro")
+        self.assertNotEqual(description.classify_heading("Why This Role Matters"), "company_intro")
+
     def test_bare_required_heading(self):
         self.assertEqual(description.classify_heading("Required"), "qualifications")
 

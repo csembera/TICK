@@ -154,12 +154,13 @@ differs.
 
     $PY $S/tick_tools.py descriptions draft.json --n 12
 
-This samples descriptions the way the collector fetches them and prints:
-each heading with how many postings use it and how the generic patterns file
-it; `repeated_blocks`, the paragraphs most postings share (boilerplate
-candidates); pay sentences; and `role_sections`, how often summary,
-responsibilities and qualifications were found. `--save DIR` writes the
-sampled HTML if you need to read one.
+This samples descriptions the way the collector fetches them (same headers,
+same detail merge) and prints: each heading with how many postings use it and
+how the generic patterns file it; `heading_candidates`, short plain lines most
+postings repeat that the parser does not see as headings; `repeated_blocks`,
+the paragraphs most postings share (boilerplate candidates); pay sentences;
+and `role_sections`, how often summary, responsibilities and qualifications
+were found. `--save DIR` writes the sampled HTML if you need to read one.
 
 Write only what the generic patterns get wrong:
 
@@ -168,6 +169,12 @@ Write only what the generic patterns get wrong:
   what follows it in a saved sample before deciding: a board's "SKILLS" label
   may head the duties. Only alias headings at least a quarter of the sample
   uses; a heading one posting invented is that posting's, not the board's.
+- **heading_candidates** — some boards set their template headings ("Job
+  Summary", "Work Location") as plain paragraphs. Once aliased, a line that
+  exactly matches is treated as a heading, so alias every candidate that heads
+  the content under it, even where `generic` already names the right section:
+  without the alias the parser never sees it as a heading. Candidates that
+  head nothing (a benefits list's items) are not headings; leave them.
 - **boilerplate** — the board's repeated company intro, benefits blurb and
   equal-opportunity text, from `repeated_blocks` (a block on most postings).
   Kinds are `company_intro`, `benefits`, `eeo`. Match with `starts_with` or
@@ -229,6 +236,11 @@ If the gate reports a fixable defect (a `schema_map` path resolving on 40% of
 rows, a revision-id warning, an unresolved URL template), fix the draft and
 re-run phase C. If it reports the endpoint returning no postings at all, go back
 to phase A — the endpoint is wrong, not the draft.
+
+The gate re-executes the config exactly as the collector will: the collector's
+headers, not the browser set the discovery tools send (some boards answer a
+browser `Accept-Language` with an empty posting list), and for ADP each
+posting's detail merged in before `schema_map` is checked.
 
 The gate also samples fresh descriptions and writes
 `verification.descriptions`: coverage with and without your format, how often
