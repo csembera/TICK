@@ -8,7 +8,7 @@ The model's claims are not trusted; these are re-checked in code:
   - every [[id]] citation names something in the evidence pack
   - every paragraph and action item carries at least one citation
   - every quote appears verbatim in the cited posting's description
-  - the length and quiet-week limits the prompt sets
+  - the length, quiet-week and movement limits the prompt sets
 
 Exit 0 when nothing FAILs (WARNs are allowed), 1 otherwise. A failure is a
 finding about the prompt — fix prompt.md and regenerate, never hand-edit the
@@ -101,6 +101,9 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
     items = brief.get("action_items") or []
     if len(items) > 3:
         fails.append(f"{len(items)} action items (limit 3)")
+    # action items scale with movement: closures alone are not new demand
+    if ev["board"]["opened"] + ev["board"]["reopened"] == 0 and len(items) > 1:
+        fails.append(f"{len(items)} action items in a week where nothing opened or reopened (limit 1)")
     for i, a in enumerate(items, 1):
         where = f"action item {i}"
         if a.get("kind") not in KINDS:
