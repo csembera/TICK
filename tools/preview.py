@@ -8,6 +8,8 @@ plus the app pages rendered from the lake, laid out as the site bucket is.
     python3 tools/preview.py 12            # pull request #12
       --refresh     sync the data bucket into local-data/lake first
       --lake PATH   render from another local lake
+      --briefs DIR  also show draft briefs from DIR (e.g. local-data/briefs)
+                    that pass check.py, as if published
       --port N      default 8000
 
 A ref is checked out into a temporary git worktree and rendered with its own
@@ -15,6 +17,11 @@ copy of the renderer, so the preview shows that version's code against
 today's data. The lake is a local copy of the data bucket (raw/ skipped: the
 renderer never reads it) under the gitignored local-data/; nothing leaves the
 machine and the server binds to 127.0.0.1 only.
+
+Brief pages show what the lake's briefs/ prefix holds: the briefs already
+published. --briefs adds each company's newest draft from the tick-brief
+skill, checked with that version's check.py, so a draft can be read in the
+real page before publish.py uploads it. The lake itself is never written to.
 
 Not previewed: the CloudFront edge, Cognito sign-in and per-viewer scoping.
 /accounts lists every account, the account-request form gets a stub 200, and
@@ -67,6 +74,36 @@ def checkout(ref: str) -> tuple[str, str]:
     return tree, commit
 
 
+def stage_drafts(code: str, lake: str, briefs: str) -> str:
+    """A throwaway lake: symlinks to every part of the real one, plus a briefs/
+    holding the published briefs and each company's newest draft that passes
+    check.py, laid out as publish.py would upload it."""
+    staged = tempfile.mkdtemp(prefix="tick-lake-")
+    for name in os.listdir(lake):
+        if name != "briefs":
+            os.symlink(os.path.join(lake, name), os.path.join(staged, name))
+    if os.path.isdir(os.path.join(lake, "briefs")):
+        shutil.copytree(os.path.join(lake, "briefs"), os.path.join(staged, "briefs"))
+    checker = os.path.join(code, ".claude", "skills", "tick-brief", "scripts", "check.py")
+    for slug in sorted(os.listdir(briefs)):
+        slug_dir = os.path.join(briefs, slug)
+        if not os.path.isdir(slug_dir) or slug.startswith("."):
+            continue
+        for week in sorted(os.listdir(slug_dir), reverse=True):
+            files = [os.path.join(slug_dir, week, f) for f in ("brief.json", "evidence.json")]
+            if not all(os.path.isfile(f) for f in files):
+                continue
+            ok = subprocess.run([sys.executable, checker, *files], capture_output=True).returncode == 0
+            print(f"→ draft {slug} {week}: {'shown' if ok else 'fails check.py, not shown'}", flush=True)
+            if ok:
+                dest = os.path.join(staged, "briefs", f"company={slug}", f"week={week}")
+                os.makedirs(dest, exist_ok=True)
+                for f in files:
+                    shutil.copy2(f, dest)
+            break
+    return staged
+
+
 def build(code: str, lake: str, out: str) -> None:
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
@@ -108,6 +145,7 @@ def main() -> None:
     ap.add_argument("ref", nargs="?", help="branch, tag, commit or PR number (default: the working tree)")
     ap.add_argument("--refresh", action="store_true", help="sync the data bucket into the lake first")
     ap.add_argument("--lake", default=LAKE, help="local lake to render from (default: local-data/lake)")
+    ap.add_argument("--briefs", help="draft briefs to show if they pass check.py (e.g. local-data/briefs)")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--no-open", action="store_true", help="do not open a browser")
     args = ap.parse_args()
@@ -118,17 +156,21 @@ def main() -> None:
             sys.exit(f"{lake} does not exist (--refresh only syncs into {LAKE})")
         sync_lake(lake)
 
-    tree = None
+    tree = staged = None
     try:
         if args.ref:
             tree, commit = checkout(args.ref)
             label = f"{args.ref} @ {commit[:7]}"
         else:
             label = "working tree"
-        build(tree or ROOT, lake, OUT)
+        if args.briefs:
+            staged = stage_drafts(tree or ROOT, lake, os.path.abspath(args.briefs))
+        build(tree or ROOT, staged or lake, OUT)
     finally:
         if tree:   # the render is on disk; the checkout is no longer needed
             subprocess.run(["git", "worktree", "remove", "--force", tree], cwd=ROOT)
+        if staged:
+            shutil.rmtree(staged, ignore_errors=True)   # symlinks only; the lake is untouched
 
     url = f"http://127.0.0.1:{args.port}"
     print(f"\nTICK preview of {label}\n  {url}/          public pages\n  {url}/accounts/ accounts home\n"

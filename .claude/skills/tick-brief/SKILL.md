@@ -1,44 +1,55 @@
 ---
 name: tick-brief
-description: Test and tune the prompt for TICK's weekly AI account brief against local lake data, before it becomes a Strands agent. Use when asked to generate, test, compare, or improve a weekly brief, to iterate on the brief prompt, or to evaluate brief quality for a TICK company.
+description: Write, check and publish TICK's weekly AI account briefs for every tracked account, from the lake in S3, and tune the brief prompt. Use when asked to generate, publish, test, compare or improve weekly briefs, to run the brief writer for all accounts, to iterate on the brief prompt, or to evaluate brief quality for a TICK company.
 ---
 
-# TICK weekly brief — prompt workbench
+# TICK weekly brief — writer and prompt workbench
 
-The weekly brief will be written by a Strands agent every Sunday night from
-one company's last 7 days of job-board movement. This skill is the bench for
-getting its prompt right first. It runs the agent's exact pipeline, with a
-subagent standing in for the model:
+Every brief on the site is written by a model from one company's last 7 days
+of job-board movement. No Python writes brief prose: the site renders the
+newest brief this skill published for each account, and a "No brief yet"
+page where there is none. Until a Strands agent runs this on a schedule, a
+weekly run here is how briefs reach the site:
 
-    evidence.py (code)  →  evidence.json  →  prompt.md + model  →  brief.json  →  check.py (code)
+    S3 lake → evidence.py (code) → evidence.json → prompt.md + model → brief.json
+            → check.py (code) → publish.py → s3://<DataBucket>/briefs/ → publisher Lambda → site
 
 - `prompt.md` is **the** system prompt. The Strands agent will load this file
-  verbatim, so it is the only thing being tuned. Every brief records its
-  `prompt_version`.
-- `scripts/evidence.py` is the agent's only input. Code counts; the model
+  verbatim. Every brief records its `prompt_version`.
+- `scripts/evidence.py` is the writer's only input. Code counts; the model
   interprets.
 - `scripts/check.py` re-verifies the model's citations and quotes in code
   and renders a markdown preview.
+- `scripts/publish.py` uploads only briefs that pass `check.py`.
 
-Run everything from the project root. The lake is a local backup, e.g.
-`local-data/tick-data-backup-2026-10-30`; `s3://<bucket>` works too.
+Run everything from the project root.
 
-## One run
+## Weekly run, all accounts
 
-    L=local-data/tick-data-backup-2026-10-30
+    L=local-data/lake
     S=.claude/skills/tick-brief/scripts
-    OUT=local-data/briefs/<slug>/<week-end>          # week-end = window.end
+    OUT=local-data/briefs/<slug>/<week-end>          # week-end = the pack's window.end
 
-1. **Evidence.**
+1. **Pull the lake from S3.**
+   `python3 tools/preview.py --refresh --no-open`, then stop the server
+   (Ctrl-C) once it prints its URLs. It syncs the data bucket into `$L`
+   (`raw/` skipped). Or directly:
+   `aws s3 sync s3://<DataBucketName>/ $L --exclude "raw/*" --delete`.
+
+2. **List the accounts.** `python3 $S/accounts.py $L` prints every slug
+   with at least two crawls — the same set the site renders.
+
+3. **Evidence, per account.**
    `python3 $S/evidence.py $L <slug> [--week-end YYYY-MM-DD] --out $OUT/evidence.json`
    It prints a one-line summary (window, opened/closed counts, flags, size).
    Don't read the whole pack into this conversation — the writer reads it.
    Default week-end is the latest crawl; for a Sunday-night run pass that
-   Sunday.
+   Sunday, the same for every account.
 
-2. **Write the brief in a clean context.** The test is only honest if the
+4. **Write each brief in a clean context.** The brief is only honest if the
    writer sees what the agent will see and nothing else — not this repo, not
-   this conversation. Launch a `general-purpose` subagent with exactly:
+   this conversation. Launch one `general-purpose` subagent per account, all
+   in parallel, each with exactly:
 
    > Read `.claude/skills/tick-brief/prompt.md`; it is your system prompt
    > and you follow it exactly. Your only input is the evidence pack at
@@ -46,29 +57,41 @@ Run everything from the project root. The lake is a local backup, e.g.
    > beyond reading those two files and writing your output. Write the
    > JSON the prompt asks for — and nothing else — to `$OUT/brief.json`.
 
-   For several companies, launch the subagents in parallel.
-
-3. **Check.**
+5. **Check each.**
    `python3 $S/check.py $OUT/brief.json $OUT/evidence.json --md $OUT/brief.md`
    Never hand-fix a brief that fails. The failure is a finding about the
-   prompt.
+   prompt; that account keeps its last published brief this week.
 
-4. **Review** `brief.md` against the evidence, using the rubric below, and
+6. **Review** each `brief.md` against its evidence with the rubric below and
    write the findings to `$OUT/review.md` (prompt version, scores, what to
    change). Read the cited postings in `evidence.json` to verify claims —
    check.py proves citations exist, not that they support the sentence.
 
-5. **Report** to the user: the rendered brief, the check result, the rubric
-   scores, and specific proposed edits to `prompt.md` (quote the lines).
-   Edit `prompt.md` only once the user agrees, bump its `prompt-version`
-   comment and the `"prompt_version"` in its schema, and regenerate the same
-   weeks so versions compare like for like.
+7. **Preview** the drafts in the real page design before anything is public:
+   `python3 tools/preview.py --briefs local-data/briefs` → http://127.0.0.1:8000/accounts/
+   Each company's newest draft that passes check.py is shown as if
+   published; nothing is uploaded.
 
-6. **Preview** in the real page design:
-   `python3 $S/preview.py $L --serve 8765` → http://127.0.0.1:8765/accounts/
-   Renders the whole site from the local lake into `local-data/preview/`,
-   using each company's newest brief that passes check.py and the
-   rule-based brief otherwise. Re-run it after regenerating a brief.
+8. **Report** to the user: per account, the check result, the rubric scores,
+   anything you would not publish and why, and proposed edits to
+   `prompt.md` (quote the lines).
+
+9. **Publish** only once the user agrees, and only the accounts they agree to:
+   `python3 $S/publish.py --week-end <week-end> [--company <slug>]`
+   (`--dry-run` first shows what would go). It re-runs check.py and uploads
+   each passing brief with its evidence to
+   `s3://<DataBucketName>/briefs/company=<slug>/week=<week-end>/`. The site
+   shows it after the next nightly publish (03:30 UTC). Invoking
+   `tick-collector-publisher` shows it at once, but that is production: ask
+   first.
+
+## Tuning the prompt
+
+Edit `prompt.md` only once the user agrees with a proposed change. Bump its
+`prompt-version` comment and the `"prompt_version"` in its schema on every
+edit, and regenerate the same weeks so versions compare like for like. Keep
+earlier runs side by side (`brief.v3.json`, `review.v3.md`); only
+`brief.json` and `evidence.json` are ever published.
 
 ## Rubric (score 1–5 each)
 
@@ -85,4 +108,4 @@ Also flag any outside knowledge (facts not in the pack) or named people —
 both are hard-rule violations even if true.
 
 Outputs under `local-data/briefs/` hold real company data and stay out of
-git.
+git. Published briefs live only in the private data bucket.

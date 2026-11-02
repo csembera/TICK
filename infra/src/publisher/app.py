@@ -3,9 +3,14 @@ TICK publisher — renders the S3 lake into the static site CloudFront serves.
 
   S3 lake (private)  ──►  this Lambda  ──►  S3 site bucket  ──►  CloudFront
   derived/ + configs/     renders HTML       home/<key>/index.html (Cognito sign-in)
-                                             <slug>/dashboard.html
+  + briefs/                                  <slug>/dashboard.html
                                              <slug>/brief.html
                                              <slug>/archive/<pid>/index.html
+
+Briefs are not written here. The tick-brief skill has a model write each
+week's brief, verifies its citations, and uploads the passing ones to the
+lake's briefs/ prefix; this Lambda renders the newest one per account, or a
+"No brief yet" page where there is none.
 
 Viewers see only the accounts they are assigned, so there is no single
 accounts home. Each viewer's session carries a scope — "*" for admins, else
@@ -121,7 +126,7 @@ def render_site(source: str, scopes: set[str] | None = None) -> dict[str, str]:
         slug = account["slug"]
         lake = report.load_lake(source, slug, lake_io)
         pages[f"{slug}/dashboard.html"] = report.render_dashboard(lake, slug)
-        pages[f"{slug}/brief.html"] = report.render_brief(lake, slug)
+        pages[f"{slug}/brief.html"] = report.render_account_brief(lake_io, lake, slug, account["name"])
         pages.update(report.render_archive_pages(lake, slug))
     return pages
 
