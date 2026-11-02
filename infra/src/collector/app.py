@@ -14,7 +14,9 @@ Per invocation:
 Descriptions keep their structure: raw/ holds each posting's original HTML
 (for Workday, fetched per posting and attached before raw/ is written), and
 every curated row carries `description`, its labelled sections (see
-description.py), next to the flat `description_raw` text.
+description.py). The flat `description_raw` text is written only when parsing
+fails; readers go through the renderer's parsed_description()/full_text_of().
+Keywords come from the title and the role text, not the board's boilerplate.
 
 Local dry run (no AWS): set LOCAL_OUTPUT_DIR to write files to disk:
     LOCAL_OUTPUT_DIR=./out python3 app.py ../../../configs/<slug>_config.json
@@ -339,7 +341,8 @@ def extract_keywords(text: str) -> dict[str, list[str]]:
 
 
 def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
-    """Attach description_raw, description and keyword fields to rows in place.
+    """Attach description (or, if parsing fails, description_raw) and keyword
+    fields to rows in place.
 
     Returns the number of descriptions fetched. Keywords are extracted from
     title + description, so rows still get title-level keywords when a detail
@@ -370,14 +373,21 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
             raw_html = posting.get("jobDescription")
         text = _html_text(raw_html) if isinstance(raw_html, str) else None
         if text:
-            row["description_raw"] = text
             try:
                 row["description"] = description.parse(raw_html, fmt)
             except Exception as exc:   # a parser bug costs the structure, never the run
                 print(json.dumps({"description_parse_error": row["posting_id"],
                                   "error": f"{type(exc).__name__}: {exc}"}))
+            # the sections hold every line, so the flat copy is kept only when
+            # parsing failed: curated stops storing each description twice
+            if not row["description"]:
+                row["description_raw"] = text
             fetched += 1
-        kw = extract_keywords(f"{row['title']} {row['description_raw'] or ''}")
+        # role text only: a stack term in the board's intro or benefits blurb is
+        # on every posting and says nothing about the role
+        body = (description.role_text(row["description"]) if row["description"]
+                else row["description_raw"] or "")
+        kw = extract_keywords(f"{row['title']} {body}")
         row["keywords"] = kw
         row["is_tech_role"] = any(
             cat not in ("signal_terms", "analytics_tools") for cat in kw
