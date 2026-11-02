@@ -87,6 +87,71 @@ class Headings(unittest.TestCase):
         self.assertEqual(description.classify_heading("Key Responsibilities", fmt), "responsibilities")
 
 
+class Pay(unittest.TestCase):
+    """The ways boards actually write pay, and what must not read as pay."""
+
+    def pay(self, text):
+        p = description.compensation(text)
+        return p and (p["min"], p["max"], p["period"])
+
+    def test_ranges(self):
+        self.assertEqual(self.pay("The salary range for this position is $61,549 - $76,936"), (61549, 76936, "year"))
+        self.assertEqual(self.pay("This position has a salary range of $60,000-70,000"), (60000, 70000, "year"))
+        self.assertEqual(self.pay("$85K–$110K"), (85000, 110000, "year"))
+        self.assertEqual(self.pay("The hourly pay range for this position is $24.00-$29.00/hr."), (24, 29, "hour"))
+        self.assertEqual(self.pay("The compensation range is $85,000 to $110,000 annually."), (85000, 110000, "year"))
+
+    def test_single_figure_in_a_pay_sentence(self):
+        self.assertEqual(self.pay("A reasonable estimate of the current range is $170,000"), (170000, 170000, "year"))
+        self.assertEqual(self.pay("Pay is $22.50 per hour."), (22.5, 22.5, "hour"))
+
+    def test_upper_bound(self):
+        self.assertEqual(self.pay("A salary for this position would be within a range up to $120,000.00"),
+                         (None, 120000, "year"))
+
+    def test_typo_range_falls_back_to_the_real_figure(self):
+        # "$150-000" is no range ($150 to $0); the posting's real figure is $165,000
+        self.assertEqual(self.pay("A reasonable estimate of the current range is $150-000 - $165,000"),
+                         (165000, 165000, "year"))
+
+    def test_malformed_figure_is_not_trusted(self):
+        # "$110,00" is a typo; the well-formed figure is the one to report
+        self.assertEqual(self.pay("A reasonable estimate of the current range is $110,00 - $145,000"),
+                         (145000, 145000, "year"))
+
+    def test_two_ranges_take_the_first_stated(self):
+        p = description.compensation("The target pay for this position is $71,000$96,000, which includes "
+                                     "base plus commission. The base salary for this role is $51K - $76.5K.")
+        self.assertEqual((p["min"], p["max"]), (71000, 96000))
+
+    def test_currency_code_between_figures(self):
+        p = description.compensation("The salary range for this position is between $130,000.00 CAD$150,000.00 CAD")
+        self.assertEqual((p["min"], p["max"], p["currency"]), (130000, 150000, "CAD"))
+        self.assertEqual(self.pay("Pay is between $90,000 and $110,000 per year."), (90000, 110000, "year"))
+
+    def test_not_pay(self):
+        for text in ("We write $2 billion in annual premium.",
+                     "Quote large accounts (excess of $50,000 annual premium) across the region.",
+                     "Grow a $40,000,000 book of business.",
+                     "Manage a $1-2 million portfolio with a salary-free budget.",
+                     "We offer a $5,000 signing bonus.",
+                     "401(k) match up to 4%.",
+                     "Competitive pay and benefits.",
+                     "The range of products is $150 each."):
+            with self.subTest(text=text):
+                self.assertIsNone(description.compensation(text))
+
+    def test_find_pay_reads_any_line(self):
+        page = ("<p><b>Qualifications</b></p><ul><li>Two years of sales experience.</li></ul>"
+                "<p>A reasonable estimate of the current range is $170,000</p>")
+        d = description.parse(page)
+        self.assertEqual(d["sections"]["compensation"], ["A reasonable estimate of the current range is $170,000"])
+        self.assertEqual(description.find_pay(d)["max"], 170000)
+        # a row stored before the extractor knew single figures is still read correctly
+        d["compensation"] = None
+        self.assertEqual(description.find_pay(d)["max"], 170000)
+
+
 class Parse(unittest.TestCase):
     def test_bold_paragraph_layout(self):
         fmt = {"boilerplate": [{"kind": "company_intro", "starts_with": "Join Dunder Mifflin, a regional leader"}]}
