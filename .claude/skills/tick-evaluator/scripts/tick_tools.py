@@ -14,6 +14,7 @@ The intelligence is in the caller. These just observe and report JSON on stdout.
     probe        live-test a candidate collection endpoint
     fingerprint  scan text/URL for known ATS fingerprints
     search       find careers-page candidate URLs
+    descriptions sample a config's descriptions and inventory their layout
 
 Every subcommand exits 0 and prints a JSON object, including on failure — a
 transport error is an observation, not a crash. Read the JSON, not the exit code.
@@ -23,8 +24,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
+import time
 from typing import Any, Optional
 
 try:
@@ -34,7 +37,7 @@ except ImportError:  # pragma: no cover
     sys.exit(0)
 
 from tick_common import (BROWSER_HEADERS, BUNDLE_PATTERNS, FINGERPRINTS, _UA,
-                         locate_postings)
+                         description_html, format_report, locate_postings, spread)
 
 
 def _json_arg(raw: Optional[str], what: str) -> Optional[dict]:
@@ -176,6 +179,52 @@ def cmd_search(a) -> dict:
 
 # --------------------------------------------------------------------------
 
+def cmd_descriptions(a) -> dict:
+    """Sample a config's descriptions the way the collector fetches them and
+    report their layout: headings and how each would be filed, paragraphs most
+    postings repeat, pay sentences, and — if the config already has a
+    description_format — what that format does to them."""
+    try:
+        cfg = json.load(open(a.config))
+    except Exception as e:
+        return {"error": f"cannot read {a.config}: {type(e).__name__}: {e}"}
+    hdrs = {**BROWSER_HEADERS, "Content-Type": "application/json", **(cfg.get("request_headers") or {})}
+    errors: list[str] = []
+    with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
+        def get_json(url, method="GET", body=None):
+            r = c.request(method, url, json=body)
+            r.raise_for_status()
+            return r.json()
+        try:
+            data = get_json(cfg["endpoint"], cfg.get("http_method") or "GET", cfg.get("request_body"))
+        except Exception as e:
+            return {"error": f"collection endpoint failed: {type(e).__name__}: {e}"}
+        postings = (data.get(cfg["postings_key"]) if cfg.get("postings_key") and isinstance(data, dict)
+                    else locate_postings(data)[0]) or []
+        htmls = []
+        for posting in spread(postings, a.n):
+            try:
+                h = description_html(cfg, posting, get_json)
+            except Exception as e:
+                errors.append(f"{type(e).__name__}: {e}")
+                continue
+            if h:
+                htmls.append(h)
+            time.sleep(0.2)
+    if a.save:
+        os.makedirs(a.save, exist_ok=True)
+        for i, h in enumerate(htmls, 1):
+            with open(os.path.join(a.save, f"{i:02d}.html"), "w") as f:
+                f.write(h)
+    report = format_report(htmls, cfg.get("description_format"))
+    report["postings_listed"] = len(postings)
+    if errors:
+        report["fetch_errors"] = errors[:5]
+    if a.save:
+        report["saved_to"] = a.save
+    return report
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="tick_tools", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -211,6 +260,12 @@ def main() -> None:
     s = sub.add_parser("search", help="find careers-page candidate URLs")
     s.add_argument("company")
     s.set_defaults(fn=cmd_search)
+
+    d = sub.add_parser("descriptions", help="sample a config's descriptions and inventory their layout")
+    d.add_argument("config", help="a draft or SourceConfig JSON with a working endpoint")
+    d.add_argument("--n", type=int, default=12, help="postings to sample, spread across the board")
+    d.add_argument("--save", help="also write each sampled description's HTML into this directory")
+    d.set_defaults(fn=cmd_descriptions)
 
     a = p.parse_args()
     print(json.dumps(a.fn(a), indent=2))

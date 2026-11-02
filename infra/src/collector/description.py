@@ -107,11 +107,11 @@ class _Blocks(HTMLParser):
         self._flush()
 
 
-def _norm(s: str) -> str:
+def normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", "", re.sub(r"\s+", " ", (s or "").casefold())).strip()
 
 
-def _is_heading(text: str, bold: bool, li: bool) -> bool:
+def is_heading(text: str, bold: bool, li: bool) -> bool:
     words = len(text.split())
     # recruiter tags (#LI-SB1) are short and all caps, but they head nothing
     if li or _BULLET_RE.match(text) or text.startswith("#") or words > 8 or len(text) > 80:
@@ -121,9 +121,9 @@ def _is_heading(text: str, bold: bool, li: bool) -> bool:
 
 def classify_heading(heading: str, fmt: dict | None = None) -> str | None:
     """The section a heading opens, or None when nothing recognises it."""
-    n = _norm(heading)
+    n = normalize(heading)
     for kind, aliases in ((fmt or {}).get("aliases") or {}).items():
-        if kind in SECTIONS and n in {_norm(a) for a in aliases}:
+        if kind in SECTIONS and n in {normalize(a) for a in aliases}:
             return kind
     for kind, rx in _GENERIC_RE:
         if rx.search(heading):
@@ -131,15 +131,15 @@ def classify_heading(heading: str, fmt: dict | None = None) -> str | None:
     return None
 
 
-def _boilerplate_kind(text: str, fmt: dict | None) -> str | None:
+def boilerplate_kind(text: str, fmt: dict | None) -> str | None:
     """A paragraph the board repeats on every posting, wherever it sits."""
     for rule in (fmt or {}).get("boilerplate") or []:
         kind = rule.get("kind")
         if kind not in BOILERPLATE:
             continue
-        if rule.get("starts_with") and _norm(text).startswith(_norm(rule["starts_with"])):
+        if rule.get("starts_with") and normalize(text).startswith(normalize(rule["starts_with"])):
             return kind
-        if rule.get("contains") and _norm(rule["contains"]) in _norm(text):
+        if rule.get("contains") and normalize(rule["contains"]) in normalize(text):
             return kind
     return "eeo" if _EEO_TEXT.search(text) else None
 
@@ -191,7 +191,7 @@ def parse(raw_html: str | None, fmt: dict | None = None) -> dict | None:
     pay = None
 
     for text, bold, li in bl:
-        if _is_heading(text, bold, li):
+        if is_heading(text, bold, li):
             kind = classify_heading(text.rstrip(":").strip(), fmt)
             if kind:
                 current, current_other = kind, None
@@ -207,7 +207,7 @@ def parse(raw_html: str | None, fmt: dict | None = None) -> dict | None:
                 unmatched.append(current_other["heading"])
             continue
         kind = current
-        bp = _boilerplate_kind(text, fmt)
+        bp = boilerplate_kind(text, fmt)
         if bp and not li:
             kind = bp
             if bp not in found_bp:
