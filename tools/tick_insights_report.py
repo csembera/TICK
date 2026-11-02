@@ -45,7 +45,7 @@ Usage:
     python3 tick_insights_report.py <lake-root-dir> [--company SLUG] [--out-dir DIR]
     python3 tick_insights_report.py s3://bucket [--company SLUG] [--out-dir DIR]
 
-With no --company, every company in the lake with two snapshots is rendered.
+With no --company, every company in the lake with a snapshot is rendered.
 
 Pure stdlib for local files; boto3 (runtime-provided / in .venv) only when
 reading from S3.
@@ -887,12 +887,13 @@ def flat_terms(keywords: dict) -> list[str]:
 
 # What the lake can say about an account, weakest evidence last. The home
 # screen never claims more than the tier an account has actually reached.
-_REPORTING = "Reporting"        # two snapshots — dashboard + brief render
-_FIRST_CRAWL = "First crawl"    # one snapshot — no delta to derive yet
+# Reporting starts at the first crawl: the open board is worth reading on day
+# one, and the dashboard says plainly when there is no earlier crawl to compare.
+_REPORTING = "Reporting"        # at least one snapshot — dashboard renders
 _CONFIGURED = "Not collected"   # verified config, nothing in the lake
 _REVIEW = "Needs review"        # config flagged needs_human_review
 
-_STATUS_ORDER = {_REPORTING: 0, _FIRST_CRAWL: 1, _CONFIGURED: 2, _REVIEW: 3}
+_STATUS_ORDER = {_REPORTING: 0, _CONFIGURED: 1, _REVIEW: 2}
 
 
 _CONFIG_KEY_RE = re.compile(r"(?:^|/)configs/[^/]+\.json$")
@@ -956,10 +957,8 @@ def build_accounts(configs: list[dict], lake_io: dict,
             delta = curr["postings_total"] - prev["postings_total"]
             pct = round(100 * delta / prev["postings_total"], 1) if prev["postings_total"] else 0.0
 
-        if snap and snap["snapshots"] >= 2:
+        if snap:
             status = _REPORTING
-        elif snap:
-            status = _FIRST_CRAWL
         elif cfg.get("needs_human_review"):
             status = _REVIEW
         else:
@@ -981,6 +980,9 @@ def build_accounts(configs: list[dict], lake_io: dict,
             "board": board,
             "status": status,
             "has_pages": status == _REPORTING,
+            # A brief writes up a week of movement, so it needs a crawl to
+            # compare against; the dashboard does not.
+            "has_baseline": prev is not None,
             "snapshots": snap["snapshots"] if snap else 0,
             "open_roles": curr["postings_total"] if curr else None,
             "tech_roles": len(curr.get("tech_role_ids", [])) if curr else None,
@@ -1813,11 +1815,17 @@ def _archive_script() -> str:
 
 
 def render_dashboard(lake: dict, company: str) -> str:
+    """One account's dashboard. On the first crawl there is no earlier snapshot,
+    so every figure that is a change between two crawls (the delta, opened and
+    closed, the Adopting/Established split) gives way to what the one crawl
+    can show: the open board, its stack terms and its tech roles."""
     curr, prev, diff, state = lake["curr"], lake["prev"], lake["diff"], lake["state"]
+    first = prev is None
     company_name = curr["company"]
-    curr_dt, prev_dt = curr["captured_dt"], prev["captured_dt"]
+    curr_dt = curr["captured_dt"]
+    prev_dt = None if first else prev["captured_dt"]
     age_cutoff = stack_age_cutoff(lake)
-    buckets = categorize_terms(curr["stack"], prev["stack"],
+    buckets = categorize_terms(curr["stack"], {} if first else prev["stack"],
                                lake.get("term_first_seen"), age_cutoff)
     new_rows = new_postings_with_signals(diff, curr["stack"], curr["postings"], lake["curated"])
     tech_new = [r for r in new_rows if r["is_tech_role"]]
@@ -1825,26 +1833,38 @@ def render_dashboard(lake: dict, company: str) -> str:
     new_open = [r for r in open_rows if r["is_new"]]
     domain = board_domain(curr["postings"])
     counts = (diff or {}).get("counts", {})
-    delta = curr["postings_total"] - prev["postings_total"]
-    pct = round(100 * delta / prev["postings_total"], 1) if prev["postings_total"] else 0
-    # the span actually covered, which is shorter than the requested window
-    # while a company is still building up history
-    window_days = (date.fromisoformat(curr_dt) - date.fromisoformat(prev_dt)).days
+    delta = pct = window_days = None
+    if not first:
+        delta = curr["postings_total"] - prev["postings_total"]
+        pct = round(100 * delta / prev["postings_total"], 1) if prev["postings_total"] else 0
+        # the span actually covered, which is shorter than the requested window
+        # while a company is still building up history
+        window_days = (date.fromisoformat(curr_dt) - date.fromisoformat(prev_dt)).days
 
-    if age_cutoff:
-        adopt_note = (f'First seen in a posting after {age_cutoff} &mdash; inside the last '
-                      f'6 months, so these read as new bets rather than standing stack.')
-        estab_note = (f'First seen on or before {age_cutoff} &mdash; carried for more than '
-                      f'6 months, back to at least {lake.get("history_from", prev_dt)}.')
+    if first:
+        # With nothing to compare against, categorize_terms files every term as
+        # adopting. That is a window artefact, not a finding, so the first crawl
+        # shows one unlabelled card of what the board mentions. Its first-seen
+        # date is only the day collection started, so it is left off.
+        stack_cards = _term_bucket_card(
+            "On the board", "tag-neutral", [{**r, "since": None} for r in buckets["adopting"]],
+            lambda r: (f'Present on the {curr_dt} board. A term is split into Adopting or '
+                       f'Established once there is an earlier crawl to date it from.'))
     else:
-        adopt_note = (f'Present {curr_dt}; absent in the {prev_dt} snapshot {window_days} days '
-                      f'earlier. (Lake reaches back under 6 months, so this is a window '
-                      f'comparison, not a term age.)')
-        estab_note = f'Present in both the {prev_dt} and {curr_dt} crawls.'
-    adopting_card = _term_bucket_card("Adopting", "tag-accent", buckets["adopting"],
-        lambda r: adopt_note)
-    established_card = _term_bucket_card("Established", "tag-neutral", buckets["established"],
-        lambda r: estab_note)
+        if age_cutoff:
+            adopt_note = (f'First seen in a posting after {age_cutoff} &mdash; inside the last '
+                          f'6 months, so these read as new bets rather than standing stack.')
+            estab_note = (f'First seen on or before {age_cutoff} &mdash; carried for more than '
+                          f'6 months, back to at least {lake.get("history_from", prev_dt)}.')
+        else:
+            adopt_note = (f'Present {curr_dt}; absent in the {prev_dt} snapshot {window_days} days '
+                          f'earlier. (Lake reaches back under 6 months, so this is a window '
+                          f'comparison, not a term age.)')
+            estab_note = f'Present in both the {prev_dt} and {curr_dt} crawls.'
+        stack_cards = (_term_bucket_card("Adopting", "tag-accent", buckets["adopting"],
+                                         lambda r: adopt_note)
+                       + _term_bucket_card("Established", "tag-neutral", buckets["established"],
+                                           lambda r: estab_note))
 
     def _open_row(r: dict) -> str:
         title = html.escape(r["title"])
@@ -1918,11 +1938,23 @@ def render_dashboard(lake: dict, company: str) -> str:
                         f"and present on {curr_dt} &mdash; observed absence, not a claimed post date."
                         + carve)
 
+    # Nothing has opened yet on a first crawl, so the card lists the tech roles
+    # already on the board rather than an empty "opened" list. A whole board's
+    # tech roles can run to hundreds, so the rail shows the first few and the
+    # table holds the rest.
+    tech_rows = [r for r in open_rows if r["is_tech_role"]] if first else tech_new
+    tech_shown = tech_rows[:8] if first else tech_rows
+    tech_title, tech_sub = (("Tech roles open", f"On the {curr_dt} board and classified as technical")
+                            if first else
+                            ("Tech roles opened", "Opened this period and classified as technical"))
     tech_new_html = "".join(
         f'<div style="padding-bottom:11px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)">'
         f'<div style="font-size:13.5px;font-weight:500"><a href="{html.escape(r["url"])}" target="_blank" rel="noopener">{html.escape(r["title"])}</a></div>'
         f'<div style="font-size:12px" class="text-muted">{html.escape(r["location"])}</div></div>'
-        for r in tech_new) or '<p class="text-muted" style="margin:0;font-size:12.5px">None this period.</p>'
+        for r in tech_shown) or '<p class="text-muted" style="margin:0;font-size:12.5px">None this period.</p>'
+    if len(tech_rows) > len(tech_shown):
+        tech_new_html += (f'<p class="text-muted" style="margin:0;font-size:12.5px">'
+                          f'{len(tech_rows) - len(tech_shown)} more in Open roles.</p>')
 
     history = lake.get("history") or lake["series"]
     history_chart = _history_chart(history)
@@ -1930,26 +1962,60 @@ def render_dashboard(lake: dict, company: str) -> str:
                  f'{date.fromisoformat(history[-1]["dt"]):%b %Y}'
                  if len(history) > 1 else f'{curr_dt}')
 
-    brief_lines = [
-        f"{company_name} — dashboard snapshot ({curr_dt}, vs {prev_dt})",
-        f"{curr['postings_total']} open postings ({delta:+d}, {pct:+.1f}% since {prev_dt}).",
-        f"New: {counts.get('new', 0)} · Closed: {counts.get('closed', 0)} · Reopened: {counts.get('reopened', 0)}.",
-    ]
-    brief_lines.append(f"{len(open_rows)} roles open on the {curr_dt} board; "
-                       f"{len(new_open)} flagged opened in the last {NEW_ROLE_DAYS} days.")
-    if buckets["adopting"]:
-        brief_lines.append("Adopting: " + ", ".join(r["term"] for r in buckets["adopting"][:6]) + ".")
-    if tech_new:
-        brief_lines.append("New tech roles: " + "; ".join(f'{r["title"]} ({r["location"]})' for r in tech_new) + ".")
+    if first:
+        brief_lines = [
+            f"{company_name} — dashboard snapshot ({curr_dt}, first crawl)",
+            f"{curr['postings_total']} open postings. No earlier crawl to compare against yet.",
+            f"{len(open_rows)} roles open on the {curr_dt} board.",
+        ]
+        if buckets["adopting"]:
+            brief_lines.append("On the board: " + ", ".join(r["term"] for r in buckets["adopting"][:6]) + ".")
+        if tech_rows:
+            brief_lines.append(f"{len(tech_rows)} tech roles open: "
+                               + "; ".join(f'{r["title"]} ({r["location"]})' for r in tech_shown)
+                               + ("; …" if len(tech_rows) > len(tech_shown) else "") + ".")
+    else:
+        brief_lines = [
+            f"{company_name} — dashboard snapshot ({curr_dt}, vs {prev_dt})",
+            f"{curr['postings_total']} open postings ({delta:+d}, {pct:+.1f}% since {prev_dt}).",
+            f"New: {counts.get('new', 0)} · Closed: {counts.get('closed', 0)} · Reopened: {counts.get('reopened', 0)}.",
+        ]
+        brief_lines.append(f"{len(open_rows)} roles open on the {curr_dt} board; "
+                           f"{len(new_open)} flagged opened in the last {NEW_ROLE_DAYS} days.")
+        if buckets["adopting"]:
+            brief_lines.append("Adopting: " + ", ".join(r["term"] for r in buckets["adopting"][:6]) + ".")
+        if tech_new:
+            brief_lines.append("New tech roles: " + "; ".join(f'{r["title"]} ({r["location"]})' for r in tech_new) + ".")
     brief_lines.append(f"Source: {domain} · {len(curr['postings'])} postings with stack signals, captured {fmt_dt(curr['captured_at'])}.")
     brief_text = "\n".join(brief_lines)
+
+    if first:
+        head_desc = (f"Hiring signals for {company_name}: {curr['postings_total']} open postings "
+                     f"captured {curr_dt}, the first crawl of this board.")
+        lede = (f"Built from {curr['postings_total']} open postings captured {curr_dt}, the first crawl "
+                f"of this board. Change figures start with the next crawl. Every row links back to "
+                f"the posting it came from.")
+        change_row = (f'<span class="text-muted">First crawl {curr_dt}</span>'
+                      f'<span>{curr["postings_total"]} open</span>')
+        flow = {k: "&mdash;" for k in ("new", "closed", "reopened")}
+        window_label = f"First crawl {curr_dt}"
+    else:
+        head_desc = (f"Hiring signals for {company_name}: {curr['postings_total']} open postings "
+                     f"captured {curr_dt}, compared with {prev_dt}.")
+        lede = (f"Built from {curr['postings_total']} open postings captured {curr_dt},\n"
+                f"        measured against the crawl {window_days} days earlier ({prev_dt}). Every row "
+                f"links back to the posting it came from.")
+        change_row = (f'<span class="text-muted">{prev_dt} &rarr; {curr_dt}</span>\n'
+                      f'          <span>{prev["postings_total"]} &rarr; {curr["postings_total"]}\n'
+                      f'            <b style="color:{"var(--color-accent-700)" if delta >= 0 else "inherit"}">'
+                      f'{delta:+d} ({pct:+.1f}%)</b></span>')
+        flow = {k: counts.get(k, "?") for k in ("new", "closed", "reopened")}
+        window_label = f"{prev_dt} &ndash; {curr_dt}"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-{_head(f"{company_name} — TICK dashboard",
-       f"Hiring signals for {company_name}: {curr['postings_total']} open postings "
-       f"captured {curr_dt}, compared with {prev_dt}.")}
+{_head(f"{company_name} — TICK dashboard", head_desc)}
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -1959,8 +2025,7 @@ def render_dashboard(lake: dict, company: str) -> str:
   <main id="main">
   <div class="hdr">
     <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:34px;margin:3px 0">Dashboard</h1>
-      <p class="text-muted" style="margin:6px 0 0;font-size:13px;max-width:70ch">Built from {curr['postings_total']} open postings captured {curr_dt},
-        measured against the crawl {window_days} days earlier ({prev_dt}). Every row links back to the posting it came from.</p></div>
+      <p class="text-muted" style="margin:6px 0 0;font-size:13px;max-width:70ch">{lede}</p></div>
     <button class="btn btn-primary" type="button" id="copy-brief">Copy summary</button>
   </div>
 
@@ -1968,7 +2033,7 @@ def render_dashboard(lake: dict, company: str) -> str:
     <div style="display:flex;flex-direction:column;gap:24px">
       <div>
         <h2 class="section-label text-muted" style="margin-bottom:12px">Tech stack, as evidenced by hiring</h2>
-        <div class="stack-grid">{adopting_card}{established_card}</div>
+        <div class="stack-grid">{stack_cards}</div>
       </div>
       <div>
         <div class="tbl-head">
@@ -2027,26 +2092,24 @@ def render_dashboard(lake: dict, company: str) -> str:
         <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles &mdash; {hist_span}</span>
         {history_chart}
         <div style="display:flex;justify-content:space-between;font-size:12.5px;padding-top:9px;border-top:1px solid var(--color-divider)">
-          <span class="text-muted">{prev_dt} &rarr; {curr_dt}</span>
-          <span>{prev['postings_total']} &rarr; {curr['postings_total']}
-            <b style="color:{'var(--color-accent-700)' if delta >= 0 else 'inherit'}">{delta:+d} ({pct:+.1f}%)</b></span>
+          {change_row}
         </div>
         <div class="stat-row">
-          <div class="stat"><b>{counts.get('new', '?')}</b><span>Opened</span></div>
-          <div class="stat"><b>{counts.get('closed', '?')}</b><span>Closed</span></div>
-          <div class="stat"><b>{counts.get('reopened', '?')}</b><span>Reopened</span></div>
+          <div class="stat"><b>{flow['new']}</b><span>Opened</span></div>
+          <div class="stat"><b>{flow['closed']}</b><span>Closed</span></div>
+          <div class="stat"><b>{flow['reopened']}</b><span>Reopened</span></div>
         </div>
       </div>
       <div class="card blueprint">{_corners()}
-        <h2 style="margin:0 0 3px;font-size:20px">Tech roles opened</h2>
-        <span style="font-size:11.5px;display:block;margin-bottom:12px" class="text-muted">Opened this period and classified as technical</span>
+        <h2 style="margin:0 0 3px;font-size:20px">{tech_title}</h2>
+        <span style="font-size:11.5px;display:block;margin-bottom:12px" class="text-muted">{tech_sub}</span>
         <div style="display:flex;flex-direction:column;gap:11px">{tech_new_html}</div>
       </div>
       <div class="card blueprint">{_corners()}
         <h2 style="margin:0 0 10px;font-size:20px">Source coverage</h2>
         <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
           <div style="display:flex;justify-content:space-between"><span class="text-muted">Postings analyzed</span><span>{curr['postings_total']}</span></div>
-          <div style="display:flex;justify-content:space-between"><span class="text-muted">Window</span><span>{prev_dt} &ndash; {curr_dt}</span></div>
+          <div style="display:flex;justify-content:space-between"><span class="text-muted">Window</span><span>{window_label}</span></div>
           <div style="display:flex;justify-content:space-between"><span class="text-muted">Last crawl</span><span>{fmt_dt(curr['captured_at'])}</span></div>
           <div style="display:flex;justify-content:space-between"><span class="text-muted">Board</span><span><a href="https://{html.escape(domain)}" target="_blank" rel="noopener">{html.escape(domain)}</a></span></div>
         </div>
@@ -2109,10 +2172,7 @@ def _account_card(a: dict) -> str:
     else:
         foot = (f'<a class="btn btn-secondary btn-sm" href="{html.escape(a["careers_url"])}">Careers board</a>'
                 if a["careers_url"] else "")
-        if a["status"] == _FIRST_CRAWL:
-            note = (f'One snapshot so far ({a["curr_dt"]}). The dashboard and brief both read a '
-                    f'delta between two crawls, so they render from the next one.')
-        elif a["status"] == _REVIEW:
+        if a["status"] == _REVIEW:
             conf = f' (confidence {a["confidence"]})' if a["confidence"] is not None else ""
             note = f'Config flagged for human review{conf} — not collecting yet.'
         else:
@@ -2141,7 +2201,7 @@ def _add_account_card() -> str:
         '<div class="acct-meta text-muted">request &middot; reviewed by an administrator</div>'
         '</div><span class="tag tag-neutral" style="white-space:nowrap">Not tracked</span></div>'
         '<p class="acct-note text-muted" style="margin-top:11px">Tell us which company to track. Once '
-        'it&rsquo;s set up and has two crawls to compare, it appears here with a dashboard and brief.</p>'
+        'it&rsquo;s set up and crawled, it appears here with a dashboard.</p>'
         '<label for="acct-name-in">Company name</label>'
         '<input id="acct-name-in" name="company" type="text" placeholder="Acme Industrial Supply" '
         'autocomplete="organization" spellcheck="false" maxlength="120" required>'
@@ -2503,7 +2563,7 @@ def render_404() -> str:
   <div class="hdr" style="border:0">
     <div><p class="eyebrow text-muted">Error 404</p><h1 style="font-size:34px;margin:3px 0">Page not found</h1>
       <p class="text-muted" style="margin:8px 0 0;font-size:14px;max-width:60ch">That address is not part of this
-        site. Account pages are only written for companies with at least two crawls, so a dashboard or brief
+        site. Account pages are only written for companies TICK has crawled, so a dashboard or brief
         you had bookmarked can disappear if the account stopped reporting.</p></div>
   </div>
   <p style="margin:22px 0 0"><a class="btn btn-primary" href="{APP_HOME}">Back to accounts</a></p>
@@ -2525,7 +2585,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Render the TICK site — accounts home, plus a dashboard + brief per account")
     ap.add_argument("source", help="lake root dir (containing out/derived/...), or s3://bucket[/prefix]")
     ap.add_argument("--company", default=None,
-                    help="render just this company_slug (default: every company in the lake with two snapshots)")
+                    help="render just this company_slug (default: every company in the lake with a snapshot)")
     ap.add_argument("--configs", default=None,
                     help="directory or s3:// prefix of evaluator SourceConfig JSON files, so accounts "
                          "with nothing collected yet still appear (default: the lake's own configs/ "
@@ -2565,8 +2625,7 @@ if __name__ == "__main__":
         if not targets:
             sys.exit(f"no account for company={args.company}")
         if not targets[0]["has_pages"]:
-            sys.exit(f"{args.company}: {targets[0]['snapshots']} snapshot(s) — "
-                     "need at least two crawls to derive trend/adoption")
+            sys.exit(f"{args.company}: nothing collected yet — no snapshot to render")
 
     for a in targets:
         lake = load_lake(args.source, a["slug"], lake_io, args.window_days)

@@ -37,7 +37,8 @@ Run everything from the project root.
    `aws s3 sync s3://<DataBucketName>/ $L --exclude "raw/*" --delete`.
 
 2. **List the accounts.** `python3 $S/accounts.py $L` prints every slug
-   with at least two crawls — the same set the site renders.
+   with at least two crawls. The site renders a dashboard from the first
+   crawl, but a brief needs a week of movement to write about.
 
 3. **Evidence, per account.**
    `python3 $S/evidence.py $L <slug> [--week-end YYYY-MM-DD] --out $OUT/evidence.json`

@@ -3,9 +3,10 @@ Print the company slugs a weekly run writes briefs for, one per line.
 
     accounts.py <lake-root>
 
-The same set the site renders pages for: every account with at least two
-crawls, so a week of movement exists to write about. Uses the renderer's own
-definition (build_accounts), so the run and the site cannot disagree.
+Every account with at least two crawls, so a week of movement exists to write
+about. The site renders a dashboard from the first crawl; this is the narrower
+set. Uses the renderer's own definition (build_accounts' has_baseline), so the
+run and the site cannot disagree about which accounts have a baseline.
 """
 
 import os
@@ -22,5 +23,5 @@ if __name__ == "__main__":
     io = report.open_lake(lake)
     configs = os.path.join(lake, "configs")
     for a in report.build_accounts(report.load_configs(configs if os.path.isdir(configs) else None, io), io):
-        if a["has_pages"]:
+        if a["has_baseline"]:
             print(a["slug"])
