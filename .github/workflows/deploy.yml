@@ -203,8 +203,10 @@ jobs:
           fi
 
       # Static first, always: see infra/README.md § Deploying a change.
+      # The steps that touch the site run tools/tick.py, the same commands an
+      # operator runs by hand, so the pipeline and the docs cannot drift.
       - name: Publish static pages
-        run: make publish-static
+        run: python3 ../tools/tick.py publish static --stack "$STACK" --yes
 
       - name: Execute change set
         if: env.HAS_CHANGES == 'true'
@@ -219,33 +221,12 @@ jobs:
 
       # Idempotent, and required after any deploy that replaces the app client.
       - name: Publish Cognito UI
-        run: make publish-cognito-ui
+        run: python3 ../tools/tick.py publish login --stack "$STACK" --yes
 
       - name: Republish the site
-        run: |
-          aws lambda invoke --function-name "$STACK-publisher" --cli-read-timeout 0 \
-            --query FunctionError --output text publish.json > error.txt
-          cat publish.json; echo
-          if [ "$(cat error.txt)" != "None" ]; then
-            echo "::error::Publisher failed: $(cat publish.json)"
-            exit 1
-          fi
+        run: python3 ../tools/tick.py publish pages --stack "$STACK" --yes
 
+      # Public pages 200 and guarded pages 302 to sign-in. A 200 on a guarded
+      # page is a client-data leak, not a cosmetic bug.
       - name: Verify the edge
-        run: |
-          fail=0
-          for p in / /docs /demo /demo/dunder-mifflin/brief; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE$p")
-            echo "public  $p -> $code"
-            [ "$code" = "200" ] || { echo "::error::$p returned $code, expected 200"; fail=1; }
-          done
-          # A 200 here is a client-data leak, not a cosmetic bug.
-          for p in /accounts /login /dunder-mifflin/dashboard.html /dunder-mifflin/brief.html; do
-            out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$SITE$p")
-            echo "guarded $p -> $out"
-            case "$out" in
-              "302 "*"/auth/login"*) ;;
-              *) echo "::error::$p returned '$out', expected a 302 to /auth/login"; fail=1 ;;
-            esac
-          done
-          exit $fail
+        run: python3 ../tools/tick.py verify --stack "$STACK" --site "$SITE"

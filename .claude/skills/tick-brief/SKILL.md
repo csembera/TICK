@@ -82,9 +82,8 @@ Run everything from the project root.
    (`--dry-run` first shows what would go). It re-runs check.py and uploads
    each passing brief with its evidence to
    `s3://<DataBucketName>/briefs/company=<slug>/week=<week-end>/`. The site
-   shows it after the next nightly publish (03:30 UTC). Invoking
-   `tick-collector-publisher` shows it at once, but that is production: ask
-   first.
+   shows it after the next nightly publish (03:30 UTC). `tools/tick.py
+   publish pages` shows it at once, but that is production: ask first.
 
 ## Tuning the prompt
 

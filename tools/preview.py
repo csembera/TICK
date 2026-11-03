@@ -42,7 +42,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LAKE = os.path.join(ROOT, "local-data", "lake")
 OUT = os.path.join(ROOT, "local-data", "preview-site")
 STACK = "tick-collector"
-STATIC = ["index.html", "og-image.png", "docs", "demo"]   # what make publish-static deploys
+STATIC = ["index.html", "og-image.png", "docs", "demo"]   # what `tick.py publish static` deploys
 
 
 def run(*cmd, **kw) -> str:

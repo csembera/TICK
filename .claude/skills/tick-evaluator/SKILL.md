@@ -298,4 +298,6 @@ the endpoint:
     $PY $S/verify.py /tmp/draft.json --out configs/<slug>_config.json
 
 The new config reaches the collector only once it is uploaded to the data
-bucket's `configs/` prefix. That is production: ask before uploading.
+bucket's `configs/` prefix, with `tools/tick.py companies push
+configs/<slug>_config.json` (it shows the diff against the live config first).
+That is production: ask before uploading.
