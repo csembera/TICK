@@ -19,7 +19,7 @@ pipeline uses it). `tools/tick.py <command> --help` documents each command.
 | `companies push <file>` | Upload a verified config, after checking its slug and showing the diff against the live one | yes |
 | `companies pull` | Refresh the local `configs/` from the bucket, matching files by slug | local files only |
 | `collect <slug>...` / `--all` | Crawl now. `--wait` waits for the crawls; `--publish` waits, then re-renders | yes |
-| `publish pages` | Re-render `/accounts` and every account's pages | yes |
+| `publish pages` | Re-render `/accounts`, `/profile` and every account's pages | yes |
 | `publish static` | Upload `/`, `/docs` and `/demo` from `infra/site-static/` | yes |
 | `publish login` | Apply the sign-in page's CSS and banner | yes |
 | `users list` | Every user, their status and what they can see | no |
@@ -163,7 +163,8 @@ tools/tick.py requests close <id> --as done            # the first characters of
 ### Give an account's brief a persona
 
 An account's weekly brief is written for the persona of the one user who
-tracks it. Users describe themselves in **Your persona** on `/accounts`; its
+tracks it. Users describe themselves on `/profile` (**Edit profile** in the
+account menu); its
 focus terms are their My terms on every dashboard. What remains is yours:
 say which accounts each user tracks.
 
@@ -281,7 +282,7 @@ When the pipeline itself is unavailable, the manual steps are in
 
 `tools/tick.py users list` shows what they hold. If the account is missing,
 `users grant` it. If it is listed, they signed in before it was granted: the
-list is read at sign-in, so they need to sign out (the **Sign out** link) and
+list is read at sign-in, so they need to sign out (**Sign out** in the account menu) and
 in again.
 
 ### Someone is told "No access to TICK"

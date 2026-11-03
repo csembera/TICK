@@ -628,15 +628,21 @@ Resources:
         // A signed-in viewer may open their own accounts and nothing else.
         // scope is "*" (admin) or the sorted, comma-joined slugs they hold.
         // /accounts is served from the home the publisher rendered for
-        // exactly this scope; home/ is never reachable by its own name, and a
-        // page under another account's /<slug>/ sends the viewer back to their
-        // own home rather than confirming that the account exists. That makes
-        // "accounts", "home" and "login" unusable as company slugs.
+        // exactly this scope; /profile is one page for every viewer, filled
+        // from /api/profile by its own script. home/ is never reachable by its
+        // own name, and a page under another account's /<slug>/ sends the
+        // viewer back to their own home rather than confirming that the
+        // account exists. That makes "accounts", "profile", "home" and
+        // "login" unusable as company slugs.
         function authorize(request, scope) {
           var uri = request.uri;
           if (uri === '/accounts/index.html') {
             var key = crypto.createHash('sha256').update(scope).digest('hex').substring(0, 16);
             request.uri = '/home/' + key + '/index.html';
+            return request;
+          }
+          if (uri === '/profile/index.html') {
+            request.uri = '/home/profile/index.html';
             return request;
           }
           var slash = uri.indexOf('/', 1);

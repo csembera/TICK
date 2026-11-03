@@ -20,7 +20,7 @@ only in the data bucket (`DataBucketName` output). `python3 tools/preview.py
 | `derived/state/company=<slug>/state.json` | collector, last | collector (next run), publisher, tick-brief, `audit_diffs.py` |
 | `derived/tech_stack/company=<slug>/dt=<date>/tech_stack.json` | collector | publisher, tick-brief, `tech_report.py` |
 | `briefs/company=<slug>/week=<date>/brief.json`, `evidence.json` | tick-brief `publish.py` | publisher |
-| `profiles/<sub>.json` | the join Lambda's `/api/profile` (the persona editor and My terms), `tools/tick.py personas set` | `/api/profile`, `tools/tick.py personas list`, so the tick-brief run |
+| `profiles/<sub>.json` | the join Lambda's `/api/profile` (the persona editor on `/profile` and My terms), `tools/tick.py personas set` | `/api/profile`, `tools/tick.py personas list`, so the tick-brief run |
 
 `<slug>` is the config's `company_slug`; `<date>` is the UTC date of the crawl;
 `<week>` is the last day of the brief's 7-day window. A config's file name
@@ -208,7 +208,7 @@ user only (their `sub` comes from the session cookie):
 
 | | |
 |---|---|
-| `GET` | `{"persona": {...} or null, "updated_at", "tracks": [slugs]}`; `tracks` is the user's `custom:accounts` |
+| `GET` | `{"persona": {...} or null, "updated_at", "tracks": [slugs], "email"}`; `tracks` is the user's `custom:accounts`, `email` their sign-in address (the account menu shows it) |
 | `POST {"persona": {field: value}}` | Merges the named fields onto the saved persona and returns it; `400 {"error", "problems"}` if a field breaks a limit, and then nothing is saved |
 
 ## The site bucket
@@ -217,6 +217,7 @@ user only (their `sub` comes from the session cookie):
 |---|---|---|
 | `index.html`, `og-image.png`, `docs/**`, `demo/**` | `tools/tick.py publish static` | `/`, `/docs`, `/demo` (public) |
 | `home/<sha256(scope)[:16]>/index.html` | publisher, one per viewer scope | `/accounts` (the edge picks the key) |
+| `home/profile/index.html` | publisher, one for every viewer | `/profile` (guarded) |
 | `<slug>/dashboard.html`, `<slug>/brief.html` | publisher | the same paths (guarded) |
 | `<slug>/archive/<pid>/index.html` | publisher, one per closed posting | `/<slug>/archive/<pid>` (guarded) |
 

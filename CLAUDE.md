@@ -42,8 +42,9 @@ File formats are in [docs/data-reference.md](docs/data-reference.md).
 - **Read descriptions through the renderer's accessors** (`parsed_description`,
   `role_text_of`, `full_text_of`, `pay_of`), never `description_raw` directly:
   new rows carry only `description`, old rows only `description_raw`.
-- **Guarded paths must never serve without a session.** A 200 on `/accounts` or
-  `/<slug>/*` without a cookie is a client-data leak, not a cosmetic bug.
+- **Guarded paths must never serve without a session.** A 200 on `/accounts`,
+  `/profile` or `/<slug>/*` without a cookie is a client-data leak, not a
+  cosmetic bug.
 - **The two halves of the site bucket never overlap.** The publisher writes only
   `home/` and `<slug>/` keys. `tools/tick.py publish static` uses `--delete`
   only on `docs/` and `demo/`. New keys must keep that separation.
@@ -65,8 +66,10 @@ File formats are in [docs/data-reference.md](docs/data-reference.md).
   the brand and icon on `/` and `/docs`), in the renderer (`_nav`, the `.nav`
   rules in `_STYLE`, `_FAVICON` in `tools/tick_insights_report.py`), and in the
   auth Lambda's error page (`page()` in `infra/src/auth/app.py`). A change to
-  any one is a change to all of them, in the same PR. Check with
-  `tools/preview.py`, which serves the demo and the app pages side by side.
+  any one is a change to all of them, in the same PR. The one exception is the
+  account menu in the app's signed-in corner (`.nav-menu`): the demo has no
+  signed-in corner, so it has no copy there. Check with `tools/preview.py`,
+  which serves the demo and the app pages side by side.
 - **Cognito hosted-UI styling is not a CloudFormation resource.** It belongs to
   `tools/tick.py publish login`. Declaring it in the template makes the deploy fail
   with `AlreadyExists`.

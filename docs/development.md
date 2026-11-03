@@ -63,8 +63,8 @@ It renders the local lake with that version's renderer and serves it beside
 `infra/site-static/` on <http://127.0.0.1:8000>. The edge, Cognito and
 per-viewer scoping are not previewed: `/accounts` lists every account.
 `/api/profile` answers from memory, checked by `tools/persona.py` like the
-real one, so the persona editor and My terms work: one persona for everyone,
-forgotten when the server stops.
+real one, so the account menu, `/profile` and My terms work: one persona for
+everyone, signed in as `viewer@example.com`, forgotten when the server stops.
 
 **The renderer directly.** [tools/tick_insights_report.py](../tools/tick_insights_report.py)
 is the file the publisher Lambda runs (symlinked as `report.py`), and reads S3
