@@ -16,8 +16,9 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 | `infra/src/publisher/` | Renders the whole lake to static HTML in the site bucket, then invalidates. `report.py` and `description.py` are symlinks to the renderer and the collector's parser |
 | `infra/src/auth/` | Cognito code exchange; mints the HMAC session cookie |
 | `infra/src/join/` | `/api/join` waitlist and `/api/account-request` |
-| `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `make publish-static` |
+| `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `tools/tick.py publish static` |
 | `tools/tick_insights_report.py` | The renderer. `infra/src/publisher/report.py` is a **symlink** to it |
+| `tools/tick.py` | The operations CLI: status, publishing, crawls, companies, users, requests, DLQ, logs, edge checks. The pipeline's deploy steps run it too |
 | `tools/evaluator.py` | Writes a company's SourceConfig |
 | `tests/` | `python3 -m unittest discover tests`; stdlib only, synthetic fixtures (the repo is public) |
 | `configs/` | Gitignored local copy of the SourceConfigs. The data bucket's `configs/` prefix is the source of truth |
@@ -39,8 +40,8 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 - **Guarded paths must never serve without a session.** A 200 on `/accounts` or
   `/<slug>/*` without a cookie is a client-data leak, not a cosmetic bug.
 - **The two halves of the site bucket never overlap.** The publisher writes only
-  `home/` and `<slug>/` keys. `publish-static` uses `--delete` only on
-  `docs/` and `demo/`. New keys must keep that separation.
+  `home/` and `<slug>/` keys. `tools/tick.py publish static` uses `--delete`
+  only on `docs/` and `demo/`. New keys must keep that separation.
 - **Briefs are written by a model, never by code.** The site shows the
   newest brief the tick-brief skill published to the lake's `briefs/` prefix,
   or "No brief yet". A brief reaches the bucket only through `publish.py`,
@@ -62,7 +63,7 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
   any one is a change to all of them, in the same PR. Check with
   `tools/preview.py`, which serves the demo and the app pages side by side.
 - **Cognito hosted-UI styling is not a CloudFormation resource.** It belongs to
-  `make publish-cognito-ui`. Declaring it in the template makes the deploy fail
+  `tools/tick.py publish login`. Declaring it in the template makes the deploy fail
   with `AlreadyExists`.
 - **Every deploy must pass the existing `SessionSecret` and `AlertEmail`.** A
   new secret signs everyone out. An empty `AlertEmail` deletes the DLQ alarm
@@ -152,9 +153,9 @@ the renderer runs [.github/workflows/deploy.yml](.github/workflows/deploy.yml):
    required reviewer. That review is the `confirm_changeset` step.
 3. **deploy:** after approval it runs the order from
    [infra/README.md § Deploying a change](infra/README.md#deploying-a-change):
-   `make publish-static` (static content always goes first), execute the change
-   set, `make publish-cognito-ui`, invoke the publisher, then check that public
-   paths return 200 and guarded paths 302.
+   `tools/tick.py publish static` (static content always goes first), execute
+   the change set, `tools/tick.py publish login`, `tools/tick.py publish pages`,
+   then `tools/tick.py verify` (public paths 200, guarded paths 302).
 
 AWS access is OIDC through two roles in
 [infra/github-deploy-roles.yaml](infra/github-deploy-roles.yaml). The plan
@@ -164,6 +165,9 @@ approved `production` job.
 When a change replaces a stateful resource (the user pool, a bucket, a
 table), say so in the PR. The reviewer has to spot it in the change set.
 
-Never run `sam deploy`, `make publish-*`, invoke a production Lambda or
+Operate the running system through `tools/tick.py`, never with hand-written
+AWS CLI calls for something it covers. Its reading commands (`status`, every
+`list`, `logs`, `verify`, `cognito css`) and `--dry-run` are always safe. Never
+run one of its changing commands, `sam deploy`, invoke a production Lambda or
 approve a deployment unless the user explicitly asks in this session. The
 manual steps in infra/README.md are the fallback when the pipeline is down.

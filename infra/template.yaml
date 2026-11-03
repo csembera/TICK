@@ -819,7 +819,7 @@ Resources:
 Outputs:
   DataBucketName:
     Value: !Ref DataBucket
-    Description: Upload SourceConfigs to s3://<bucket>/configs/<slug>.json
+    Description: The lake and the SourceConfigs; add a company with `tools/tick.py companies push`
   CollectQueueUrl:
     Value: !Ref CollectQueue
   CollectDLQUrl:
@@ -837,15 +837,12 @@ Outputs:
     Description: Cognito hosted UI serving the login page
   UserPoolId:
     Value: !Ref SiteUserPool
-    Description: TICK's own user pool — invite users here (see infra/README.md)
+    Description: TICK's own user pool — manage it with `tools/tick.py users`
   ViewerGroup:
     Value: !Ref SiteViewerGroup
     Description: >-
-      Grant access with: aws cognito-idp admin-add-user-to-group
-      --user-pool-id <UserPoolId> --group-name <this> --username <email>,
-      then assign accounts with: aws cognito-idp admin-update-user-attributes
-      --user-pool-id <UserPoolId> --username <email>
-      --user-attributes Name=custom:accounts,Value=<slug>,<slug>
+      Members may sign in. `tools/tick.py users invite <email> --accounts <slugs>`
+      adds a member; `tools/tick.py users grant|revoke` changes their accounts
   AdminGroup:
     Value: !Ref SiteAdminGroup
     Description: Members see every account
@@ -855,10 +852,10 @@ Outputs:
     Value: !Ref SiteDistribution
   PublisherFunctionName:
     Value: !Ref PublisherFunction
-    Description: Invoke to republish the site immediately
+    Description: Republish the site now with `tools/tick.py publish pages`
   AccountRequestsTableName:
     Value: !Ref AccountRequestsTable
-    Description: Viewer requests to track a company — `make list-account-requests`
+    Description: Viewer requests to track a company — `tools/tick.py requests list --accounts`
   JoinRequestsTableName:
     Value: !Ref JoinRequestsTable
-    Description: Waitlist — one row per email; `make list-requests` prints it
+    Description: Waitlist — one row per email; `tools/tick.py requests list` prints it

@@ -76,8 +76,8 @@ def notify(item: dict) -> None:
             f"Name:    {item['name']}\n"
             f"Company: {item['company']}\n"
             f"At:      {item['created_at']}\n\n"
-            "Grant access: create the user in TICK's Cognito user pool and add them\n"
-            "to the 'tick-viewers' group. List every request: make list-requests\n"
+            "Grant access: tools/tick.py users invite <email> --accounts <slugs>\n"
+            "Every request: tools/tick.py requests list\n"
         ),
     )
 
@@ -148,8 +148,9 @@ def notify_account(item: dict) -> None:
             f"Careers URL: {item['careers_url'] or '-'}\n"
             f"Note:        {item['note'] or '-'}\n"
             f"At:          {item['created_at']}\n\n"
-            "Onboard it with the evaluator, then add its slug to the viewer's\n"
-            "custom:accounts. List every request: make list-account-requests\n"
+            "Onboard it with the tick-evaluator skill and tools/tick.py companies push,\n"
+            "then tools/tick.py users grant <email> <slug>.\n"
+            "Every request: tools/tick.py requests list --accounts\n"
         ),
     )
 

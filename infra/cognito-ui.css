@@ -1,6 +1,6 @@
 /* Cognito hosted-UI styling for the TICK sign-in page.
  *
- * Applied by `make publish-cognito-ui`, together with the banner image.
+ * Applied by `tools/tick.py publish login`, together with the banner image.
  * NOT a CloudFormation resource: UserPoolUICustomizationAttachment carries
  * CSS only (the banner is an uploaded image), and because SetUICustomization
  * creates the same underlying resource, having both fight over it fails the
@@ -8,8 +8,9 @@
  *
  * Cognito validates this against a fixed allowlist and rejects the whole
  * stylesheet if one property is off it. Every property here appears in
- * Cognito's own default template, so it is known-accepted. `make
- * cognito-css-default` dumps that default if you need to check another.
+ * Cognito's own default template, so it is known-accepted. The template is
+ * the console's "Download CSS template" (the API does not serve it);
+ * `tools/tick.py cognito css` checks the live page against this file.
  */
 .background-customizable {
   background-color: #f2f2f3;

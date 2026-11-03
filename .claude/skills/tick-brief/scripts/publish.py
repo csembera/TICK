@@ -16,7 +16,7 @@ citations against it. A brief that fails is reported and stays local: the
 failure is a finding about the prompt, never something to hand-fix and ship.
 The bucket comes from the tick-collector stack; uploads use the AWS CLI, so
 there is nothing to install. The site shows a new brief after the next
-nightly publish, or at once after invoking tick-collector-publisher.
+nightly publish, or at once after `tools/tick.py publish pages`.
 """
 
 from __future__ import annotations
@@ -107,8 +107,7 @@ def main() -> None:
         for line in refused:
             print(f"  {line}")
     if published and not args.dry_run:
-        print("Live after the next nightly publish, or now with: "
-              "aws lambda invoke --function-name tick-collector-publisher /dev/stdout")
+        print("Live after the next nightly publish, or now with: tools/tick.py publish pages")
     sys.exit(1 if refused else 0)
 
 

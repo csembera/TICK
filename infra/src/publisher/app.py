@@ -21,8 +21,8 @@ distinct scope, so an assignment change shows after the next publish (and
 the viewer's next sign-in, which re-mints the scope).
 
 The public pages at /, /docs and /demo are NOT written here. They are the
-hand-authored marketing pages in ../../site-static/, deployed by `make
-publish-static`, and this Lambda must never overwrite them — which is why it
+hand-authored marketing pages in ../../site-static/, deployed by
+`tools/tick.py publish static`, and this Lambda must never overwrite them — which is why it
 writes the accounts homes under home/ and never touches index.html.
 
 Runs on its own schedule, half an hour behind the daily dispatcher, so every

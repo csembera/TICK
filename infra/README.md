@@ -26,7 +26,7 @@ EventBridge Scheduler (daily, 30 min later)
               ├─ <slug>/brief.html             newest published brief, or "No brief yet"
               └─ <slug>/archive/<pid>/index.html   one per closed req
 
-site-static/ ── make publish-static ──► the same bucket
+site-static/ ── tools/tick.py publish static ──► the same bucket
               ├─ index.html                    marketing page
               ├─ og-image.png
               ├─ docs/index.html
@@ -56,21 +56,22 @@ sam deploy --guided
 #    Save to samconfig.toml:  y
 #    -> note the DataBucketName and SiteUrl outputs
 
-# 2. Register the first company
-aws s3 cp ../dunder-mifflin_config.json s3://<DataBucketName>/configs/dunder-mifflin.json
+# 2. Register the first company (from the repo root)
+tools/tick.py companies push configs/dunder-mifflin_config.json
 
-# 3. First manual run
-aws lambda invoke --function-name tick-collector-dispatcher /dev/stdout
-#    expect {"dispatched": 1, "skipped": 0, "invalid": 0}
+# 3. First manual run: crawl it, wait for the crawl, render the site
+tools/tick.py collect dunder-mifflin --publish
+#    debug: tools/tick.py logs collector --since 30m
 
-# 4. Verify the lake (~30s later)
-aws s3 ls s3://<DataBucketName>/ --recursive
-#    expect raw/, curated/, derived/snapshots/, derived/state/ objects for today
-#    debug: sam logs -n CollectorFunction --stack-name tick-collector
+# 4. Check everything: the company should show a last crawl from just now
+tools/tick.py status
 
 # 5. Turn on the daily schedule
 sam deploy --parameter-overrides ScheduleState=ENABLED
 ```
+
+Every later operation, from inviting a viewer to redriving a failed crawl, is
+a `tools/tick.py` command: `tools/tick.py --help` lists them.
 
 Other parameters at deploy time:
 - `ScheduleExpression="cron(0 3 * * ? *)"` — when the daily run fires (UTC;
@@ -99,42 +100,34 @@ SECRET=$(aws lambda get-function-configuration \
 [ ${#SECRET} -eq 64 ] || echo "WARNING: expected 64 chars, got ${#SECRET}"
 
 # 1. Static pages first — closes the window described above.
-make publish-static
+tools/tick.py publish static
 
 # 2. The stack.
 sam build
 sam deploy --parameter-overrides "AlertEmail=you@example.com SessionSecret=$SECRET"
 
 # 3. Hosted-UI styling, if cognito-ui.css or the banner changed. Independent of
-#    CloudFormation (see the Makefile header) and idempotent, so the position
-#    here does not matter.
-make publish-cognito-ui
+#    CloudFormation (see "Which target owns what" below) and idempotent, so the
+#    position here does not matter.
+tools/tick.py publish login
 
 # 4. Re-render the app pages. Until this runs, /accounts 404s for signed-in users.
-aws lambda invoke --function-name tick-collector-publisher /dev/stdout
-#    expect {"accounts_rendered": N, "homes_rendered": H, "pages": 2N+H, ...}
+tools/tick.py publish pages
 ```
+
+The `tools/tick.py` commands run from the repo root.
 
 ### Verify
 
-Public — every one of these must return 200 with no cookie:
-
 ```bash
-for p in / /docs /demo /demo/dunder-mifflin/brief; do
-  printf "%-32s %s\n" "$p" \
-    "$(curl -s -o /dev/null -w '%{http_code}' https://tick.sembasolutions.com$p)"
-done
+tools/tick.py verify
 ```
 
-Guarded — every one of these must 302 to `/auth/login`. **A 200 here is a
-client-data leak, not a cosmetic bug:**
-
-```bash
-for p in /accounts /login /dunder-mifflin/dashboard.html /dunder-mifflin/brief.html; do
-  printf "%-36s %s\n" "$p" \
-    "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' https://tick.sembasolutions.com$p)"
-done
-```
+It requests each public page (`/`, `/docs`, `/demo`, a demo brief) with no
+cookie and expects 200, then each guarded one (`/accounts`, `/login`, an
+account's dashboard and brief) and expects a 302 to `/auth/login`. **A 200 on a
+guarded page is a client-data leak, not a cosmetic bug.** The pipeline runs the
+same command as its last step.
 
 Then sign in through a browser: `/` → **Log in** → Cognito (TICK palette, TICK
 banner) → lands on `/accounts` showing the accounts home. Then open `/` and
@@ -144,34 +137,40 @@ banner) → lands on `/accounts` showing the accounts home. Then open `/` and
 
 | Path | Deployed by | Guarded |
 |---|---|---|
-| `/`, `/docs`, `/demo` | `make publish-static` | no |
-| Cognito hosted UI | `make publish-cognito-ui` (`cognito-ui.css` + banner) | n/a |
+| `/`, `/docs`, `/demo` | `tools/tick.py publish static` | no |
+| Cognito hosted UI | `tools/tick.py publish login` (`cognito-ui.css` + banner) | n/a |
 | `/accounts`, `/<slug>/*` | the publisher Lambda | yes |
 
 The hosted-UI customization is deliberately **not** a CloudFormation resource.
 `SetUICustomization` and `AWS::Cognito::UserPoolUICustomizationAttachment`
 create the same underlying object, so declaring it in the template while also
-running the make target fails the deploy with `AlreadyExists` and rolls the
-stack back. The template does not declare it; the make target owns it.
+running `tools/tick.py publish login` fails the deploy with `AlreadyExists` and
+rolls the stack back. The template does not declare it; the CLI owns it.
+`tools/tick.py cognito css` checks the live sign-in CSS against the repo's.
 
 `site-static/branding/` is source for the Cognito banner and is deliberately
-not synced — `make cognito-banner` re-renders the PNG from it after a copy edit.
+not synced — `tools/tick.py cognito banner` re-renders the PNG from it after a copy edit.
 
 ## Register a company
 
-The evaluator's output goes in the bucket's `configs/` prefix:
+The tick-evaluator skill writes and verifies a config into the local
+`configs/`; `companies push` uploads it to the bucket's `configs/` prefix, after
+checking its slug and showing how it differs from the live one:
 
 ```bash
-python3 ../tools/evaluator.py "Dunder Mifflin" --out dunder-mifflin_config.json
-aws s3 cp dunder-mifflin_config.json s3://<DataBucketName>/configs/dunder-mifflin.json
+tools/tick.py companies push configs/dunder-mifflin_config.json
+tools/tick.py collect dunder-mifflin --publish     # crawl it now rather than tonight
 ```
 
-Configs with `needs_human_review: true` are skipped by the dispatcher.
+A company is known by the `company_slug` inside its config, not the file's
+name, and the CLI matches on it. Configs with `needs_human_review: true` are
+skipped by the dispatcher.
 
 ## Run on demand
 
 ```bash
-aws lambda invoke --function-name tick-collector-dispatcher /dev/stdout
+tools/tick.py collect --all            # every company, as the nightly run does
+tools/tick.py collect geha --publish   # one company; wait for it, then re-render the site
 ```
 
 ## Test locally (no AWS)
@@ -216,18 +215,18 @@ The site has two halves in one bucket, and they never collide:
 
 | | Written by | Guarded |
 |---|---|---|
-| `/`, `/docs`, `/demo` | `make publish-static` from `site-static/` | no |
+| `/`, `/docs`, `/demo` | `tools/tick.py publish static` from `site-static/` | no |
 | `/accounts`, `/<slug>/*` | the publisher Lambda, nightly | yes |
 
 The publisher writes `home/<key>/index.html` and per-account keys only, so a nightly
-run cannot overwrite the marketing pages; `make publish-static` scopes its
-`--delete` to the `docs/` and `demo/` prefixes, so it cannot reach the app.
+run cannot overwrite the marketing pages; `tools/tick.py publish static` scopes
+its `--delete` to the `docs/` and `demo/` prefixes, so it cannot reach the app.
 
 The public pages are hand-authored and carry no lake data — the demo is built
 on a fictional company. Deploy them with:
 
 ```bash
-cd tick-collector && make publish-static
+tools/tick.py publish static
 ```
 
 ### Domain
@@ -271,34 +270,24 @@ stack (`UserPoolId` output). It is invite-only — no self sign-up — and mail
 
 Being in the pool is not enough — membership in `tick-viewers` is what grants
 access. A pool user who is not in the group gets an explanatory page, not a
-login loop. To invite someone:
+login loop. Users are managed with `tools/tick.py users`:
 
 ```bash
-POOL=$(aws cloudformation describe-stacks --stack-name tick-collector \
-  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
-
-# Sends the invite email with a temporary password
-aws cognito-idp admin-create-user --user-pool-id "$POOL" \
-  --username you@example.com \
-  --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true \
-  --desired-delivery-mediums EMAIL
-
-aws cognito-idp admin-add-user-to-group --user-pool-id "$POOL" \
-  --group-name tick-viewers --username you@example.com
-
-# Which accounts they see — the company slugs, as in configs/ and the page URLs.
-# Overwrites the whole list, so pass every account each time.
-aws cognito-idp admin-update-user-attributes --user-pool-id "$POOL" \
-  --username you@example.com \
-  --user-attributes Name=custom:accounts,Value="dunder-mifflin,initech"
-
-# Or let them see everything
-aws cognito-idp admin-add-user-to-group --user-pool-id "$POOL" \
-  --group-name tick-admins --username you@example.com
-
-# Then render their accounts home
-aws lambda invoke --function-name tick-collector-publisher /dev/stdout
+tools/tick.py users invite you@example.com --accounts dunder-mifflin,initech
+#   creates the user, emails a temporary password, adds them to tick-viewers,
+#   sets their accounts, and renders their accounts home if it is new
+tools/tick.py users grant  you@example.com vance-refrigeration   # adds; keeps the rest
+tools/tick.py users revoke you@example.com initech               # removes only that one
+tools/tick.py users admin  you@example.com                       # sees every account
+tools/tick.py users list                                         # who sees what
+tools/tick.py users disable you@example.com                      # stops sign-in
 ```
+
+Accounts are company slugs, as in `configs/` and the page URLs; the CLI refuses
+one that is not tracked. Disabling a user or revoking an account does **not**
+end a session they already hold: the cookie is valid for up to 12 hours and
+the edge never asks Cognito. Only deploying a new `SessionSecret` ends every
+session at once.
 
 A viewer sees only their accounts: the accounts home lists nothing else, and
 any other account's `/<slug>/` page sends them back to it. Assignments are
@@ -312,15 +301,23 @@ Every accounts home ends with a **Track another company** form. It posts to
 `/api/account-request` (the join Lambda, which checks the session cookie
 itself because `/api/*` skips the edge check), stores the request in the
 `account-requests` table and emails the alert address. To fulfil one: run the
-evaluator for the company, add its slug to the requester's `custom:accounts`,
-and republish.
+tick-evaluator skill for the company, push its config, grant it, and close the
+request.
 
 ```bash
-make list-account-requests   # created_at, status, requester, company, careers URL
+tools/tick.py requests list --accounts --pending
+tools/tick.py companies push configs/<slug>_config.json
+tools/tick.py collect <slug> --publish
+tools/tick.py users grant <requester email> <slug>
+tools/tick.py requests close <request id> --as done
 ```
 
+Waitlist requests from the public "Get started" form are the same:
+`tools/tick.py requests list`, then `users invite`, which marks the waitlist
+request granted.
+
 The hosted UI walks a new user through choosing a password on first sign-in.
-After a deploy that replaces the app client, re-run `make publish-cognito-ui`:
+After a deploy that replaces the app client, re-run `tools/tick.py publish login`:
 the sign-in styling is attached per client.
 
 #### How the check works
@@ -392,14 +389,17 @@ citations against. A brief that fails the check is never uploaded.
 Each publish renders the newest week holding both files per account; an
 account with none gets a "No brief yet" page at the same address. A skipped
 week leaves last week's brief up, dated. To see a new brief before the
-nightly run, invoke the publisher.
+nightly run, republish.
 
 Republish immediately (after uploading a config or a brief, say):
 
 ```bash
-aws lambda invoke --function-name tick-collector-publisher /dev/stdout
-#    expect {"accounts_rendered": N, "homes_rendered": H, "pages": 2N+H, ...}
+tools/tick.py publish pages
+#    Published N accounts, H accounts homes, P pages. CDN invalidation: <id>.
 ```
+
+It fails, with the publisher's error, if the render failed: a bare
+`aws lambda invoke` exits 0 either way.
 
 ### Comparison window
 
@@ -461,9 +461,12 @@ DATA_BUCKET=<DataBucketName> SITE_BUCKET=- LOCAL_OUTPUT_DIR=../../../site python
 - One company failing never affects the others: each is its own invocation.
 - A failing message retries up to 3 times (`maxReceiveCount: 3`), then moves
   to the DLQ and raises the `tick-collector-collect-failures` alarm.
-- A DLQ message means the SourceConfig has drifted — re-run the evaluator
-  for that `company_slug`, upload the new config, and redrive or wait for
-  the next daily run.
+- A DLQ message means the SourceConfig has drifted. `tools/tick.py dlq list`
+  names the company and `tools/tick.py logs collector --since 1d --grep <slug>`
+  shows why; re-run the tick-evaluator skill for that `company_slug`,
+  `tools/tick.py companies push` the new config, then `tools/tick.py collect
+  <slug>` (the DLQ's copy carries the old config; `tools/tick.py dlq redrive`
+  retries it as it was).
 - The collector also fails deliberately when it collects 0 postings for a
   company whose state shows open ones (drift detection, not layoffs).
 
