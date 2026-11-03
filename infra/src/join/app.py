@@ -7,6 +7,18 @@ a company to be tracked.
   POST /api/account-request  {company, careers_url?, note?}
                                                      -> 200 {"ok": true}
                                                      -> 401 without a valid session
+  GET  /api/profile          -> 200 {persona, updated_at, tracks}   (401 without a session)
+  POST /api/profile          {persona: {field: value, ...}}
+                                                     -> 200 {persona, updated_at}
+                                                     -> 400 {"error", "problems"} on a bad field
+
+A viewer's profile holds their persona (tools/persona.py, symlinked here):
+who they are, what they sell and the terms they watch. It lives at
+profiles/<sub>.json in the data bucket, keyed by the sub in the session
+cookie, so a viewer can only ever read or write their own. A POST names only
+the fields it changes and is merged onto what is saved, so the dashboard can
+save its My terms without knowing the rest. The weekly brief for each account
+a viewer tracks is written for this persona.
 
 Served through the site's own CloudFront as /api/join, so the forms post
 same-origin: no CORS, and the response is readable, so a failure is shown as a
@@ -35,6 +47,8 @@ import uuid
 import boto3
 from botocore.exceptions import ClientError
 
+import persona
+
 TABLE = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
 TOPIC_ARN = os.environ.get("ALERT_TOPIC_ARN", "")
 SNS = boto3.client("sns") if TOPIC_ARN else None
@@ -48,6 +62,13 @@ ACCOUNT_TABLE = (boto3.resource("dynamodb").Table(os.environ["ACCOUNT_TABLE_NAME
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "").encode()
 USER_POOL_ID = os.environ.get("USER_POOL_ID", "")
 SUB_RE = re.compile(r"^[0-9a-f-]{36}$")
+
+# Profiles. Only GetObject and PutObject on profiles/* are granted, and S3
+# answers a missing key with AccessDenied when the caller may not list the
+# bucket, so both mean "no profile yet".
+DATA_BUCKET = os.environ.get("DATA_BUCKET", "")
+S3 = boto3.client("s3") if DATA_BUCKET else None
+PROFILE_BYTES = 8192
 URL_RE = re.compile(r"^https?://[^\s/$.?#][^\s]*$", re.IGNORECASE)
 
 EMAIL_RE = re.compile(r"^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,63}$")
@@ -123,18 +144,23 @@ def session_sub(event) -> str | None:
     return None
 
 
-def requester_email(sub: str) -> str:
-    """Best effort — the request is still worth keeping without it."""
+def user_attributes(sub: str) -> dict:
+    """The viewer's Cognito attributes, by the sub in their cookie. Best
+    effort: an empty dict when the lookup fails."""
     if not USER_POOL_ID:
-        return ""
+        return {}
     try:
         users = boto3.client("cognito-idp").list_users(
             UserPoolId=USER_POOL_ID, Filter=f'sub = "{sub}"', Limit=1)["Users"]
     except ClientError as exc:
-        print(f"account-request: email lookup failed for {sub}: {exc!r}")
-        return ""
-    attrs = {a["Name"]: a["Value"] for a in (users[0]["Attributes"] if users else [])}
-    return attrs.get("email", "")
+        print(f"user lookup failed for {sub}: {exc!r}")
+        return {}
+    return {a["Name"]: a["Value"] for a in (users[0]["Attributes"] if users else [])}
+
+
+def requester_email(sub: str) -> str:
+    """Best effort — the request is still worth keeping without it."""
+    return user_attributes(sub).get("email", "")
 
 
 def notify_account(item: dict) -> None:
@@ -193,8 +219,64 @@ def account_request(event, body: dict) -> dict:
     return respond(200, {"ok": True})
 
 
+def read_profile(sub: str) -> dict:
+    try:
+        body = S3.get_object(Bucket=DATA_BUCKET, Key=f"profiles/{sub}.json")["Body"].read()
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] in ("NoSuchKey", "404", "AccessDenied", "403"):
+            return {}
+        raise
+    try:
+        saved = json.loads(body)
+    except ValueError:
+        print(f"profile: unreadable profiles/{sub}.json; treating it as empty")
+        return {}
+    return saved if isinstance(saved, dict) else {}
+
+
+def profile(event, method: str) -> dict:
+    if S3 is None:
+        return respond(404, {"error": "Not found."})
+    sub = session_sub(event)
+    if not sub:
+        return respond(401, {"error": "Sign in again to see your persona."})
+    saved = read_profile(sub)
+    current = persona.clean(saved.get("persona"))[0]
+
+    if method == "GET":
+        tracks = sorted({s.strip() for s in user_attributes(sub).get("custom:accounts", "").split(",")
+                         if s.strip()})
+        return respond(200, {"persona": None if persona.is_blank(current) else current,
+                             "updated_at": saved.get("updated_at"), "tracks": tracks})
+
+    raw = event.get("body") or "{}"
+    if len(raw) > PROFILE_BYTES:
+        return respond(400, {"error": "That persona is too long."})
+    try:
+        changes = json.loads(raw).get("persona")
+        if not isinstance(changes, dict):
+            raise ValueError
+    except (ValueError, AttributeError):
+        return respond(400, {"error": 'Send {"persona": {...}}.'})
+    merged = {**current, **{k: v for k, v in changes.items() if k in persona.FIELDS}}
+    who, problems = persona.clean(merged)
+    if problems:
+        return respond(400, {"error": problems[0], "problems": problems})
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        S3.put_object(Bucket=DATA_BUCKET, Key=f"profiles/{sub}.json", ContentType="application/json",
+                      Body=json.dumps({"persona": who, "updated_at": stamp}, ensure_ascii=False).encode())
+    except ClientError as exc:
+        print(f"profile: write failed for {sub}: {exc!r}")
+        return respond(500, {"error": "Couldn't save your persona."})
+    return respond(200, {"persona": who, "updated_at": stamp})
+
+
 def handler(event, context):
-    if event.get("requestContext", {}).get("http", {}).get("method") != "POST":
+    method = event.get("requestContext", {}).get("http", {}).get("method")
+    if event.get("rawPath") == "/api/profile" and method in ("GET", "POST"):
+        return profile(event, method)
+    if method != "POST":
         return respond(405, {"error": "POST only"})
 
     try:

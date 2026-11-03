@@ -20,7 +20,7 @@ only in the data bucket (`DataBucketName` output). `python3 tools/preview.py
 | `derived/state/company=<slug>/state.json` | collector, last | collector (next run), publisher, tick-brief, `audit_diffs.py` |
 | `derived/tech_stack/company=<slug>/dt=<date>/tech_stack.json` | collector | publisher, tick-brief, `tech_report.py` |
 | `briefs/company=<slug>/week=<date>/brief.json`, `evidence.json` | tick-brief `publish.py` | publisher |
-| `profiles/<sub>.json` | `tools/tick.py personas set` | `tools/tick.py personas list`, so the tick-brief run |
+| `profiles/<sub>.json` | the join Lambda's `/api/profile` (the persona editor and My terms), `tools/tick.py personas set` | `/api/profile`, `tools/tick.py personas list`, so the tick-brief run |
 
 `<slug>` is the config's `company_slug`; `<date>` is the UTC date of the crawl;
 `<week>` is the last day of the brief's 7-day window. A config's file name
@@ -202,6 +202,14 @@ page resolves each citation against this file.
 
 [tools/persona.py](../tools/persona.py) enforces these on every write and
 again when a brief reads the profile; any other field is dropped.
+
+`/api/profile` on the join Lambda is how the pages reach it, for the signed-in
+user only (their `sub` comes from the session cookie):
+
+| | |
+|---|---|
+| `GET` | `{"persona": {...} or null, "updated_at", "tracks": [slugs]}`; `tracks` is the user's `custom:accounts` |
+| `POST {"persona": {field: value}}` | Merges the named fields onto the saved persona and returns it; `400 {"error", "problems"}` if a field breaks a limit, and then nothing is saved |
 
 ## The site bucket
 

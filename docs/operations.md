@@ -163,12 +163,14 @@ tools/tick.py requests close <id> --as done            # the first characters of
 ### Give an account's brief a persona
 
 An account's weekly brief is written for the persona of the one user who
-tracks it. To have yours written for you:
+tracks it. Users describe themselves in **Your persona** on `/accounts`; its
+focus terms are their My terms on every dashboard. What remains is yours:
+say which accounts each user tracks.
 
 ```bash
-tools/tick.py users grant you@example.com geha starr-companies   # the accounts you work
-tools/tick.py personas set you@example.com persona.json          # who you are, what you sell
+tools/tick.py users grant pam@example.com geha starr-companies   # the accounts she works
 tools/tick.py personas list                                      # check: who each brief is for
+tools/tick.py personas set pam@example.com persona.json          # or write a persona for someone
 ```
 
 `persona.json` holds the fields in [data-reference.md § A profile](data-reference.md#a-profile).

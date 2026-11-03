@@ -67,6 +67,7 @@ except ImportError:   # the CLI, from tools/
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     "..", "infra", "src", "collector"))
     import description
+import persona   # tools/persona.py; the publisher Lambda gets it through a symlink, like this file
 from urllib.parse import urlparse
 
 _CAT_LABELS = {
@@ -1196,6 +1197,20 @@ button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--
   background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
 .my-terms-form input:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
 .tbl-empty{margin:0;padding:14px;font-size:12.5px}
+/* the persona editor on /accounts: the request card's field style, laid out in two columns */
+.pform{padding:18px 20px 16px}
+.pnote{margin:0 0 4px;font-size:12.5px;line-height:1.5;max-width:72ch}
+.pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px}
+.pgrid .wide{grid-column:1/-1}
+.pgrid label:not(.chk),.pgrid legend{display:block;font-size:11.5px;letter-spacing:.02em;margin:11px 0 0;
+  color:color-mix(in srgb,var(--color-text) 70%,transparent)}
+.pgrid input[type=text],.pgrid textarea,.pgrid select{display:block;width:100%;margin-top:4px;font-family:var(--font-body);
+  font-size:13px;padding:6px 9px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
+.pgrid textarea{resize:vertical;min-height:52px}
+.pgrid fieldset{border:0;padding:0;margin:0}
+.pchecks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px}
+.phint{display:block;margin-top:4px;font-size:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+@media (max-width:620px){.pgrid{grid-template-columns:1fr}}
 .pager{display:flex;align-items:center;gap:12px;margin-top:11px;flex-wrap:wrap}
 .arch-table tbody tr[data-arch]{cursor:pointer}
 .arch-table .num{text-align:right;font-variant-numeric:tabular-nums}
@@ -1520,6 +1535,36 @@ def _nav(active: str, account: str = "", signed_in: bool = True) -> str:
 # reject even on https when permission is refused; the old code had no failure
 # path at all, so the button silently did nothing. The label is cached on the
 # element so a second click inside the reset window cannot latch it on "Copied".
+# Same-origin calls to the join Lambda (/api/*). CloudFront signs a request to
+# the function URL with OAC, which for a body needs the payload's SHA-256 from
+# the browser, in x-amz-content-sha256. Resolves with the JSON reply; rejects
+# with .status and .problems.
+_API_FN = """
+function tickApi(method, url, payload) {
+  var body = payload === undefined ? null : JSON.stringify(payload);
+  var hashed = body === null ? Promise.resolve(null)
+    : crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)).then(function (buf) {
+        return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+          return ('0' + b.toString(16)).slice(-2);
+        }).join('');
+      });
+  return hashed.then(function (hash) {
+    var headers = {};
+    if (body !== null) { headers['content-type'] = 'application/json'; headers['x-amz-content-sha256'] = hash; }
+    return fetch(url, {method: method, credentials: 'same-origin', headers: headers, body: body});
+  }).then(function (res) {
+    return res.json().catch(function () { return {}; }).then(function (data) {
+      if (res.ok) return data;
+      var err = new Error(data.error || 'HTTP ' + res.status);
+      err.status = res.status;
+      err.problems = data.problems || [];
+      throw err;
+    });
+  });
+}
+"""
+
+
 _COPY_FN = """
 function tickCopy(text, btn) {
   function flash(msg) {
@@ -1579,7 +1624,8 @@ _ARCHIVE_TABLE = {"table": "archive-roles", "prefix": "a", "search": "archive-fi
 
 # localStorage key for My terms: one list for every dashboard on the site.
 _MY_TERMS_KEY = "tick-my-terms"
-_MY_TERMS_MAX, _MY_TERM_CHARS = 30, 60
+# My terms are the persona's focus terms, so they share its limits
+_MY_TERMS_MAX, _MY_TERM_CHARS = persona.MAX_FOCUS, persona.TERM_CHARS
 
 
 def _row_attrs(attrs: dict) -> str:
@@ -1622,8 +1668,8 @@ def _my_terms_strip() -> str:
             f'<input id="my-terms-input" type="text" maxlength="300" autocomplete="off" '
             f'placeholder="Add terms, e.g. kubernetes, sbom" aria-label="Add to My terms">'
             f'<button type="submit" class="btn btn-secondary btn-sm">Add</button></form>'
-            f'<span class="text-muted" style="font-size:11.5px">Kept in this browser. Every dashboard '
-            f'tags the roles whose title or description mentions one.</span></div>')
+            f'<span class="text-muted" style="font-size:11.5px" id="my-terms-note">Kept in this browser. '
+            f'Every dashboard tags the roles whose title or description mentions one.</span></div>')
 
 
 # Search, sort, filters and pages for the dashboard's tables, plus My terms.
@@ -1663,6 +1709,10 @@ _TABLES_JS = r"""<script>
   }
   function same(a, b) { return a.toLowerCase() === b.toLowerCase(); }
 
+  // My terms are the focus terms of the viewer's persona, saved through
+  // /api/profile so they follow the viewer and reach their weekly briefs.
+  // Until the profile answers, and wherever it cannot (signed out, a local
+  // preview without the API), they live in this browser instead.
   function loadMine() {
     try {
       var v = JSON.parse(localStorage.getItem(STORE) || '[]');
@@ -1670,8 +1720,9 @@ _TABLES_JS = r"""<script>
                                  .slice(0, MAX_TERMS) : [];
     } catch (e) { return []; }
   }
-  function storeMine() { try { localStorage.setItem(STORE, JSON.stringify(mine)); } catch (e) {} }
-  var mine = loadMine();
+  function forgetLocal() { try { localStorage.removeItem(STORE); } catch (e) {} }
+  var mine = loadMine(), synced = false;
+  var GOOD_TERM = /^[\w .+#\/&'-]+$/;   // persona.py's _TERM_RE: what a saved term may hold
 
   // an archived req's description, from the template its detail dialog clones
   function templateText(r) {
@@ -1963,6 +2014,9 @@ _TABLES_JS = r"""<script>
   var list = document.getElementById('my-terms-list');
   var form = document.getElementById('my-terms-form');
   var input = document.getElementById('my-terms-input');
+  var note = document.getElementById('my-terms-note');
+  var SYNCED_NOTE = 'Saved to your persona: every dashboard tags the roles that mention them, '
+                  + 'and the weekly briefs for the accounts you track watch them too.';
   wrap.hidden = false;
 
   function draw() {
@@ -2000,42 +2054,78 @@ _TABLES_JS = r"""<script>
     roles.pressed();
   }
 
-  function changed() {
-    storeMine();
+  function setNote(text) { if (note) note.textContent = text; }
+  // message, if any, replaces the usual note once the save lands: set any
+  // sooner and the save's own note would cover it
+  function saveMine(message) {
+    if (!synced) {
+      try { localStorage.setItem(STORE, JSON.stringify(mine)); } catch (e) {}
+      if (message) setNote(message);
+      return;
+    }
+    tickApi('POST', '/api/profile', {persona: {focus_terms: mine}}).then(function () {
+      forgetLocal();
+      setNote(message || SYNCED_NOTE);
+    }).catch(function (err) {
+      setNote(err.status === 401 ? 'Your session expired: reload to sign in, then add the term again.'
+                                 : 'Couldn\u2019t save to your persona: ' + err.message);
+    });
+  }
+  function changed(message) {
+    saveMine(message);
     tables.forEach(function (t) { t.refreshMine(); t.apply(true); });
     draw();
   }
 
   form.addEventListener('submit', function (e) {
     e.preventDefault();
+    var skipped = [];
     input.value.split(',').forEach(function (raw) {
-      var t = raw.replace(/\s+/g, ' ').trim().slice(0, TERM_CHARS);
-      if (t && mine.length < MAX_TERMS && !mine.some(function (m) { return same(m, t); })) mine.push(t);
+      var t = raw.replace(/\s+/g, ' ').trim();
+      if (!t) return;
+      if (t.length > TERM_CHARS || !GOOD_TERM.test(t)) { skipped.push(t); return; }
+      if (mine.length < MAX_TERMS && !mine.some(function (m) { return same(m, t); })) mine.push(t);
     });
     input.value = '';
-    changed();
+    changed(skipped.length ? 'Skipped ' + skipped.join(', ')
+                             + ": a term is letters, digits, spaces and . + # / & ' - only." : '');
   });
-  // the list was changed in another tab: follow it
+  // the list was changed in another tab: follow it (only while it lives here)
   window.addEventListener('storage', function (e) {
-    if (e.key !== STORE) return;
+    if (e.key !== STORE || synced) return;
     mine = loadMine();
     tables.forEach(function (t) { t.refreshMine(); t.apply(false); });
     draw();
   });
   draw();
+
+  tickApi('GET', '/api/profile').then(function (data) {
+    synced = true;
+    var saved = (data.persona && data.persona.focus_terms) || [];
+    if (!saved.length && mine.length) {
+      saveMine();            // this browser's list predates the persona: move it there
+    } else {
+      mine = saved.slice(0, MAX_TERMS);
+      forgetLocal();
+      setNote(SYNCED_NOTE);
+      tables.forEach(function (t) { t.refreshMine(); t.apply(false); });
+      draw();
+    }
+  }).catch(function () {});  // no profile to sync with: this browser's list stands
 })();
 </script>"""
 
 
 def _tables_script() -> str:
-    """The script behind both dashboard tables and My terms; see _TABLES_JS."""
+    """The script behind both dashboard tables and My terms; see _TABLES_JS.
+    tickApi() comes first: My terms save through it."""
     subs = {"%PAGE%": str(ROLES_PAGE_SIZE), "%STORE%": json.dumps(_MY_TERMS_KEY),
             "%MAX_TERMS%": str(_MY_TERMS_MAX), "%TERM_CHARS%": str(_MY_TERM_CHARS),
             "%CONFIG%": _json_for_script([_ROLE_TABLE, _ARCHIVE_TABLE])}
     out = _TABLES_JS
     for k, v in subs.items():
         out = out.replace(k, v)
-    return out
+    return f"<script>{_API_FN}</script>\n{out}"
 
 
 class Citations:
@@ -2756,6 +2846,101 @@ def _add_account_script() -> str:
 </script>"""
 
 
+def _persona_section() -> str:
+    """The viewer's persona editor, below their accounts. Static like the rest
+    of the page and shared by every viewer with the same accounts, so it holds
+    no one's data: the script loads it from /api/profile and saves it back.
+    Hidden until then, because without the API it can do nothing."""
+    roles = "".join(f'<option value="{k}">{html.escape(v)}</option>' for k, v in persona.ROLES.items())
+    buyers = "".join(f'<label class="chk"><input type="checkbox" name="buyers" value="{k}">'
+                     f'<span>{html.escape(v)}</span></label>' for k, v in persona.BUYERS.items())
+    return f"""<section class="persona" id="persona" aria-labelledby="persona-h" hidden>
+  <h2 class="section-label text-muted" id="persona-h" style="margin:34px 0 12px">Your persona</h2>
+  <form class="card blueprint pform" id="persona-form" novalidate>{_corners()}
+    <p class="text-muted pnote" id="persona-tracks">Your weekly briefs are written for the reader you
+      describe here: who you are, what you sell, and the terms you watch.</p>
+    <div class="pgrid">
+      <label>Your role<select id="p-role" name="role"><option value="">Choose&hellip;</option>{roles}</select></label>
+      <label>The company you sell for<input id="p-sells-for" name="sells_for" type="text"
+        maxlength="{persona.NAME_CHARS}" autocomplete="organization" placeholder="Initech"></label>
+      <label class="wide">What you sell<textarea id="p-offer" name="offer" rows="2" maxlength="{persona.OFFER_CHARS}"
+        placeholder="Hardened container images with signed SBOMs and build provenance"></textarea></label>
+      <fieldset class="wide"><legend>Who you sell to</legend><div class="pchecks">{buyers}</div></fieldset>
+      <label class="wide">Focus terms<input id="p-focus" name="focus_terms" type="text" autocomplete="off"
+        placeholder="kubernetes, sbom, terraform">
+        <span class="phint">Comma-separated, up to {persona.MAX_FOCUS}. These are also your My terms on every dashboard.</span></label>
+      <label class="wide">Competitor terms<input id="p-competitors" name="competitor_terms" type="text"
+        autocomplete="off" placeholder="products that compete with yours">
+        <span class="phint">Comma-separated, up to {persona.MAX_COMPETITORS}. A posting that names one says what the company uses or is weighing.</span></label>
+    </div>
+    <div class="acct-foot">
+      <button class="btn btn-primary btn-sm" id="p-save" type="submit">Save persona</button>
+      <span class="acct-status text-muted" id="p-status" role="status" aria-live="polite"></span>
+    </div>
+  </form>
+</section>"""
+
+
+def _persona_script() -> str:
+    """Loads the viewer's persona into the editor and saves it back. The API
+    checks every field against tools/persona.py; its first complaint is shown."""
+    return "<script>" + _API_FN + r"""
+(function () {
+  var section = document.getElementById('persona'), form = document.getElementById('persona-form');
+  var status = document.getElementById('p-status'), tracks = document.getElementById('persona-tracks');
+  var save = document.getElementById('p-save');
+  if (!section || !form) return;
+  var field = function (id) { return document.getElementById(id); };
+  var terms = function (el) {
+    return el.value.split(',').map(function (t) { return t.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+  };
+  function fill(p) {
+    p = p || {};
+    field('p-role').value = p.role || '';
+    field('p-sells-for').value = p.sells_for || '';
+    field('p-offer').value = p.offer || '';
+    field('p-focus').value = (p.focus_terms || []).join(', ');
+    field('p-competitors').value = (p.competitor_terms || []).join(', ');
+    [].forEach.call(form.querySelectorAll('input[name=buyers]'), function (b) {
+      b.checked = (p.buyers || []).indexOf(b.value) !== -1;
+    });
+  }
+  function describeTracks(list) {
+    tracks.textContent = list.length
+      ? 'Your weekly briefs for ' + list.join(', ') + ' are written for the reader you describe here.'
+      : 'You track no accounts yet, so no brief is written for this persona until you do. '
+        + 'Your focus terms still work as My terms on every dashboard.';
+  }
+  tickApi('GET', '/api/profile').then(function (data) {
+    fill(data.persona);
+    describeTracks(data.tracks || []);
+    section.hidden = false;
+    if (location.hash === '#persona') section.scrollIntoView();
+  }).catch(function () {});   // signed out, or no profile API (a local preview): nothing to edit
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var p = {
+      role: field('p-role').value, sells_for: field('p-sells-for').value.trim(),
+      offer: field('p-offer').value.trim(), focus_terms: terms(field('p-focus')),
+      competitor_terms: terms(field('p-competitors')),
+      buyers: [].filter.call(form.querySelectorAll('input[name=buyers]'), function (b) { return b.checked; })
+                .map(function (b) { return b.value; })
+    };
+    save.disabled = true;
+    status.textContent = 'Saving…';
+    tickApi('POST', '/api/profile', {persona: p}).then(function (data) {
+      fill(data.persona);
+      status.textContent = 'Saved ✓ Your next weekly briefs are written for it.';
+    }).catch(function (err) {
+      status.textContent = err.status === 401 ? 'Your session expired: reload the page to sign in again.'
+                         : err.status === 400 ? err.message : 'Couldn’t save: please try again.';
+    }).then(function () { save.disabled = false; });
+  });
+})();
+</script>"""
+
+
 def render_home(accounts: list[dict]) -> str:
     """The accounts grid. The publisher renders one per viewer scope, passing
     only that viewer's accounts; every home ends with the request tile."""
@@ -2795,12 +2980,15 @@ def render_home(accounts: list[dict]) -> str:
   <div class="hdr">
     <div><p class="eyebrow text-muted">TICK</p><h1 style="font-size:34px;margin:3px 0">Accounts</h1>
       <p class="text-muted acct-lede" style="margin:6px 0 0;font-size:13px">{sub}</p></div>
+    <a class="btn btn-secondary btn-sm" href="#persona">Your persona</a>
   </div>
   <div class="acct-grid">{cards}</div>
+  {_persona_section()}
   </main>
   {_footer(last_crawl_label)}
 </div>
 {_add_account_script()}
+{_persona_script()}
 </body>
 </html>
 """

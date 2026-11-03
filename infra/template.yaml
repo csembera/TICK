@@ -397,10 +397,13 @@ Resources:
           ACCOUNT_TABLE_NAME: !Ref AccountRequestsTable
           ALERT_TOPIC_ARN: !If [HasAlertEmail, !Ref AlertTopic, '']
           SENDER: !Sub TICK <${SenderAddress}>
-          # /api/account-request is for signed-in viewers only; /api/* skips the
-          # edge check, so this function verifies the session cookie itself.
+          # /api/account-request and /api/profile are for signed-in viewers
+          # only; /api/* skips the edge check, so this function verifies the
+          # session cookie itself.
           SESSION_SECRET: !Ref SessionSecret
           USER_POOL_ID: !Ref SiteUserPool
+          # Each viewer's persona, at profiles/<sub>.json
+          DATA_BUCKET: !Ref DataBucket
       Policies:
         - Statement:
             - Effect: Allow
@@ -412,6 +415,11 @@ Resources:
             - Effect: Allow
               Action: cognito-idp:ListUsers
               Resource: !GetAtt SiteUserPool.Arn
+            # A viewer's own profile, and nothing else in the lake: the key
+            # is built from the sub in their verified session cookie.
+            - Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub ${DataBucket.Arn}/profiles/*
             # The confirmation reply: only through the domain identity, and only
             # as the one TICK address.
             - Effect: Allow

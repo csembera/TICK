@@ -57,7 +57,7 @@ site-static/ ── tools/tick.py publish static ──► the same bucket
 | `PublisherFunction` (`tick-collector-publisher`) | Renders the lake into the site bucket, on `PublishScheduleExpression` |
 | `SiteBucket`, `SiteDistribution`, `SiteAuthFunction` | The private site bucket, CloudFront in front of it, and the edge function that checks sessions |
 | `AuthFunction` (`tick-collector-auth`) | `/auth/*`: the Cognito code exchange; mints the session cookie |
-| `JoinFunction` (`tick-collector-join`), `JoinRequestsTable`, `AccountRequestsTable` | `/api/*`: the public waitlist and viewers' account requests. Both tables **retained**, with point-in-time recovery |
+| `JoinFunction` (`tick-collector-join`), `JoinRequestsTable`, `AccountRequestsTable` | `/api/*`: the public waitlist, viewers' account requests, and each viewer's persona (`/api/profile`, read and write on the data bucket's `profiles/*` only). Both tables **retained**, with point-in-time recovery |
 | `SiteUserPool`, its domain, client and the `tick-viewers` / `tick-admins` groups | TICK's own invite-only user pool |
 | `SiteCertificate`, `SiteDnsRecords` | The custom domain, when `SiteDomainName` is set |
 | `AuthConfigParameter` | SSM parameter that breaks the build-time cycle between the auth Lambda and the distribution |
