@@ -1,5 +1,25 @@
 # Module: Job Crawler
 
+> **Status: the original design.** TICK was built from this document and has
+> since outgrown parts of it. The system as it runs is described in
+> [docs/architecture.md](docs/architecture.md). Where the build differs:
+>
+> - **Collection** is an evaluator that writes a verified SourceConfig once per
+>   company and a deterministic Lambda collector that executes it nightly, not
+>   a separate scraper or no-code tool. Boards are read through their
+>   applicant-tracking system's own JSON; job-board aggregators are not used.
+> - **The lake** keeps curated rows as JSON Lines per company and day
+>   (`curated/company=<slug>/dt=<date>/postings.jsonl`), not Parquet, and adds
+>   `derived/state/` (every posting's dates) and `derived/tech_stack/`. There
+>   is no Athena layer: the publisher reads the lake directly.
+> - **Tech-stack enrichment (Phase 4) shipped**: descriptions are parsed into
+>   sections and matched against a keyword taxonomy on every crawl.
+> - **Alerting** is a dashboard and a weekly model-written brief per account,
+>   not threshold triggers. The one alarm is operational: a crawl that failed
+>   three times.
+> - **Delivery** is a site behind Cognito sign-in, with each viewer scoped to
+>   their own accounts.
+
 # Job Posting Tracker — System Design
 
 *A signal-intelligence system for an AWS account executive. Tracks new job postings from target private companies over time, lands the data in S3, and surfaces trends that indicate cloud buying-readiness.*

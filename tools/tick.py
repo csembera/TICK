@@ -75,7 +75,8 @@ _EMAIL_RE = re.compile(r"^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,63}$")
 
 SESSION_NOTE = ("A session they already have keeps working until it expires, up to 12 hours: "
                 "TICK's cookie is checked at the edge, which never asks Cognito. To end every "
-                "session now, deploy a new SessionSecret, which signs everyone out.")
+                "session now, deploy a new SessionSecret, which signs everyone out: "
+                "docs/operations.md, 'Cut off someone's access now'.")
 STALE_AFTER = timedelta(hours=26)   # a nightly crawl older than this missed a night
 QUEUE_POLL_S = 20
 

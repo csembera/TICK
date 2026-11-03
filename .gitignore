@@ -15,5 +15,5 @@ site/
 local-data/
 
 # SourceConfigs: the data bucket's configs/ prefix is the source of truth.
-# Pull a local copy with: aws s3 sync s3://<DataBucketName>/configs/ configs/
+# Pull a local copy with: tools/tick.py companies pull
 configs/
