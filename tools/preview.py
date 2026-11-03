@@ -26,11 +26,15 @@ real page before publish.py uploads it. The lake itself is never written to.
 Not previewed: the CloudFront edge, Cognito sign-in and per-viewer scoping.
 /accounts lists every account, the account-request form gets a stub 200, and
 nothing redirects: /login and a signed-in visit to / are the edge's doing.
+/api/profile answers from memory, checked by tools/persona.py like the real
+one, so the persona editor and My terms can be tried: one persona for
+everyone, forgotten when the server stops.
 """
 
 import argparse
 import functools
 import http.server
+import json
 import os
 import shutil
 import subprocess
@@ -39,6 +43,8 @@ import tempfile
 import webbrowser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import persona  # noqa: E402  the stub /api/profile checks fields as the real one does
 LAKE = os.path.join(ROOT, "local-data", "lake")
 OUT = os.path.join(ROOT, "local-data", "preview-site")
 STACK = "tick-collector"
@@ -121,12 +127,40 @@ def build(code: str, lake: str, out: str) -> None:
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
-    def do_POST(self):   # /api/join and /api/account-request
-        self.rfile.read(int(self.headers.get("content-length", 0)))
-        self.send_response(200)
+    profile: dict = {}   # the one persona /api/profile holds while the server runs
+
+    def reply(self, code: int, body: dict) -> None:
+        data = json.dumps(body).encode()
+        self.send_response(code)
         self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(data)))
         self.end_headers()
-        self.wfile.write(b'{"ok": true}')
+        self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path.split("?")[0] != "/api/profile":
+            return super().do_GET()
+        who = Handler.profile.get("persona")
+        self.reply(200, {"persona": None if persona.is_blank(who) else who,
+                         "updated_at": Handler.profile.get("updated_at"), "tracks": []})
+
+    def do_POST(self):   # /api/join, /api/account-request and /api/profile
+        raw = self.rfile.read(int(self.headers.get("content-length", 0)))
+        if self.path.split("?")[0] != "/api/profile":
+            return self.reply(200, {"ok": True})
+        try:
+            changes = json.loads(raw or b"{}").get("persona")
+            if not isinstance(changes, dict):
+                raise ValueError
+        except (ValueError, AttributeError):
+            return self.reply(400, {"error": 'Send {"persona": {...}}.'})
+        merged = {**(Handler.profile.get("persona") or {}),
+                  **{k: v for k, v in changes.items() if k in persona.FIELDS}}
+        who, problems = persona.clean(merged)
+        if problems:
+            return self.reply(400, {"error": problems[0], "problems": problems})
+        Handler.profile = {"persona": who, "updated_at": "preview"}
+        self.reply(200, Handler.profile)
 
     def send_error(self, code, message=None, explain=None):
         page = os.path.join(self.directory, "404.html")

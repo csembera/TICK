@@ -16,12 +16,12 @@ File formats are in [docs/data-reference.md](docs/data-reference.md).
 | `infra/template.yaml` | The one SAM stack, `tick-collector` (us-east-1): Lambdas, SQS, S3, Cognito, CloudFront, alarms |
 | `infra/src/dispatcher/` | Fans the daily run out: one SQS message per `configs/*.json` |
 | `infra/src/collector/` | Fetches, normalizes, diffs one company. Also runs locally (`LOCAL_OUTPUT_DIR`). `description.py` parses each description into labelled sections |
-| `infra/src/publisher/` | Renders the whole lake to static HTML in the site bucket, then invalidates. `report.py` and `description.py` are symlinks to the renderer and the collector's parser |
+| `infra/src/publisher/` | Renders the whole lake to static HTML in the site bucket, then invalidates. `report.py`, `description.py` and `persona.py` are symlinks to the renderer, the collector's parser and `tools/persona.py` |
 | `infra/src/auth/` | Cognito code exchange; mints the HMAC session cookie |
-| `infra/src/join/` | `/api/join` waitlist and `/api/account-request` |
+| `infra/src/join/` | `/api/join` waitlist, `/api/account-request`, and `/api/profile` (each viewer's own persona). `persona.py` is a symlink to `tools/persona.py` |
 | `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `tools/tick.py publish static` |
 | `tools/tick_insights_report.py` | The renderer. `infra/src/publisher/report.py` is a **symlink** to it |
-| `tools/persona.py` | What a user's persona may hold, bounded and normalised; the brief skill and the CLI read profiles through it |
+| `tools/persona.py` | What a user's persona may hold, bounded and normalised. Edit it here, never through its symlinks in the join and publisher Lambdas |
 | `tools/tick.py` | The operations CLI: status, publishing, crawls, companies, users, requests, DLQ, logs, edge checks. The pipeline's deploy steps run it too |
 | `tools/evaluator.py` | The evaluator as a standalone Strands agent; onboarding normally runs through the tick-evaluator skill |
 | `docs/` | `architecture.md`, `operations.md` (the runbook), `data-reference.md`, `development.md`. Update them in the same PR as the change they describe |

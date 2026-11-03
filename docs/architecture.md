@@ -173,7 +173,7 @@ partitioned by company and, for anything a crawl writes, by date:
 | `derived/state/company=<slug>/` | collector | `state.json`: every posting ever seen, with its first, last and closing dates |
 | `derived/tech_stack/company=<slug>/dt=<date>/` | collector | `tech_stack.json`: each matched term and the postings it came from |
 | `briefs/company=<slug>/week=<date>/` | the tick-brief skill's `publish.py` | `brief.json` and the `evidence.json` it was written from |
-| `profiles/<sub>.json` | `tools/tick.py personas set` | One user's persona: who they are, what they sell, the terms they watch |
+| `profiles/<sub>.json` | the persona editor on `/accounts` (the join Lambda's `/api/profile`), or `tools/tick.py personas set` | One user's persona: who they are, what they sell, the terms they watch |
 
 Field-by-field formats are in [data-reference.md](data-reference.md).
 
@@ -239,7 +239,15 @@ publish, or at once with `tools/tick.py publish pages`.
 
 Each user can keep a **persona**: their role, the company they sell for, what
 they sell, the teams they sell to, and the terms they watch (focus terms, and
-competitor terms for products that compete with theirs).
+competitor terms for products that compete with theirs). They edit it in the
+**Your persona** section of `/accounts`, and the focus terms are the
+dashboard's **My terms**, so adding a term on a dashboard adds it to the
+persona. Both pages are static and shared, so neither holds anyone's data:
+their scripts load and save it through `/api/profile` on the join Lambda,
+which reads the user from the session cookie, never from the request, so a
+user can only ever reach their own profile. A save names only the fields it
+changes and is merged onto what is stored. Where the API is out of reach (a
+local preview without the stub, say), My terms fall back to the browser.
 [tools/persona.py](../tools/persona.py) is the one definition of what a
 persona may hold. It is text a user typed that ends up in a model's context,
 so every field is bounded and normalised on write and again on read.
@@ -326,7 +334,8 @@ A pool user who is not in `tick-viewers` (or `tick-admins`) gets an
 explanatory "No access" page, not a login loop. Only the Cognito admin API can
 write `custom:accounts`; the app client may not, so a viewer cannot grant
 themselves an account. `/api/*` skips the edge check, so the join Lambda
-verifies the session cookie itself for `/api/account-request`. Signing out
+verifies the session cookie itself for `/api/account-request` and
+`/api/profile`. Signing out
 (the **Sign out** link on every app page, or `/auth/logout`) clears the cookie
 and ends the Cognito session too. The edge
 function's source, signing key included, is readable by anyone holding
