@@ -7,7 +7,7 @@ a company to be tracked.
   POST /api/account-request  {company, careers_url?, note?}
                                                      -> 200 {"ok": true}
                                                      -> 401 without a valid session
-  GET  /api/profile          -> 200 {persona, updated_at, tracks}   (401 without a session)
+  GET  /api/profile          -> 200 {persona, updated_at, tracks, email}   (401 without a session)
   POST /api/profile          {persona: {field: value, ...}}
                                                      -> 200 {persona, updated_at}
                                                      -> 400 {"error", "problems"} on a bad field
@@ -18,7 +18,8 @@ profiles/<sub>.json in the data bucket, keyed by the sub in the session
 cookie, so a viewer can only ever read or write their own. A POST names only
 the fields it changes and is merged onto what is saved, so the dashboard can
 save its My terms without knowing the rest. The weekly brief for each account
-a viewer tracks is written for this persona.
+a viewer tracks is written for this persona. The GET also says who the
+viewer is (their sign-in email), for the account menu on every app page.
 
 Served through the site's own CloudFront as /api/join, so the forms post
 same-origin: no CORS, and the response is readable, so a failure is shown as a
@@ -244,10 +245,11 @@ def profile(event, method: str) -> dict:
     current = persona.clean(saved.get("persona"))[0]
 
     if method == "GET":
-        tracks = sorted({s.strip() for s in user_attributes(sub).get("custom:accounts", "").split(",")
-                         if s.strip()})
+        attrs = user_attributes(sub)
+        tracks = sorted({s.strip() for s in attrs.get("custom:accounts", "").split(",") if s.strip()})
         return respond(200, {"persona": None if persona.is_blank(current) else current,
-                             "updated_at": saved.get("updated_at"), "tracks": tracks})
+                             "updated_at": saved.get("updated_at"), "tracks": tracks,
+                             "email": attrs.get("email", "")})
 
     raw = event.get("body") or "{}"
     if len(raw) > PROFILE_BYTES:

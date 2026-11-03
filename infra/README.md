@@ -29,6 +29,7 @@ EventBridge Scheduler (daily, 30 min later)
   └─► Publisher Lambda ── reads the lake + s3://<bucket>/configs/*.json
         └─► S3 site bucket (private)
               ├─ home/<key>/index.html         an accounts home per viewer scope (/accounts)
+              ├─ home/profile/index.html       the profile page, one for everyone (/profile)
               ├─ <slug>/dashboard.html
               ├─ <slug>/brief.html             newest published brief, or "No brief yet"
               └─ <slug>/archive/<pid>/index.html   one per closed req
@@ -141,7 +142,7 @@ sam deploy --parameter-overrides "AlertEmail=you@example.com SessionSecret=$SECR
 #    position here does not matter.
 tools/tick.py publish login
 
-# 4. Re-render the app pages. Until this runs, /accounts 404s for signed-in users.
+# 4. Re-render the app pages. Until this runs, /accounts and /profile 404 for signed-in users.
 tools/tick.py publish pages
 ```
 
@@ -154,7 +155,7 @@ tools/tick.py verify
 ```
 
 It requests each public page (`/`, `/docs`, `/demo`, a demo brief) with no
-cookie and expects 200, then each guarded one (`/accounts`, `/login`, an
+cookie and expects 200, then each guarded one (`/accounts`, `/profile`, `/login`, an
 account's dashboard and brief) and expects a 302 to `/auth/login`. **A 200 on a
 guarded page is a client-data leak, not a cosmetic bug.** The pipeline runs the
 same command as its last step.
@@ -169,7 +170,7 @@ banner) → lands on `/accounts` showing the accounts home. Then open `/` and
 |---|---|---|
 | `/`, `/docs`, `/demo` | `tools/tick.py publish static` | no |
 | Cognito hosted UI | `tools/tick.py publish login` (`cognito-ui.css` + banner) | n/a |
-| `/accounts`, `/<slug>/*` | the publisher Lambda | yes |
+| `/accounts`, `/profile`, `/<slug>/*` | the publisher Lambda | yes |
 
 The hosted-UI customization is deliberately **not** a CloudFormation resource.
 `SetUICustomization` and `AWS::Cognito::UserPoolUICustomizationAttachment`

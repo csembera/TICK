@@ -22,10 +22,13 @@ dates, so a short window reads as itself.
     brief gets a "No brief yet" page.
   - Archive — per closed req, its last recorded description and dates, at a
     stable address the brief can cite once the board's own link is dead.
+  - Profile — the signed-in viewer's persona, opened from the account menu
+    in the menu bar. One page for everyone, filled from /api/profile.
 
 Layout written under --out-dir:
 
     accounts/index.html           the accounts home, served at /accounts
+    profile/index.html            the viewer's profile, served at /profile
     <company-slug>/dashboard.html
     <company-slug>/brief.html
     <company-slug>/archive/<posting-id>/index.html
@@ -85,6 +88,9 @@ _CAT_LABELS = {
 # Where the signed-in app starts. "/" is the public marketing page, so every
 # in-app link home is root-absolute to this instead of a relative "index.html".
 APP_HOME = "/accounts"
+# The viewer's own page, opened from the account menu. One page for everyone,
+# filled from /api/profile; the edge serves it from home/profile/index.html.
+PROFILE_HOME = "/profile"
 
 # The public origin, for links that have to work outside the site — the
 # workbench's markdown briefs. The pages themselves link root-absolute.
@@ -1066,6 +1072,28 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .nav-login{font-family:var(--font-body);font-size:18px;color:#9aa9b8;background:none;border:0;padding:6px 2px;cursor:pointer;text-decoration:none;display:inline-block}
 .nav-login:hover{color:#eef2f5}
 .nav :focus-visible{outline-color:#eef2f5}
+/* the account menu, in the signed-in corner. The demo has no signed-in corner
+   (it offers Log in / Get started there), so these rules have no twin in it. */
+.nav-menu{position:relative}
+.nav-menu summary{display:flex;align-items:center;gap:10px;list-style:none;cursor:pointer;color:#9aa9b8;font-size:18px;padding:4px 2px}
+.nav-menu summary::-webkit-details-marker{display:none}
+.nav-menu summary:hover,.nav-menu[open] summary{color:#eef2f5}
+.nav-menu svg{display:block;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav-avatar{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;
+  background:#456e99;color:#fff;font-family:var(--font-heading);font-weight:600;font-size:17px;line-height:1}
+.nav-avatar svg{width:20px;height:20px}
+.nav-who{max-width:16ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-caret{width:14px;height:14px;transition:transform .12s}
+.nav-menu[open] .nav-caret{transform:rotate(180deg)}
+.nav-menu-panel{position:absolute;right:0;top:calc(100% + 10px);z-index:20;min-width:230px;max-width:calc(100vw - 32px);
+  padding:6px 0;background:#0d151d;border:1px solid rgba(158,186,214,.22);box-shadow:0 12px 28px rgba(0,0,0,.35)}
+.nav-menu-email{margin:0;padding:8px 16px 10px;font-size:13px;color:#9aa9b8;overflow-wrap:anywhere;
+  border-bottom:1px solid rgba(158,186,214,.14)}
+.nav-menu-panel a{display:flex;align-items:center;gap:12px;padding:10px 16px;color:#c9d4de;text-decoration:none;font-size:16px}
+.nav-menu-panel a+a{border-top:1px solid rgba(158,186,214,.14)}
+.nav-menu-panel a svg{width:19px;height:19px;color:#86aace}
+.nav-menu-panel a:hover{background:rgba(134,170,206,.12);color:#eef2f5}
+.nav-menu-panel a[aria-current='page']{color:#eef2f5;box-shadow:inset 2px 0 0 #86aace}
 .crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:color-mix(in srgb,var(--color-text) 50%,transparent);margin:18px 0 12px}
 .hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--color-divider)}
 .blueprint{position:relative;border:1px solid var(--color-divider)}
@@ -1197,7 +1225,7 @@ button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--
   background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
 .my-terms-form input:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
 .tbl-empty{margin:0;padding:14px;font-size:12.5px}
-/* the persona editor on /accounts: the request card's field style, laid out in two columns */
+/* the persona editor on /profile: the request card's field style, laid out in two columns */
 .pform{padding:18px 20px 16px}
 .pnote{margin:0 0 4px;font-size:12.5px;line-height:1.5;max-width:72ch}
 .pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px}
@@ -1241,6 +1269,8 @@ button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--
   .nav-tabs{order:3;flex:1 0 100%;flex-wrap:nowrap;overflow-x:auto;gap:22px;scrollbar-width:none}
   .nav-tabs a{font-size:16px;white-space:nowrap}
   .nav-auth{gap:14px}
+  /* the avatar alone: the name stays for screen readers, as .visually-hidden does */
+  .nav-who{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   .tbl-controls input[type=search]{width:100%}
   .my-terms-form{flex:1 0 100%}.my-terms-form input{flex:1;width:auto}
   .hdr h1{font-size:26px!important}
@@ -1505,36 +1535,36 @@ _NAV_MARK = ('<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">'
              'stroke-width="3" stroke-linejoin="miter" stroke-linecap="square"/></svg>')
 
 
-def _nav(active: str, account: str = "", signed_in: bool = True) -> str:
-    """The menu bar of infra/site-static/demo/, with the app's links: account
-    pages get that account's Dashboard and Brief, and the right side says Sign
-    out where the demo says Log in / Get started. The brand goes to the
-    accounts home, not to "/": a signed-in viewer has no business on the
-    marketing page. Links are root-absolute, so they resolve the same from
-    /<slug>/brief.html and an archive page. The 404 page cannot know whether
-    its reader is signed in, so it offers Log in and a brand link to "/",
-    which the edge forwards to /accounts for anyone with a session."""
-    def tab(label, href, key):
-        cur = ' aria-current="page"' if key == active else ""
-        return f'<a href="{href}"{cur}>{label}</a>'
-    tabs = [tab("Accounts", APP_HOME, "home")]
-    if account:
-        tabs += [tab("Dashboard", f"/{account}/dashboard.html", "dashboard"),
-                 tab("Brief", f"/{account}/brief.html", "brief")]
-    tabs.append(tab("Docs", "/docs", "docs"))
-    auth = ('<a class="nav-login" href="/auth/logout">Sign out</a>' if signed_in
-            else '<a class="nav-login" href="/login">Log in</a>')
-    brand = APP_HOME if signed_in else "/"
-    return (f'<div class="nav"><a class="nav-brand" href="{brand}" style="text-decoration:none">'
-            f'{_NAV_MARK}<span>TICK</span></a><div class="nav-tabs">{"".join(tabs)}</div>\n'
-            f'  <div class="nav-auth">\n    {auth}\n  </div>\n</div>')
+def _icon(paths: str) -> str:
+    """A 24px line icon for the account menu; its stroke is set in _STYLE."""
+    return f'<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{paths}</svg>'
 
 
-# Shared by the brief/dashboard copy buttons and the home page's command copier.
-# navigator.clipboard is undefined on file:// and plain http, and its promise can
-# reject even on https when permission is refused; the old code had no failure
-# path at all, so the button silently did nothing. The label is cached on the
-# element so a second click inside the reset window cannot latch it on "Copied".
+_ICON_PERSON = _icon('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.6 3.6-5.5 7-5.5s6.1 1.9 7 5.5"/>')
+_ICON_EDIT = _icon('<circle cx="9" cy="7.5" r="3.5"/><path d="M2.5 19.5c.7-3.4 3.2-5.3 6.5-5.3 1.2 0 2.3.3 3.2.8"/>'
+                   '<path d="M14.5 20.5l.6-2.7 5-5a1.5 1.5 0 0 1 2.1 2.1l-5 5z"/>')
+_ICON_SIGN_OUT = _icon('<path d="M10 4H5.5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1H10"/><path d="M15 8l4 4-4 4"/><path d="M19 12H9.5"/>')
+_ICON_CARET = ('<svg class="nav-caret" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+               '<path d="M6 9l6 6 6-6"/></svg>')
+
+
+def _account_menu(active: str) -> str:
+    """The signed-in corner: who is signed in, Edit profile and Sign out. A
+    <details> disclosure, so it opens with no script at all. Every app page
+    is static and shared by everyone with the same scope, so the viewer's
+    name cannot be in the HTML; _ACCOUNT_JS fills it in."""
+    cur = ' aria-current="page"' if active == "profile" else ""
+    return (f'<details class="nav-menu" id="nav-menu">'
+            f'<summary><span class="nav-avatar" id="nav-avatar" aria-hidden="true">{_ICON_PERSON}</span>'
+            f'<span class="nav-who"><span id="nav-who">Account</span>'
+            f'<span class="visually-hidden"> menu</span></span>{_ICON_CARET}</summary>'
+            f'<div class="nav-menu-panel">'
+            f'<p class="nav-menu-email" id="nav-email" hidden></p>'
+            f'<a href="{PROFILE_HOME}"{cur}>{_ICON_EDIT}<span>Edit profile</span></a>'
+            f'<a href="/auth/logout" id="nav-signout">{_ICON_SIGN_OUT}<span>Sign out</span></a>'
+            f'</div></details>')
+
+
 # Same-origin calls to the join Lambda (/api/*). CloudFront signs a request to
 # the function URL with OAC, which for a body needs the payload's SHA-256 from
 # the browser, in x-amz-content-sha256. Resolves with the JSON reply; rejects
@@ -1564,7 +1594,89 @@ function tickApi(method, url, payload) {
 }
 """
 
+# Runs right after the menu bar of every signed-in page, so tickApi() and
+# tickProfile() exist before any later script calls them. tickProfile() is the
+# viewer's GET /api/profile, made at most once per page however many scripts
+# ask (the menu, My terms, the profile page). The menu's name is kept for the
+# tab, so only the first page of a visit waits on the API to show it.
+_ACCOUNT_JS = r"""
+(function () {
+  var KEY = 'tick-who';
+  var menu = document.getElementById('nav-menu'), who = document.getElementById('nav-who');
+  var avatar = document.getElementById('nav-avatar'), email = document.getElementById('nav-email');
+  function remember(address) {
+    try { if (address) sessionStorage.setItem(KEY, address); else sessionStorage.removeItem(KEY); } catch (e) {}
+  }
+  function show(address) {
+    if (!address || !menu) return;
+    var name = address.split('@')[0];
+    who.textContent = name;
+    avatar.textContent = name.charAt(0).toUpperCase();
+    email.textContent = address;
+    email.hidden = false;
+  }
+  var asked = null;
+  window.tickProfile = function () {
+    if (!asked) {
+      asked = tickApi('GET', '/api/profile');
+      asked.then(function (data) { remember(data.email || ''); show(data.email || ''); },
+                 function (err) { if (err.status === 401) remember(''); });
+    }
+    return asked;
+  };
+  var known = null;
+  try { known = sessionStorage.getItem(KEY); } catch (e) {}
+  if (known) show(known); else tickProfile().catch(function () {});
+  if (!menu) return;
 
+  document.getElementById('nav-signout').addEventListener('click', function () { remember(''); });
+  // <details> opens and closes itself on click, Enter and Space; it does not
+  // close on Escape, on a click elsewhere, or when focus moves on
+  function close() { menu.open = false; }
+  document.addEventListener('click', function (e) { if (menu.open && !menu.contains(e.target)) close(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !menu.open) return;
+    var inside = menu.contains(document.activeElement);
+    close();
+    if (inside) menu.querySelector('summary').focus();
+  });
+  menu.addEventListener('focusout', function (e) {
+    if (menu.open && e.relatedTarget && !menu.contains(e.relatedTarget)) close();
+  });
+})();
+"""
+
+
+def _nav(active: str, account: str = "", signed_in: bool = True) -> str:
+    """The menu bar of infra/site-static/demo/, with the app's links: account
+    pages get that account's Dashboard and Brief, and the right side holds the
+    account menu where the demo says Log in / Get started. The brand goes to
+    the accounts home, not to "/": a signed-in viewer has no business on the
+    marketing page. Links are root-absolute, so they resolve the same from
+    /<slug>/brief.html and an archive page. The 404 page cannot know whether
+    its reader is signed in, so it offers Log in and a brand link to "/",
+    which the edge forwards to /accounts for anyone with a session."""
+    def tab(label, href, key):
+        cur = ' aria-current="page"' if key == active else ""
+        return f'<a href="{href}"{cur}>{label}</a>'
+    tabs = [tab("Accounts", APP_HOME, "home")]
+    if account:
+        tabs += [tab("Dashboard", f"/{account}/dashboard.html", "dashboard"),
+                 tab("Brief", f"/{account}/brief.html", "brief")]
+    tabs.append(tab("Docs", "/docs", "docs"))
+    auth = _account_menu(active) if signed_in else '<a class="nav-login" href="/login">Log in</a>'
+    brand = APP_HOME if signed_in else "/"
+    script = f"\n<script>{_API_FN}{_ACCOUNT_JS}</script>" if signed_in else ""
+    return (f'<div class="nav"><a class="nav-brand" href="{brand}" style="text-decoration:none">'
+            f'{_NAV_MARK}<span>TICK</span></a><div class="nav-tabs">{"".join(tabs)}</div>\n'
+            f'  <div class="nav-auth">\n    {auth}\n  </div>\n</div>{script}')
+
+
+# Shared by the brief/dashboard copy buttons and the home page's command copier.
+# navigator.clipboard is undefined on file:// and plain http, and its promise can
+# reject even on https when permission is refused; the old code had no failure
+# path at all, so the button silently did nothing. The label is cached on the
+# element so a second click inside the reset window cannot latch it on "Copied".
 _COPY_FN = """
 function tickCopy(text, btn) {
   function flash(msg) {
@@ -2015,7 +2127,7 @@ _TABLES_JS = r"""<script>
   var form = document.getElementById('my-terms-form');
   var input = document.getElementById('my-terms-input');
   var note = document.getElementById('my-terms-note');
-  var SYNCED_NOTE = 'Saved to your persona: every dashboard tags the roles that mention them, '
+  var SYNCED_NOTE = 'Saved to your profile: every dashboard tags the roles that mention them, '
                   + 'and the weekly briefs for the accounts you track watch them too.';
   wrap.hidden = false;
 
@@ -2068,7 +2180,7 @@ _TABLES_JS = r"""<script>
       setNote(message || SYNCED_NOTE);
     }).catch(function (err) {
       setNote(err.status === 401 ? 'Your session expired: reload to sign in, then add the term again.'
-                                 : 'Couldn\u2019t save to your persona: ' + err.message);
+                                 : 'Couldn\u2019t save to your profile: ' + err.message);
     });
   }
   function changed(message) {
@@ -2099,7 +2211,7 @@ _TABLES_JS = r"""<script>
   });
   draw();
 
-  tickApi('GET', '/api/profile').then(function (data) {
+  tickProfile().then(function (data) {
     synced = true;
     var saved = (data.persona && data.persona.focus_terms) || [];
     if (!saved.length && mine.length) {
@@ -2118,14 +2230,15 @@ _TABLES_JS = r"""<script>
 
 def _tables_script() -> str:
     """The script behind both dashboard tables and My terms; see _TABLES_JS.
-    tickApi() comes first: My terms save through it."""
+    My terms load and save through tickProfile() and tickApi(), which the
+    menu bar's script defines (_nav) before this runs."""
     subs = {"%PAGE%": str(ROLES_PAGE_SIZE), "%STORE%": json.dumps(_MY_TERMS_KEY),
             "%MAX_TERMS%": str(_MY_TERMS_MAX), "%TERM_CHARS%": str(_MY_TERM_CHARS),
             "%CONFIG%": _json_for_script([_ROLE_TABLE, _ARCHIVE_TABLE])}
     out = _TABLES_JS
     for k, v in subs.items():
         out = out.replace(k, v)
-    return f"<script>{_API_FN}</script>\n{out}"
+    return out
 
 
 class Citations:
@@ -2846,101 +2959,6 @@ def _add_account_script() -> str:
 </script>"""
 
 
-def _persona_section() -> str:
-    """The viewer's persona editor, below their accounts. Static like the rest
-    of the page and shared by every viewer with the same accounts, so it holds
-    no one's data: the script loads it from /api/profile and saves it back.
-    Hidden until then, because without the API it can do nothing."""
-    roles = "".join(f'<option value="{k}">{html.escape(v)}</option>' for k, v in persona.ROLES.items())
-    buyers = "".join(f'<label class="chk"><input type="checkbox" name="buyers" value="{k}">'
-                     f'<span>{html.escape(v)}</span></label>' for k, v in persona.BUYERS.items())
-    return f"""<section class="persona" id="persona" aria-labelledby="persona-h" hidden>
-  <h2 class="section-label text-muted" id="persona-h" style="margin:34px 0 12px">Your persona</h2>
-  <form class="card blueprint pform" id="persona-form" novalidate>{_corners()}
-    <p class="text-muted pnote" id="persona-tracks">Your weekly briefs are written for the reader you
-      describe here: who you are, what you sell, and the terms you watch.</p>
-    <div class="pgrid">
-      <label>Your role<select id="p-role" name="role"><option value="">Choose&hellip;</option>{roles}</select></label>
-      <label>The company you sell for<input id="p-sells-for" name="sells_for" type="text"
-        maxlength="{persona.NAME_CHARS}" autocomplete="organization" placeholder="Initech"></label>
-      <label class="wide">What you sell<textarea id="p-offer" name="offer" rows="2" maxlength="{persona.OFFER_CHARS}"
-        placeholder="Hardened container images with signed SBOMs and build provenance"></textarea></label>
-      <fieldset class="wide"><legend>Who you sell to</legend><div class="pchecks">{buyers}</div></fieldset>
-      <label class="wide">Focus terms<input id="p-focus" name="focus_terms" type="text" autocomplete="off"
-        placeholder="kubernetes, sbom, terraform">
-        <span class="phint">Comma-separated, up to {persona.MAX_FOCUS}. These are also your My terms on every dashboard.</span></label>
-      <label class="wide">Competitor terms<input id="p-competitors" name="competitor_terms" type="text"
-        autocomplete="off" placeholder="products that compete with yours">
-        <span class="phint">Comma-separated, up to {persona.MAX_COMPETITORS}. A posting that names one says what the company uses or is weighing.</span></label>
-    </div>
-    <div class="acct-foot">
-      <button class="btn btn-primary btn-sm" id="p-save" type="submit">Save persona</button>
-      <span class="acct-status text-muted" id="p-status" role="status" aria-live="polite"></span>
-    </div>
-  </form>
-</section>"""
-
-
-def _persona_script() -> str:
-    """Loads the viewer's persona into the editor and saves it back. The API
-    checks every field against tools/persona.py; its first complaint is shown."""
-    return "<script>" + _API_FN + r"""
-(function () {
-  var section = document.getElementById('persona'), form = document.getElementById('persona-form');
-  var status = document.getElementById('p-status'), tracks = document.getElementById('persona-tracks');
-  var save = document.getElementById('p-save');
-  if (!section || !form) return;
-  var field = function (id) { return document.getElementById(id); };
-  var terms = function (el) {
-    return el.value.split(',').map(function (t) { return t.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
-  };
-  function fill(p) {
-    p = p || {};
-    field('p-role').value = p.role || '';
-    field('p-sells-for').value = p.sells_for || '';
-    field('p-offer').value = p.offer || '';
-    field('p-focus').value = (p.focus_terms || []).join(', ');
-    field('p-competitors').value = (p.competitor_terms || []).join(', ');
-    [].forEach.call(form.querySelectorAll('input[name=buyers]'), function (b) {
-      b.checked = (p.buyers || []).indexOf(b.value) !== -1;
-    });
-  }
-  function describeTracks(list) {
-    tracks.textContent = list.length
-      ? 'Your weekly briefs for ' + list.join(', ') + ' are written for the reader you describe here.'
-      : 'You track no accounts yet, so no brief is written for this persona until you do. '
-        + 'Your focus terms still work as My terms on every dashboard.';
-  }
-  tickApi('GET', '/api/profile').then(function (data) {
-    fill(data.persona);
-    describeTracks(data.tracks || []);
-    section.hidden = false;
-    if (location.hash === '#persona') section.scrollIntoView();
-  }).catch(function () {});   // signed out, or no profile API (a local preview): nothing to edit
-
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    var p = {
-      role: field('p-role').value, sells_for: field('p-sells-for').value.trim(),
-      offer: field('p-offer').value.trim(), focus_terms: terms(field('p-focus')),
-      competitor_terms: terms(field('p-competitors')),
-      buyers: [].filter.call(form.querySelectorAll('input[name=buyers]'), function (b) { return b.checked; })
-                .map(function (b) { return b.value; })
-    };
-    save.disabled = true;
-    status.textContent = 'Saving…';
-    tickApi('POST', '/api/profile', {persona: p}).then(function (data) {
-      fill(data.persona);
-      status.textContent = 'Saved ✓ Your next weekly briefs are written for it.';
-    }).catch(function (err) {
-      status.textContent = err.status === 401 ? 'Your session expired: reload the page to sign in again.'
-                         : err.status === 400 ? err.message : 'Couldn’t save: please try again.';
-    }).then(function () { save.disabled = false; });
-  });
-})();
-</script>"""
-
-
 def render_home(accounts: list[dict]) -> str:
     """The accounts grid. The publisher renders one per viewer scope, passing
     only that viewer's accounts; every home ends with the request tile."""
@@ -2980,14 +2998,152 @@ def render_home(accounts: list[dict]) -> str:
   <div class="hdr">
     <div><p class="eyebrow text-muted">TICK</p><h1 style="font-size:34px;margin:3px 0">Accounts</h1>
       <p class="text-muted acct-lede" style="margin:6px 0 0;font-size:13px">{sub}</p></div>
-    <a class="btn btn-secondary btn-sm" href="#persona">Your persona</a>
   </div>
   <div class="acct-grid">{cards}</div>
-  {_persona_section()}
   </main>
   {_footer(last_crawl_label)}
 </div>
 {_add_account_script()}
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------------- profile page
+
+def _persona_section() -> str:
+    """The viewer's persona editor. Hidden until /api/profile answers: the
+    page is shared by every viewer, so the form holds no one's data until the
+    script fills it, and without the API it can do nothing."""
+    roles = "".join(f'<option value="{k}">{html.escape(v)}</option>' for k, v in persona.ROLES.items())
+    buyers = "".join(f'<label class="chk"><input type="checkbox" name="buyers" value="{k}">'
+                     f'<span>{html.escape(v)}</span></label>' for k, v in persona.BUYERS.items())
+    return f"""<section class="persona" id="persona" aria-labelledby="persona-h" hidden>
+  <h2 class="section-label text-muted" id="persona-h" style="margin:26px 0 12px">Your persona</h2>
+  <form class="card blueprint pform" id="persona-form" novalidate>{_corners()}
+    <p class="text-muted pnote" id="persona-tracks">Your weekly briefs are written for the reader you
+      describe here: who you are, what you sell, and the terms you watch.</p>
+    <div class="pgrid">
+      <label>Your role<select id="p-role" name="role"><option value="">Choose&hellip;</option>{roles}</select></label>
+      <label>The company you sell for<input id="p-sells-for" name="sells_for" type="text"
+        maxlength="{persona.NAME_CHARS}" autocomplete="organization" placeholder="Initech"></label>
+      <label class="wide">What you sell<textarea id="p-offer" name="offer" rows="2" maxlength="{persona.OFFER_CHARS}"
+        placeholder="Hardened container images with signed SBOMs and build provenance"></textarea></label>
+      <fieldset class="wide"><legend>Who you sell to</legend><div class="pchecks">{buyers}</div></fieldset>
+      <label class="wide">Focus terms<input id="p-focus" name="focus_terms" type="text" autocomplete="off"
+        placeholder="kubernetes, sbom, terraform">
+        <span class="phint">Comma-separated, up to {persona.MAX_FOCUS}. These are also your My terms on every dashboard.</span></label>
+      <label class="wide">Competitor terms<input id="p-competitors" name="competitor_terms" type="text"
+        autocomplete="off" placeholder="products that compete with yours">
+        <span class="phint">Comma-separated, up to {persona.MAX_COMPETITORS}. A posting that names one says what the company uses or is weighing.</span></label>
+    </div>
+    <div class="acct-foot">
+      <button class="btn btn-primary btn-sm" id="p-save" type="submit">Save persona</button>
+      <span class="acct-status text-muted" id="p-status" role="status" aria-live="polite"></span>
+    </div>
+  </form>
+</section>"""
+
+
+def _persona_script() -> str:
+    """Loads the viewer's profile into the page and saves the persona back.
+    The API checks every field against tools/persona.py; its first complaint
+    is shown. tickProfile() and tickApi() come from the menu bar (_nav)."""
+    return r"""<script>
+(function () {
+  var section = document.getElementById('persona'), form = document.getElementById('persona-form');
+  var status = document.getElementById('p-status'), tracks = document.getElementById('persona-tracks');
+  var save = document.getElementById('p-save'), lede = document.getElementById('profile-lede');
+  if (!section || !form) return;
+  var field = function (id) { return document.getElementById(id); };
+  var terms = function (el) {
+    return el.value.split(',').map(function (t) { return t.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+  };
+  function fill(p) {
+    p = p || {};
+    field('p-role').value = p.role || '';
+    field('p-sells-for').value = p.sells_for || '';
+    field('p-offer').value = p.offer || '';
+    field('p-focus').value = (p.focus_terms || []).join(', ');
+    field('p-competitors').value = (p.competitor_terms || []).join(', ');
+    [].forEach.call(form.querySelectorAll('input[name=buyers]'), function (b) {
+      b.checked = (p.buyers || []).indexOf(b.value) !== -1;
+    });
+  }
+  // each account the viewer tracks links to its brief, the page this persona writes
+  function describeTracks(list) {
+    tracks.textContent = '';
+    if (!list.length) {
+      tracks.textContent = 'You track no accounts yet, so no brief is written for this persona until you do. '
+        + 'Your focus terms still work as My terms on every dashboard.';
+      return;
+    }
+    tracks.appendChild(document.createTextNode('Your weekly briefs for '));
+    list.forEach(function (slug, i) {
+      if (i) tracks.appendChild(document.createTextNode(i === list.length - 1 ? ' and ' : ', '));
+      var a = document.createElement('a');
+      a.href = '/' + encodeURIComponent(slug) + '/brief.html';
+      a.textContent = slug;
+      tracks.appendChild(a);
+    });
+    tracks.appendChild(document.createTextNode(' are written for the reader you describe here.'));
+  }
+  tickProfile().then(function (data) {
+    fill(data.persona);
+    describeTracks(data.tracks || []);
+    lede.textContent = data.email ? 'Signed in as ' + data.email : 'Signed in.';
+    section.hidden = false;
+  }).catch(function (err) {
+    lede.textContent = err.status === 401 ? 'Your session expired: reload the page to sign in again.'
+                     : 'Your profile couldn’t be loaded. Reload the page to try again.';
+  });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var p = {
+      role: field('p-role').value, sells_for: field('p-sells-for').value.trim(),
+      offer: field('p-offer').value.trim(), focus_terms: terms(field('p-focus')),
+      competitor_terms: terms(field('p-competitors')),
+      buyers: [].filter.call(form.querySelectorAll('input[name=buyers]'), function (b) { return b.checked; })
+                .map(function (b) { return b.value; })
+    };
+    save.disabled = true;
+    status.textContent = 'Saving…';
+    tickApi('POST', '/api/profile', {persona: p}).then(function (data) {
+      fill(data.persona);
+      status.textContent = 'Saved ✓ Your next weekly briefs are written for it.';
+    }).catch(function (err) {
+      status.textContent = err.status === 401 ? 'Your session expired: reload the page to sign in again.'
+                         : err.status === 400 ? err.message : 'Couldn’t save: please try again.';
+    }).then(function () { save.disabled = false; });
+  });
+})();
+</script>"""
+
+
+def render_profile() -> str:
+    """/profile, opened from the account menu: the viewer's persona, and the
+    accounts whose briefs it writes. One page for every viewer, so it holds no
+    one's data; until /api/profile answers, or if it cannot, the lede says so
+    in place of an empty form."""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{_head("TICK — your profile", "Your TICK profile: the persona your weekly briefs are written for.")}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+{_nav("profile")}
+<div class="wrap narrow">
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span style="color:var(--color-text)">Profile</span></div>
+  <main id="main">
+  <div class="hdr">
+    <div><p class="eyebrow text-muted">TICK</p><h1 style="font-size:34px;margin:3px 0">Your profile</h1>
+      <p class="text-muted" id="profile-lede" role="status" style="margin:6px 0 0;font-size:13px">Loading your profile&hellip;</p></div>
+  </div>
+  {_persona_section()}
+  </main>
+</div>
 {_persona_script()}
 </body>
 </html>
@@ -3266,7 +3422,7 @@ if __name__ == "__main__":
                          "with nothing collected yet still appear (default: the lake's own configs/ "
                          "prefix on S3, or ./configs when rendering a local lake)")
     ap.add_argument("--out-dir", default="site",
-                    help="directory to write accounts/index.html and <slug>/ into")
+                    help="directory to write accounts/index.html, profile/index.html and <slug>/ into")
     ap.add_argument("--window-days", type=int, default=DEFAULT_WINDOW_DAYS,
                     help="how far back the comparison reaches: the page compares the latest snapshot "
                          "against the most recent one at least this old, so the delta measures drift "
@@ -3287,6 +3443,12 @@ if __name__ == "__main__":
     with open(home_path, "w") as f:
         f.write(render_home(accounts))
     print(f"wrote {home_path} — {len(accounts)} account{'s' if len(accounts) != 1 else ''}")
+
+    profile_path = os.path.join(args.out_dir, "profile", "index.html")
+    os.makedirs(os.path.dirname(profile_path), exist_ok=True)
+    with open(profile_path, "w") as f:
+        f.write(render_profile())
+    print(f"wrote {profile_path}")
 
     for fname, body in (("404.html", render_404()), ("robots.txt", ROBOTS_TXT)):
         path = os.path.join(args.out_dir, fname)

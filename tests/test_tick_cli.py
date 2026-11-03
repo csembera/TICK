@@ -248,7 +248,7 @@ class Companies(unittest.TestCase):
 
     def test_reserved_and_malformed_slugs_are_refused(self):
         # /docs/ is public at the edge: a company there would be served without a session
-        for slug in ("docs", "accounts", "Dunder Mifflin"):
+        for slug in ("docs", "accounts", "profile", "Dunder Mifflin"):
             fake = FakeAws()
             code, _, err = self.push({**DM, "company_slug": slug}, fake)
             self.assertEqual(code, 1, slug)

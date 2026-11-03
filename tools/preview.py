@@ -27,8 +27,9 @@ Not previewed: the CloudFront edge, Cognito sign-in and per-viewer scoping.
 /accounts lists every account, the account-request form gets a stub 200, and
 nothing redirects: /login and a signed-in visit to / are the edge's doing.
 /api/profile answers from memory, checked by tools/persona.py like the real
-one, so the persona editor and My terms can be tried: one persona for
-everyone, forgotten when the server stops.
+one, so the account menu, the profile page and My terms can be tried: one
+persona for everyone, signed in as PREVIEW_EMAIL, forgotten when the server
+stops. Sign out is the edge's doing too, so it 404s here.
 """
 
 import argparse
@@ -126,6 +127,9 @@ def build(code: str, lake: str, out: str) -> None:
                    check=True, cwd=code)
 
 
+PREVIEW_EMAIL = "viewer@example.com"   # who the stub /api/profile says is signed in
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     profile: dict = {}   # the one persona /api/profile holds while the server runs
 
@@ -142,7 +146,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return super().do_GET()
         who = Handler.profile.get("persona")
         self.reply(200, {"persona": None if persona.is_blank(who) else who,
-                         "updated_at": Handler.profile.get("updated_at"), "tracks": []})
+                         "updated_at": Handler.profile.get("updated_at"), "tracks": [],
+                         "email": PREVIEW_EMAIL})
 
     def do_POST(self):   # /api/join, /api/account-request and /api/profile
         raw = self.rfile.read(int(self.headers.get("content-length", 0)))
@@ -208,6 +213,7 @@ def main() -> None:
 
     url = f"http://127.0.0.1:{args.port}"
     print(f"\nTICK preview of {label}\n  {url}/          public pages\n  {url}/accounts/ accounts home\n"
+          f"  {url}/profile/  profile\n"
           "Ctrl-C to stop.", flush=True)
     server = http.server.ThreadingHTTPServer(
         ("127.0.0.1", args.port), functools.partial(Handler, directory=OUT))

@@ -173,7 +173,7 @@ partitioned by company and, for anything a crawl writes, by date:
 | `derived/state/company=<slug>/` | collector | `state.json`: every posting ever seen, with its first, last and closing dates |
 | `derived/tech_stack/company=<slug>/dt=<date>/` | collector | `tech_stack.json`: each matched term and the postings it came from |
 | `briefs/company=<slug>/week=<date>/` | the tick-brief skill's `publish.py` | `brief.json` and the `evidence.json` it was written from |
-| `profiles/<sub>.json` | the persona editor on `/accounts` (the join Lambda's `/api/profile`), or `tools/tick.py personas set` | One user's persona: who they are, what they sell, the terms they watch |
+| `profiles/<sub>.json` | the persona editor on `/profile` (the join Lambda's `/api/profile`), or `tools/tick.py personas set` | One user's persona: who they are, what they sell, the terms they watch |
 
 Field-by-field formats are in [data-reference.md](data-reference.md).
 
@@ -195,13 +195,14 @@ itself within 5 minutes. For each account it writes:
   Established, split on whether a term first appeared in the last six months),
   the roles opened this window, and every open and closed role in tables that
   search descriptions, sort, filter by stack term and tag a viewer's own
-  "My terms" (kept in their browser).
+  "My terms" (saved to their profile).
 - `<slug>/brief.html`: the newest published brief, or "No brief yet".
 - `<slug>/archive/<pid>/index.html`: one page per closed req, the stable
   address briefs cite once the board stops serving the posting.
 
 It also writes one accounts home per distinct viewer scope (see
-[Sign-in](#sign-in-and-the-edge)). An account appears on `/accounts` as soon as
+[Sign-in](#sign-in-and-the-edge)), and `home/profile/index.html`, the one
+`/profile` page every viewer shares. An account appears on `/accounts` as soon as
 its config is uploaded, marked **Not collected** until its first crawl and
 **Reporting** from then on. A company that is in the lake without a config is
 still listed, so removing a config stops the crawls but not the pages. A first
@@ -239,11 +240,12 @@ publish, or at once with `tools/tick.py publish pages`.
 
 Each user can keep a **persona**: their role, the company they sell for, what
 they sell, the teams they sell to, and the terms they watch (focus terms, and
-competitor terms for products that compete with theirs). They edit it in the
-**Your persona** section of `/accounts`, and the focus terms are the
-dashboard's **My terms**, so adding a term on a dashboard adds it to the
-persona. Both pages are static and shared, so neither holds anyone's data:
-their scripts load and save it through `/api/profile` on the join Lambda,
+competitor terms for products that compete with theirs). They edit it on
+`/profile`, opened with **Edit profile** in the account menu at the right of
+the menu bar, and the focus terms are the dashboard's **My terms**, so adding
+a term on a dashboard adds it to the persona. Both pages are static and
+shared, so neither holds anyone's data: their scripts load and save it
+through `/api/profile` on the join Lambda,
 which reads the user from the session cookie, never from the request, so a
 user can only ever reach their own profile. A save names only the fields it
 changes and is merged onto what is stored. Where the API is out of reach (a
@@ -318,7 +320,9 @@ work is split:
 4. Every later request → one HMAC at the edge. No Lambda, no Cognito call.
    The edge refuses `/<slug>/` pages outside the scope, and serves `/accounts`
    from `home/<sha256(scope)[:16]>/index.html`; the publisher renders one such
-   home per distinct scope in the pool.
+   home per distinct scope in the pool. `/profile` is one page for any
+   session, `home/profile/index.html`; its script fetches the viewer's own
+   profile.
 
 Two consequences follow, and both matter when access changes:
 
@@ -336,15 +340,15 @@ write `custom:accounts`; the app client may not, so a viewer cannot grant
 themselves an account. `/api/*` skips the edge check, so the join Lambda
 verifies the session cookie itself for `/api/account-request` and
 `/api/profile`. Signing out
-(the **Sign out** link on every app page, or `/auth/logout`) clears the cookie
+(**Sign out** in the account menu on every app page, or `/auth/logout`) clears the cookie
 and ends the Cognito session too. The edge
 function's source, signing key included, is readable by anyone holding
 `cloudfront:GetFunction` on the account: it authenticates viewers, it is not a
 secret from account principals.
 
 A company slug is the first segment of its pages' URLs, which is why
-`accounts`, `home`, `login`, `docs`, `demo`, `auth` and `api` can never be
-slugs: the first three are app pages, `docs` and `demo` are public (a company
+`accounts`, `profile`, `home`, `login`, `docs`, `demo`, `auth` and `api` can
+never be slugs: the first four are app pages, `docs` and `demo` are public (a company
 there would be served without a session), and the last two are routed to
 Lambdas. `tools/tick.py companies push` refuses them.
 
@@ -360,9 +364,14 @@ them from one file. They are copied into:
 | App pages | `_nav`, the `.nav` rules in `_STYLE`, and `_FAVICON` in `tools/tick_insights_report.py` |
 | Auth error page | `page()` in `infra/src/auth/app.py`: brand, Docs and icon only |
 
-Change them together. The app's bar differs from the demo's in its links only:
-each account's own Dashboard and Brief tabs, and **Sign out** where the demo
-has **Log in** / **Get started**. `python3 tools/preview.py` serves the demo and
+Change them together. The app's bar differs from the demo's in its links and
+its right-hand corner: each account's own Dashboard and Brief tabs, and the
+account menu (the viewer's avatar and name, then **Edit profile** and **Sign
+out**) where the demo has **Log in** / **Get started**. The demo has no
+signed-in corner, so the account menu's `.nav-menu` rules live only in
+`_STYLE`. The menu is a `<details>` disclosure that works without script; its
+script names the viewer from `/api/profile` and keeps the name for the tab,
+so only the first page of a visit waits on the API. `python3 tools/preview.py` serves the demo and
 the app pages side by side to check.
 
 ## Deploying

@@ -3,7 +3,8 @@ TICK publisher — renders the S3 lake into the static site CloudFront serves.
 
   S3 lake (private)  ──►  this Lambda  ──►  S3 site bucket  ──►  CloudFront
   derived/ + configs/     renders HTML       home/<key>/index.html (Cognito sign-in)
-  + briefs/                                  <slug>/dashboard.html
+  + briefs/                                  home/profile/index.html
+                                             <slug>/dashboard.html
                                              <slug>/brief.html
                                              <slug>/archive/<pid>/index.html
 
@@ -19,6 +20,11 @@ serves /accounts from home/<key>/index.html, key = first 16 hex of
 sha256(scope). This Lambda reads the pool's users and renders one home per
 distinct scope, so an assignment change shows after the next publish (and
 the viewer's next sign-in, which re-mints the scope).
+
+/profile is the same page for every viewer, since its script loads the
+viewer's own persona from /api/profile, so it is rendered once, to
+home/profile/index.html. The edge serves it for any session; "profile" is
+not hex, so it can never be a scope's key.
 
 The public pages at /, /docs and /demo are NOT written here. They are the
 hand-authored marketing pages in ../../site-static/, deployed by
@@ -56,6 +62,8 @@ ADMIN_GROUP = os.environ.get("ADMIN_GROUP", "tick-admins")
 # if the invalidation is still propagating; long enough to keep CloudFront in
 # front of S3 for a page people refresh.
 _CACHE_CONTROL = "public, max-age=300"
+
+PROFILE_KEY = "home/profile/index.html"
 
 s3 = boto3.client("s3")
 
@@ -105,14 +113,14 @@ def viewer_scopes() -> set[str]:
 def render_site(source: str, scopes: set[str] | None = None) -> dict[str, str]:
     """{key: html} for the guarded half of the site — one accounts home per
     viewer scope plus a dashboard and brief for every account with at least
-    one snapshot. The public pages are deployed separately and are never keys
-    here."""
+    one snapshot, and the one profile page. The public pages are deployed
+    separately and are never keys here."""
     lake_io = report.open_lake(source)
     accounts = report.build_accounts(report.load_configs(None, lake_io), lake_io)
     if not accounts:
         raise RuntimeError(f"no SourceConfigs and no snapshots at {source} — nothing to publish")
 
-    pages = {}
+    pages = {PROFILE_KEY: report.render_profile()}
     for scope in scopes if scopes is not None else viewer_scopes():
         if scope == "*":
             pages[f"home/{scope_key(scope)}/index.html"] = report.render_home(accounts)
@@ -158,7 +166,7 @@ def handler(event, context):
     pages = render_site(source)
     publish(pages)
     result = {"accounts_rendered": sum(1 for k in pages if k.endswith("/dashboard.html")),
-              "homes_rendered": sum(1 for k in pages if k.startswith("home/")),
+              "homes_rendered": sum(1 for k in pages if k.startswith("home/") and k != PROFILE_KEY),
               "pages": len(pages),
               "site_bucket": SITE_BUCKET,
               "invalidation": invalidate()}

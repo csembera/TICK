@@ -70,14 +70,15 @@ STATIC_PREFIXES = ("docs", "demo")
 # What `verify` requests, with no cookie. A 200 on a guarded path is a
 # client-data leak, not a cosmetic bug.
 PUBLIC_PATHS = ["/", "/docs", "/demo", "/demo/dunder-mifflin/brief"]
-GUARDED_PATHS = ["/accounts", "/login", "/dunder-mifflin/dashboard.html", "/dunder-mifflin/brief.html"]
+GUARDED_PATHS = ["/accounts", "/profile", "/login", "/dunder-mifflin/dashboard.html",
+                 "/dunder-mifflin/brief.html"]
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 # A company slug is the first segment of its pages' URLs, so it cannot be one
-# the edge or CloudFront already routes: /accounts, /home and /login are app
-# pages; /docs and /demo are public, so a company there would be served
-# without a session; /auth and /api go to Lambdas.
-RESERVED_SLUGS = {"accounts", "home", "login", "docs", "demo", "auth", "api"}
+# the edge or CloudFront already routes: /accounts, /profile, /home and /login
+# are app pages; /docs and /demo are public, so a company there would be
+# served without a session; /auth and /api go to Lambdas.
+RESERVED_SLUGS = {"accounts", "profile", "home", "login", "docs", "demo", "auth", "api"}
 _EMAIL_RE = re.compile(r"^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,63}$")
 
 SESSION_NOTE = ("A session they already have keeps working until it expires, up to 12 hours: "
