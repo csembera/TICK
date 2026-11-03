@@ -2,6 +2,7 @@
 Build the evidence pack the weekly brief is written from.
 
     evidence.py <lake-root> <company-slug> [--week-end YYYY-MM-DD] [--out PATH]
+                [--personas MAP | --persona FILE]
 
 <lake-root> is a local lake (e.g. local-data/tick-data-backup-2026-10-30) or
 s3://bucket. The window is the 7 days ending on --week-end (default: the
@@ -10,7 +11,15 @@ description, plus the board and stack context needed to read that movement.
 
 This is the ONLY input the brief writer gets, and it is deterministic — the
 model interprets, it never counts. Every item carries an `id` the brief cites
-as [[id]]: a posting id, or BOARD / STACK for the aggregate sections.
+as [[id]]: a posting id, or BOARD / STACK / PERSONA for the aggregate sections.
+
+The brief is written for the persona of the one user who tracks the account,
+when there is one: --personas takes the map `tools/tick.py personas list
+--json` writes, --persona a single persona file (for tuning the prompt). The
+persona is cleaned by tools/persona.py again here, because it is user-typed
+text about to enter a model's context, and its terms are counted in code like
+everything else in the pack. Without one, the pack has no persona section and
+the brief is written for the default reader.
 
 The Strands agent will call this same builder; keep it free of anything that
 only works from a laptop.
@@ -28,6 +37,7 @@ from datetime import date, timedelta
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import persona as persona_schema  # noqa: E402
 import tick_insights_report as report  # noqa: E402
 
 WINDOW_DAYS = 7
@@ -52,7 +62,7 @@ def _norm_title(t: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (t or "").lower()).strip()
 
 
-def build(source: str, slug: str, week_end: str | None = None) -> dict:
+def build(source: str, slug: str, week_end: str | None = None, reader: dict | None = None) -> dict:
     io = report.open_lake(source)
     if week_end:
         # Pretend the lake ends on week_end: drop every partition after it.
@@ -109,6 +119,20 @@ def build(source: str, slug: str, week_end: str | None = None) -> dict:
         p = report.pay_of(rec)
         return {k: p[k] for k in ("min", "max", "currency", "period")} if p else None
 
+    # ---- the reader's terms, matched like the collector's: whole words in the
+    # title and the role text, never the board's boilerplate
+    who = persona_schema.clean(reader)[0] if reader else None
+    if persona_schema.is_blank(who):     # nothing valid survived: the default reader
+        who = None
+    patterns = {t: report._term_pattern(t)
+                for t in ((who["focus_terms"] + who["competitor_terms"]) if who else [])}
+
+    def mentions(rec: dict | None) -> list[str]:
+        if not patterns or not rec:
+            return []
+        hay = f'{rec.get("title") or ""} {report.role_text_of(rec, bp_n)}'
+        return [t for t, rx in patterns.items() if rx.search(hay)]
+
     # ---- the window's movement, straight from the daily diffs
     diff_keys = {_dt(k): k for k in keys if k.endswith("diff.json") and f"company={slug}/" in k}
     window_dts = sorted(d for d in diff_keys if start < d <= end)
@@ -159,6 +183,7 @@ def build(source: str, slug: str, week_end: str | None = None) -> dict:
             "first_seen": s.get("first_seen") or (rec or {}).get("first_seen"),
             "stack_terms": terms_for(pid, rec),
             **extra,
+            **({"persona_terms": mentions(rec)} if who else {}),
             "pay": pay(rec),
             "description": describe(rec),
         }
@@ -281,6 +306,9 @@ def build(source: str, slug: str, week_end: str | None = None) -> dict:
         "window": {"start": start, "end": end, "days": _days(start, end),
                    "crawl_days": len([d for d in expected if d in crawls]),
                    "date_trust": next((r.get("date_trust") for r in board_now.values()), None)},
+        **({"persona": persona_section(who, start, board_now, curated_keys, curated_at,
+                                         opened_out, closed_out, reopened_out, standing,
+                                         mentions)} if who else {}),
         "data_quality_flags": flags,
         "board": board,
         "stack": stack,
@@ -290,15 +318,78 @@ def build(source: str, slug: str, week_end: str | None = None) -> dict:
     }
 
 
+STANDING_ROLES = 8   # open roles that did not move but mention the reader's terms
+
+
+def persona_section(who: dict, start: str, board_now: dict, curated_keys: list[str], curated_at,
+                    opened: list[dict], closed: list[dict], reopened: list[dict],
+                    standing: list[dict], mentions) -> dict:
+    """The PERSONA section: who the reader is, what the board says about each
+    of their terms, and the standing roles that mention them. Counts and ids
+    only; what they mean is the writer's job."""
+    at_start = next((curated_at(k) for k in curated_keys if _dt(k) == start), None)
+    now = {pid: set(mentions(rec)) for pid, rec in board_now.items()}
+    before = {t for rec in (at_start or {}).values() for t in mentions(rec)}
+
+    def row(term: str) -> dict:
+        on_board = sum(1 for terms in now.values() if term in terms)
+        return {"term": term, "open_roles": on_board,
+                "in_opened": [p["id"] for p in opened if term in p.get("persona_terms", [])],
+                "in_closed": [p["id"] for p in closed if term in p.get("persona_terms", [])],
+                # None when there is no crawl at the window's start to compare with
+                "new_to_board": (bool(on_board) and term not in before) if at_start is not None else None}
+
+    # A persona's interest often sits in a role that has been open for weeks,
+    # which this week's movement never lists; without its id the brief could
+    # not name it. Most of the reader's terms first, then the longest open.
+    moved = {p["id"] for p in opened + closed + reopened}
+    age = {r["id"]: r for r in standing}
+    order = who["focus_terms"] + who["competitor_terms"]
+    relevant = sorted((pid for pid, terms in now.items() if terms and pid not in moved),
+                      key=lambda pid: (-len(now[pid]), -(age.get(pid, {}).get("days_open") or 0), pid))
+    standing_roles = [{"id": pid, "title": board_now[pid]["title"],
+                       "location": board_now[pid].get("location"),
+                       "days_open": age.get(pid, {}).get("days_open"),
+                       "is_leadership": age.get(pid, {}).get("is_leadership", False),
+                       "persona_terms": sorted(now[pid], key=order.index)}
+                      for pid in relevant[:STANDING_ROLES]]
+
+    return {
+        "id": "PERSONA",
+        "ref": persona_schema.ref(who),
+        "role": persona_schema.ROLES.get(who["role"]),
+        "sells_for": who["sells_for"] or None,
+        "offer": who["offer"] or None,
+        "sells_to": [persona_schema.BUYERS[b] for b in who["buyers"]],
+        "focus_terms": [row(t) for t in who["focus_terms"]],
+        "competitor_terms": [row(t) for t in who["competitor_terms"]],
+        "standing_roles": standing_roles,
+    }
+
+
+def reader_for(slug: str, persona_file: str | None, personas_map: str | None) -> dict | None:
+    if persona_file:
+        with open(persona_file) as f:
+            data = json.load(f)
+        return data.get("persona", data)      # a bare persona, or a whole profile
+    if personas_map:
+        with open(personas_map) as f:
+            return (json.load(f).get(slug) or {}).get("persona")
+    return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[1])
     ap.add_argument("source")
     ap.add_argument("slug")
     ap.add_argument("--week-end", help="last day of the window (default: latest crawl)")
     ap.add_argument("--out", help="write JSON here (default: stdout)")
+    who = ap.add_mutually_exclusive_group()
+    who.add_argument("--personas", help="the map `tools/tick.py personas list --json` writes")
+    who.add_argument("--persona", help="one persona JSON file, for tuning the prompt")
     args = ap.parse_args()
 
-    ev = build(args.source, args.slug, args.week_end)
+    ev = build(args.source, args.slug, args.week_end, reader_for(args.slug, args.persona, args.personas))
     text = json.dumps(ev, indent=1, ensure_ascii=False)
     if args.out:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
@@ -310,6 +401,8 @@ def main() -> None:
             "open": f'{b["open_at_start"]} -> {b["open_at_end"]}',
             "opened": b["opened"], "closed": b["closed"], "reopened": b["reopened"],
             "new_terms": len(ev["stack"]["new_to_board"]), "flags": len(ev["data_quality_flags"]),
+            "reader": ", ".join(filter(None, [ev["persona"]["role"], ev["persona"]["sells_for"]]))
+                      if "persona" in ev else "default",
             "approx_tokens": len(text) // 4,
         }))
     else:

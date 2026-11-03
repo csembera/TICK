@@ -21,6 +21,7 @@ File formats are in [docs/data-reference.md](docs/data-reference.md).
 | `infra/src/join/` | `/api/join` waitlist and `/api/account-request` |
 | `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `tools/tick.py publish static` |
 | `tools/tick_insights_report.py` | The renderer. `infra/src/publisher/report.py` is a **symlink** to it |
+| `tools/persona.py` | What a user's persona may hold, bounded and normalised; the brief skill and the CLI read profiles through it |
 | `tools/tick.py` | The operations CLI: status, publishing, crawls, companies, users, requests, DLQ, logs, edge checks. The pipeline's deploy steps run it too |
 | `tools/evaluator.py` | The evaluator as a standalone Strands agent; onboarding normally runs through the tick-evaluator skill |
 | `docs/` | `architecture.md`, `operations.md` (the runbook), `data-reference.md`, `development.md`. Update them in the same PR as the change they describe |

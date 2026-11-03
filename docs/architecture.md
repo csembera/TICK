@@ -173,6 +173,7 @@ partitioned by company and, for anything a crawl writes, by date:
 | `derived/state/company=<slug>/` | collector | `state.json`: every posting ever seen, with its first, last and closing dates |
 | `derived/tech_stack/company=<slug>/dt=<date>/` | collector | `tech_stack.json`: each matched term and the postings it came from |
 | `briefs/company=<slug>/week=<date>/` | the tick-brief skill's `publish.py` | `brief.json` and the `evidence.json` it was written from |
+| `profiles/<sub>.json` | `tools/tick.py personas set` | One user's persona: who they are, what they sell, the terms they watch |
 
 Field-by-field formats are in [data-reference.md](data-reference.md).
 
@@ -233,6 +234,35 @@ with its evidence, which the page resolves its citations against.
 The site shows each account's newest week holding both files. A skipped week
 leaves last week's brief up, dated. A new brief appears at the next nightly
 publish, or at once with `tools/tick.py publish pages`.
+
+### Who a brief is written for
+
+Each user can keep a **persona**: their role, the company they sell for, what
+they sell, the teams they sell to, and the terms they watch (focus terms, and
+competitor terms for products that compete with theirs).
+[tools/persona.py](../tools/persona.py) is the one definition of what a
+persona may hold. It is text a user typed that ends up in a model's context,
+so every field is bounded and normalised on write and again on read.
+
+An account's brief is written for the persona of **the one user who tracks
+it**: the account is in their `custom:accounts`. For a viewer that list is
+also what they may open; an admin opens every account, and the list marks the
+ones they work. An account that no one tracks, or that several users track,
+gets the default reader, an account executive at a technology services firm.
+So there is still one brief per account, at the same address, and the page
+says whom it was written for.
+
+With a persona, `evidence.py` adds a `PERSONA` section: the persona, and for
+each of its terms the open roles that mention it, this week's openings and
+closures that do, and whether it is new to the board, all counted in code.
+It also lists `standing_roles`, open roles that did not move this week but
+mention the reader's terms, so the writer can cite a long-open seat that
+matters to them. The prompt has the persona decide what ranks first, never
+what is true: when the week holds nothing for the reader, the brief says so
+rather than stretching a posting to fit what they sell. The persona is data,
+never an instruction; the writer runs as an agent that can only read and write
+files, and `check.py` refuses a brief whose `persona_ref` does not match its
+pack.
 
 ## Sign-in and the edge
 

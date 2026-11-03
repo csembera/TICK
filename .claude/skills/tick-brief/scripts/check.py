@@ -6,6 +6,7 @@ Verify a weekly brief against the evidence it was written from, then render it.
 The model's claims are not trusted; these are re-checked in code:
   - the output is bare JSON in the prompt's schema
   - every [[id]] citation names something in the evidence pack
+  - the brief was written for the pack's reader (its persona_ref)
   - every paragraph and action item carries at least one citation
   - every quote appears verbatim in the cited posting's description
   - the length, quiet-week and movement limits the prompt sets
@@ -50,12 +51,9 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
     except ValueError as exc:
         return fails + [f"not valid JSON: {exc}"], warns, None
 
-    postings = {p["id"]: p for sec in ("opened", "closed", "reopened") for p in ev[sec]}
-    for sec in ("board", "stack"):
-        for key in ("open_leadership_roles", "longest_open"):
-            for p in ev[sec].get(key, []) if isinstance(ev[sec], dict) else []:
-                postings.setdefault(p["id"], p)
-    valid = set(postings) | {"BOARD", "STACK"}
+    postings = cited_postings(ev)
+    persona = ev.get("persona")
+    valid = set(postings) | {"BOARD", "STACK"} | ({"PERSONA"} if persona else set())
 
     for key in ("paragraphs", "action_items", "quiet_week", "company_slug", "week"):
         if key not in brief:
@@ -65,6 +63,11 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
     week = brief.get("week") or {}
     if (week.get("start"), week.get("end")) != (ev["window"]["start"], ev["window"]["end"]):
         fails.append(f"week {week} does not match the evidence window")
+    # A brief carries the ref of the persona it was written for; a mismatch is
+    # a brief written from another pack, or for another reader.
+    expected = persona["ref"] if persona else None
+    if brief.get("persona_ref") != expected:
+        fails.append(f"persona_ref {brief.get('persona_ref')!r} != the pack's {expected!r}")
 
     def cites(s: str, where: str, required: bool = True) -> None:
         found = CITE_RE.findall(s or "")
@@ -127,12 +130,27 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
     return fails, warns, brief
 
 
-def render(brief: dict, ev: dict) -> str:
-    """Markdown with numbered citations, in the order they first appear."""
+def cited_postings(ev: dict) -> dict[str, dict]:
+    """Every posting a brief may cite, by id: the week's movement, the board's
+    open leadership and longest-open roles, and the reader's standing roles."""
     postings = {p["id"]: p for sec in ("opened", "closed", "reopened") for p in ev[sec]}
     for key in ("open_leadership_roles", "longest_open"):
         for p in ev["board"].get(key, []):
             postings.setdefault(p["id"], p)
+    for p in (ev.get("persona") or {}).get("standing_roles", []):
+        postings.setdefault(p["id"], p)
+    return postings
+
+
+def reader_of(ev: dict) -> str:
+    """"Account executive, Chainguard" for a pack with a persona, else ""."""
+    p = ev.get("persona") or {}
+    return ", ".join(x for x in (p.get("role"), p.get("sells_for")) if x)
+
+
+def render(brief: dict, ev: dict) -> str:
+    """Markdown with numbered citations, in the order they first appear."""
+    postings = cited_postings(ev)
     order: list[str] = []
 
     def num(m: re.Match) -> str:
@@ -147,7 +165,8 @@ def render(brief: dict, ev: dict) -> str:
     c, w = ev["company"], ev["window"]
     out = [f"# {c['name']} — week to {w['end']}",
            f"*{w['start']} → {w['end']} · prompt v{brief.get('prompt_version', '?')}"
-           f"{' · quiet week' if brief.get('quiet_week') else ''}*", ""]
+           f"{' · quiet week' if brief.get('quiet_week') else ''}"
+           f"{' · written for ' + reader_of(ev) if reader_of(ev) else ''}*", ""]
     out += [sub(p) + "\n" for p in brief.get("paragraphs", [])]
     if brief.get("action_items"):
         out.append("## Action items\n")
@@ -165,6 +184,8 @@ def render(brief: dict, ev: dict) -> str:
                      f"{b['closed']} closed, {b['reopened']} reopened")
         elif cid == "STACK":
             label = "Stack terms across the open board"
+        elif cid == "PERSONA":
+            label = f"The reader's terms on the board ({reader_of(ev)})"
         elif cid in postings:
             p = postings[cid]
             what = (f"closed {p['closed_on']} after {p.get('days_open')} days" if p.get("closed_on")
