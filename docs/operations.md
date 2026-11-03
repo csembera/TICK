@@ -27,6 +27,8 @@ pipeline uses it). `tools/tick.py <command> --help` documents each command.
 | `users grant` / `revoke <email> <slug>...` | Add or remove accounts, keeping the rest of the list | yes |
 | `users admin <email> [--remove]` | Let a user see every account, or take that away | yes |
 | `users disable` / `enable` / `resend <email>` | Stop sign-in, allow it again, re-send an expired invite | yes |
+| `personas list [--json]` | Each account, the user who tracks it, and who its brief is written for | no |
+| `personas set <email> <file>` | Save a user's persona from a JSON file | yes |
 | `requests list [--accounts] [--pending]` | The waitlist, or viewers' requests for new companies | no |
 | `requests close <email or id> --as granted\|declined\|done` | Record how a request was handled | yes |
 | `dlq list` / `dlq redrive` | Crawls that failed three times; send them back to be retried | `redrive` only |
@@ -158,13 +160,31 @@ tools/tick.py users grant <requester email> <slug>
 tools/tick.py requests close <id> --as done            # the first characters of the id are enough
 ```
 
+### Give an account's brief a persona
+
+An account's weekly brief is written for the persona of the one user who
+tracks it. To have yours written for you:
+
+```bash
+tools/tick.py users grant you@example.com geha starr-companies   # the accounts you work
+tools/tick.py personas set you@example.com persona.json          # who you are, what you sell
+tools/tick.py personas list                                      # check: who each brief is for
+```
+
+`persona.json` holds the fields in [data-reference.md § A profile](data-reference.md#a-profile).
+For an admin, `users grant` changes nothing they can see; it marks the
+accounts they track. An account tracked by no one, or by two users, gets the
+default reader, and `users grant` warns before you make it two. The persona
+applies from the next weekly run.
+
 ### Write the weekly briefs
 
 In Claude Code, ask to run the weekly briefs. The
 [tick-brief skill](../.claude/skills/tick-brief/SKILL.md) syncs the lake,
-builds each account's evidence, has a model write each brief in a clean
-context, verifies every citation with `check.py`, scores each against its
-rubric and shows the drafts in the real page design. Nothing is uploaded until
+finds each account's reader with `personas list`, reads every persona before
+it reaches a writer, builds each account's evidence, has a model write each
+brief in a clean context, verifies every citation with `check.py`, scores
+each against its rubric and shows the drafts in the real page design. Nothing is uploaded until
 you agree. Its `publish.py` uploads the ones you approve; they appear at the
 next nightly publish, or now with `tools/tick.py publish pages`.
 

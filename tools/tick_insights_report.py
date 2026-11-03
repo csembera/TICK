@@ -2885,6 +2885,12 @@ def render_ai_brief(brief: dict, evidence: dict) -> str:
     for key in ("open_leadership_roles", "longest_open"):
         for p in board.get(key, []):
             postings.setdefault(p["id"], p)
+    persona = evidence.get("persona") or {}
+    for p in persona.get("standing_roles", []):
+        postings.setdefault(p["id"], p)
+    # who the brief was written for: the persona of the user who tracks the
+    # account (see tools/persona.py), or nobody named for the default reader
+    reader = ", ".join(x for x in (persona.get("role"), persona.get("sells_for")) if x)
 
     cx = Citations()
     numbered: dict[str, int] = {}
@@ -2896,6 +2902,8 @@ def render_ai_brief(brief: dict, evidence: dict) -> str:
                     f'closed, {board["reopened"]} reopened.', None)
         if cid == "STACK":
             return "Stack terms across the open board.", None
+        if cid == "PERSONA":
+            return f"The reader's terms on the board ({reader or 'persona'}).", None
         p = postings.get(cid)
         if not p:
             return f"{cid} — not in the evidence pack.", None
@@ -2979,7 +2987,7 @@ def render_ai_brief(brief: dict, evidence: dict) -> str:
   <main id="main">
   <div class="hdr">
     <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">Account brief</h1>
-      <p class="text-muted" style="margin:6px 0 0;font-size:13px">Week to {window['end']} &middot; every claim carries a citation</p></div>
+      <p class="text-muted" style="margin:6px 0 0;font-size:13px">Week to {window['end']} &middot; every claim carries a citation{f" &middot; written for {html.escape(reader)}" if reader else ""}</p></div>
     <button class="btn btn-primary" type="button" id="copy-brief">Copy brief</button>
   </div>
   <div class="grid narrative">

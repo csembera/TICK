@@ -19,6 +19,11 @@ A company is known by its company_slug, never by its config's file name: the
 bucket and the local configs/ folder both hold files named otherwise
 (configs/church-mutual.json is church-mutual-insurance). Two configs with one
 slug would be crawled twice a night, so every command here matches on the slug.
+
+A user tracks the accounts in their custom:accounts. For a viewer that list is
+also what they may open; an admin opens everything and the list says which
+accounts they work. Each account's weekly brief is written for the persona of
+the one user who tracks it (`personas list`).
 """
 
 from __future__ import annotations
@@ -38,6 +43,8 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+
+import persona as persona_schema   # tools/persona.py: what a persona may hold
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(ROOT, "infra", "site-static")
@@ -611,6 +618,7 @@ def get_user(ops: Ops, email: str) -> dict | None:
         "cognito-idp", "admin-list-groups-for-user", "--user-pool-id", ops.output("UserPoolId"),
         "--username", email).get("Groups", [])]
     return {"email": attrs.get("email", email), "status": u.get("UserStatus"), "enabled": u.get("Enabled"),
+            "sub": attrs.get("sub") or u.get("Username"),
             "accounts": parse_slugs(attrs.get("custom:accounts", "")), "groups": groups}
 
 
@@ -641,22 +649,39 @@ def _home_plan(ops: Ops, groups: list[str], slugs: list[str]) -> tuple[list[str]
     return ["re-render the site, so the accounts home for that set of accounts exists"], True
 
 
+def group_members(ops: Ops, group: str) -> set[str]:
+    return {u["Username"] for u in ops.aws("cognito-idp", "list-users-in-group", "--user-pool-id",
+                                            ops.output("UserPoolId"), "--group-name", group).get("Users", [])}
+
+
+def pool_users(ops: Ops) -> list[dict]:
+    """Every enabled user who can sign in: {email, sub, accounts, admin}.
+    `accounts` is what they track (and, for a viewer, what they may open)."""
+    users = ops.aws("cognito-idp", "list-users", "--user-pool-id", ops.output("UserPoolId")).get("Users", [])
+    viewers, admins = group_members(ops, ops.output("ViewerGroup")), group_members(ops, ops.output("AdminGroup"))
+    out = []
+    for u in users:
+        if u["Username"] not in viewers | admins or not u.get("Enabled", True):
+            continue
+        attrs = {a["Name"]: a["Value"] for a in u.get("Attributes", [])}
+        out.append({"email": attrs.get("email", u["Username"]), "sub": attrs.get("sub", u["Username"]),
+                    "accounts": parse_slugs(attrs.get("custom:accounts", "")),
+                    "admin": u["Username"] in admins})
+    return out
+
+
 def cmd_users_list(ops: Ops, args) -> int:
     pool = ops.output("UserPoolId")
     viewer, admin = ops.output("ViewerGroup"), ops.output("AdminGroup")
     users = ops.aws("cognito-idp", "list-users", "--user-pool-id", pool).get("Users", [])
-
-    def members(group: str) -> set[str]:
-        return {u["Username"] for u in ops.aws("cognito-idp", "list-users-in-group", "--user-pool-id", pool,
-                                                "--group-name", group).get("Users", [])}
-
-    viewers, admins = members(viewer), members(admin)
+    viewers, admins = group_members(ops, viewer), group_members(ops, admin)
     rows = [["EMAIL", "STATUS", "ACCESS"]]
     for u in sorted(users, key=lambda u: next((a["Value"] for a in u.get("Attributes", [])
                                                if a["Name"] == "email"), "")):
         attrs = {a["Name"]: a["Value"] for a in u.get("Attributes", [])}
         if u["Username"] in admins:
-            access = "every account (admin)"
+            tracks = ", ".join(parse_slugs(attrs.get("custom:accounts", "")))
+            access = "every account (admin)" + (f"; tracks {tracks}" if tracks else "")
         elif u["Username"] in viewers:
             access = ", ".join(parse_slugs(attrs.get("custom:accounts", ""))) or "no accounts yet"
         else:
@@ -720,11 +745,18 @@ def _change_accounts(ops: Ops, args, grant: bool) -> int:
     plan = [f"change {email}'s accounts from [{', '.join(before) or 'none'}] to [{', '.join(after) or 'none'}]",
             "it takes effect at their next sign-in"]
     if admin in user["groups"]:
-        plan.append("note: they are an admin and see every account whatever this list says")
+        plan.append("note: they are an admin and see every account anyway; this list marks the accounts "
+                    "they track, whose briefs are written for their persona")
     elif viewer not in user["groups"]:
         plan.append(f"note: they are not in {viewer}, so they cannot sign in at all")
     if not grant:
         plan.append("note: " + SESSION_NOTE)
+    else:
+        for other in pool_users(ops):
+            shared = sorted(set(slugs) & set(other["accounts"]))
+            if other["email"] != email and shared:
+                plan.append(f"note: {other['email']} already tracks {', '.join(shared)}; while two users "
+                            f"track an account, its brief is written for the default reader")
     home, publish = _home_plan(ops, user["groups"], after)
     if not ops.confirm(plan + home):
         return 1
@@ -798,6 +830,118 @@ def cmd_users_resend(ops: Ops, args) -> int:
     ops.aws("cognito-idp", "admin-create-user", "--user-pool-id", ops.output("UserPoolId"),
             "--username", email, "--message-action", "RESEND", "--desired-delivery-mediums", "EMAIL",
             change=True)
+    return 0
+
+
+# -------------------------------------------------------------------- personas
+
+def profiles(ops: Ops) -> dict[str, dict]:
+    """Every saved profile, by the Cognito sub it belongs to (profiles/<sub>.json)."""
+    bucket = ops.output("DataBucketName")
+    keys = [o["Key"] for o in list_objects(ops, bucket, "profiles/") if o["Key"].endswith(".json")]
+
+    def read(key: str) -> tuple[str, dict | None]:
+        try:
+            return key[len("profiles/"):-len(".json")], ops.aws("s3", "cp", f"s3://{bucket}/{key}", "-")
+        except (AwsError, ValueError):
+            return key, None
+
+    with ThreadPoolExecutor(8) as pool:
+        return {sub: body for sub, body in pool.map(read, keys) if body is not None}
+
+
+def account_readers(ops: Ops) -> dict[str, dict]:
+    """Who each account's brief is written for: the persona of the one user who
+    tracks it, or the default reader, with the reason."""
+    slugs = sorted({slug_of(c) for c in live_configs(ops) if slug_of(c)})
+    users, saved = pool_users(ops), profiles(ops)
+    out = {}
+    for slug in slugs:
+        trackers = [u for u in users if slug in u["accounts"]]
+        entry = {"tracked_by": [u["email"] for u in trackers], "persona": None, "ref": None, "reason": None}
+        if not trackers:
+            entry["reason"] = "no one tracks it"
+        elif len(trackers) > 1:
+            entry["reason"] = f"{len(trackers)} users track it"
+        else:
+            raw = (saved.get(trackers[0]["sub"]) or {}).get("persona")
+            who, problems = persona_schema.clean(raw)
+            if persona_schema.is_blank(who):
+                entry["reason"] = "no persona saved"
+            else:
+                entry.update(persona=who, ref=persona_schema.ref(who), problems=problems)
+        out[slug] = entry
+    return out
+
+
+def cmd_personas_set(ops: Ops, args) -> int:
+    """Save a user's persona from a JSON file holding the fields in
+    tools/persona.py. Users edit their own on /accounts; this is for setting
+    one up for them, or for yourself."""
+    email = check_email(args.email)
+    user = need_user(ops, email)
+    try:
+        with open(args.file) as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as exc:
+        fail(f"cannot read {args.file}: {exc}")
+    who, problems = persona_schema.clean(raw.get("persona", raw) if isinstance(raw, dict) else raw)
+    if problems:
+        fail(f"{args.file}: " + "; ".join(problems))
+    if persona_schema.is_blank(who):
+        fail(f"{args.file} describes no one: fill in at least a role, an employer or some terms")
+    if not user.get("sub"):
+        fail(f"Cognito returned no sub for {email}, and a profile is keyed by it")
+    bucket = ops.output("DataBucketName")
+    key = f"profiles/{user['sub']}.json"
+    try:
+        before = (ops.aws("s3", "cp", f"s3://{bucket}/{key}", "-") or {}).get("persona")
+    except (AwsError, ValueError):
+        before = None
+    if before == who:
+        print(f"{email}'s persona is already this one. Nothing to do.")
+        return 0
+    if before:
+        sys.stdout.writelines(difflib.unified_diff(_pretty(before), _pretty(who), "saved", args.file, n=2))
+    plan = [f"save {email}'s persona: {persona_schema.describe(who)}, "
+            f"{len(who['focus_terms'])} focus and {len(who['competitor_terms'])} competitor terms",
+            "briefs for the accounts they track are written for it from the next weekly run"]
+    if not user["accounts"]:
+        plan.append(f"note: they track no accounts yet, so no brief uses it: "
+                    f"`tools/tick.py users grant {email} <slug>`")
+    if not ops.confirm(plan):
+        return 1
+    body = {"persona": who, "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "profile.json")
+        with open(path, "w") as f:
+            json.dump(body, f, indent=1, ensure_ascii=False)
+        ops.aws("s3", "cp", path, f"s3://{bucket}/{key}", "--content-type", "application/json",
+                "--only-show-errors", change=True, parse=False)
+    if not ops.dry_run:
+        print(f"Saved {email}'s persona.")
+    return 0
+
+
+def cmd_personas_list(ops: Ops, args) -> int:
+    """Each account, the user who tracks it, and who its brief is written for.
+    The weekly brief run reads --json; an account tracked by no one, or by
+    more than one user, gets the default reader."""
+    readers = account_readers(ops)
+    if args.json:
+        print(json.dumps(readers, indent=1, ensure_ascii=False))
+        return 0
+    rows = [["ACCOUNT", "TRACKED BY", "BRIEF WRITTEN FOR"]]
+    for slug, r in readers.items():
+        if r["persona"]:
+            terms = r["persona"]["focus_terms"]
+            written = (persona_schema.describe(r["persona"])
+                       + (f" ({', '.join(terms[:3])}{f' +{len(terms) - 3}' if len(terms) > 3 else ''})"
+                          if terms else ""))
+        else:
+            written = f"default reader: {r['reason']}"
+        rows.append([slug, ", ".join(r["tracked_by"]) or "-", written])
+    table(rows)
     return 0
 
 
@@ -1141,6 +1285,13 @@ def parser() -> argparse.ArgumentParser:
                              ("enable", cmd_users_enable, "let a disabled user sign in again"),
                              ("resend", cmd_users_resend, "re-send an invite whose password expired")):
         leaf(g, name, func, text).add_argument("email")
+
+    g = group("personas", "who each account's weekly brief is written for")
+    p = leaf(g, "list", cmd_personas_list, "each account, who tracks it, and their persona")
+    p.add_argument("--json", action="store_true", help="the map the weekly brief run reads")
+    p = leaf(g, "set", cmd_personas_set, "save a user's persona from a JSON file")
+    p.add_argument("email")
+    p.add_argument("file", help="a JSON object with the fields in tools/persona.py")
 
     g = group("requests", "the waitlist and viewers' requests for new accounts")
     p = leaf(g, "list", cmd_requests_list, "list waitlist requests (or --accounts), oldest first")

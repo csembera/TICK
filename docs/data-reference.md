@@ -20,6 +20,7 @@ only in the data bucket (`DataBucketName` output). `python3 tools/preview.py
 | `derived/state/company=<slug>/state.json` | collector, last | collector (next run), publisher, tick-brief, `audit_diffs.py` |
 | `derived/tech_stack/company=<slug>/dt=<date>/tech_stack.json` | collector | publisher, tick-brief, `tech_report.py` |
 | `briefs/company=<slug>/week=<date>/brief.json`, `evidence.json` | tick-brief `publish.py` | publisher |
+| `profiles/<sub>.json` | `tools/tick.py personas set` | `tools/tick.py personas list`, so the tick-brief run |
 
 `<slug>` is the config's `company_slug`; `<date>` is the UTC date of the crawl;
 `<week>` is the last day of the brief's 7-day window. A config's file name
@@ -146,8 +147,9 @@ one match; the full board is the curated file.
 
 ```json
 {
-  "prompt_version": 8,
+  "prompt_version": 9,
   "company_slug": "geha",
+  "persona_ref": "f8b9e6456717",
   "week": {"start": "2026-10-26", "end": "2026-11-01"},
   "quiet_week": false,
   "paragraphs": ["... [[R123]] ..."],
@@ -156,14 +158,50 @@ one match; the full board is the curated file.
 }
 ```
 
+`persona_ref` is the `ref` of the pack's persona, or null for the default
+reader (briefs before prompt v9 have no such key).
+
 `evidence.json` is the pack it was written from, built by `evidence.py`:
 `company`, `window` (start, end, crawl days), `data_quality_flags`, `board`
 (id `BOARD`: open counts, movement, open leadership roles, longest open),
 `stack` (id `STACK`: terms new, gone, rising, falling, recent and standing),
 and `opened` / `closed` / `reopened` postings, each with its id, flags, pay and
-role text. Every `[[id]]` in the brief must name a posting in the pack,
-`BOARD` or `STACK`; `check.py` enforces that, and the page resolves each
-citation against this file.
+role text. When the brief has a reader, `persona` (id `PERSONA`) holds them:
+`ref`, `role`, `sells_for`, `offer`, `sells_to`, each focus and competitor
+term with `open_roles`, `in_opened`, `in_closed` and `new_to_board`, and
+`standing_roles`; every moved posting then also lists its `persona_terms`.
+Every `[[id]]` in the brief must name a posting in the pack (standing roles
+included), `BOARD`, `STACK` or `PERSONA`; `check.py` enforces that, and the
+page resolves each citation against this file.
+
+## A profile
+
+`profiles/<sub>.json`, keyed by the user's Cognito `sub`:
+
+```json
+{
+  "persona": {
+    "role": "account_executive",
+    "sells_for": "Initech",
+    "offer": "Hardened container images with signed SBOMs",
+    "buyers": ["security", "platform"],
+    "focus_terms": ["sbom", "kubernetes"],
+    "competitor_terms": ["snyk"]
+  },
+  "updated_at": "2026-11-03T15:00:00Z"
+}
+```
+
+| Field | Limits |
+|---|---|
+| `role` | One of `account_executive`, `solutions_engineer`, `sales_development`, `customer_success`, `partner_manager`, `marketing`, `founder`, `other` |
+| `sells_for` | Up to 80 characters |
+| `offer` | What they sell, up to 240 characters |
+| `buyers` | Any of `security`, `platform`, `engineering`, `data`, `it`, `finance`, `operations`, `people`, `procurement` |
+| `focus_terms`, `competitor_terms` | Up to 30 and 20 terms, each up to 60 characters of letters, digits, spaces and `. + # / & ' -`; de-duplicated ignoring case |
+
+[tools/persona.py](../tools/persona.py) enforces these on every write and
+again when a brief reads the profile; any other field is dropped.
 
 ## The site bucket
 
