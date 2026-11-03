@@ -230,7 +230,10 @@ context, each item carrying an id. A model writes the brief from that pack and
 nothing else, citing ids as `[[id]]`. `check.py` then re-verifies in code that
 every citation exists, every quote is verbatim, and the length and
 action-item limits hold. Only a brief that passes is uploaded, by `publish.py`,
-with its evidence, which the page resolves its citations against.
+with its evidence, which the page resolves its citations against. Every cited
+role links, by its status when the page is rendered rather than in the pack:
+an open role to its posting on the board, a closed one to its archive page.
+So a role that closes after its brief stops pointing at a dead board link.
 
 The site shows each account's newest week holding both files. A skipped week
 leaves last week's brief up, dated. A new brief appears at the next nightly
