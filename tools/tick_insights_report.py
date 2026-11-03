@@ -493,22 +493,30 @@ def open_postings(lake: dict, days: int = NEW_ROLE_DAYS) -> list[dict]:
     else:
         source = {pid: st for pid, st in state.items()
                   if not st.get("closed_on") and st.get("last_seen") == curr_dt}
+    boiler = detect_boilerplate_prefix(curated) if source is curated else 0
 
     rows = []
     for pid, rec in source.items():
         st = state.get(pid, {})
         sp = stack_postings.get(pid, {})
         fs = st.get("first_seen") or rec.get("first_seen")
+        title = rec.get("title") or sp.get("title") or pid
         rows.append({
             "pid": pid,
-            "title": rec.get("title") or sp.get("title") or pid,
+            "title": title,
             "location": rec.get("location") or sp.get("location") or "",
+            "team": rec.get("team") or "",
             "url": rec.get("url") or sp.get("url") or "",
             "is_tech_role": bool(rec.get("is_tech_role", sp.get("is_tech_role", pid in tech_ids))),
+            "is_leadership": bool(_LEADERSHIP_RE.search(title)),
             "terms": sorted(set(term_by_pid.get(pid, []))),
             "first_seen": fs,
             "is_new": opening_window(dts, curr_dt, fs, days),
             "pay": pay_of(rec) if rec is not st else None,
+            # what the table's search reads: the role's own text, because the
+            # board's intro and benefits are on every posting and would make
+            # any word in them match the whole board
+            "text": role_text_of(rec, boiler) if rec is not st else "",
         })
     # Newest first by first-seen date; postings with no date sink to the end.
     # Within a day: tech roles, then the richest stack evidence, and title breaks
@@ -608,6 +616,16 @@ def pay_label(pay: dict | None, short: bool = False) -> str | None:
     if pay.get("currency", "USD") != "USD":
         rng = f'{rng} {pay["currency"]}'
     return rng if short else f'{rng} {"an hour" if pay["period"] == "hour" else "a year"}'
+
+
+def annual_pay(pay: dict | None) -> int | None:
+    """One figure to sort pay by: the middle of the range, or its top for "up
+    to $X", as a year's pay. An hourly rate counts 2080 hours, a full-time
+    year, so hourly and salaried seats sort on one scale."""
+    if not pay:
+        return None
+    mid = pay["max"] if pay["min"] is None else (pay["min"] + pay["max"]) / 2
+    return round(mid * (2080 if pay["period"] == "hour" else 1))
 
 
 def hiring_profile(rec: dict | None, max_len: int = 260) -> str | None:
@@ -1142,6 +1160,41 @@ a{color:var(--color-accent);text-underline-offset:3px}
   background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
 .tbl-controls input[type=search]:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
 .chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 70%,transparent)}
+.tbl-filters{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;margin:-2px 0 12px}
+.btn-link{font:inherit;font-size:12.5px;background:none;border:0;padding:0;color:var(--color-accent);cursor:pointer;
+  text-decoration:underline;text-underline-offset:3px}
+.filter-chip{display:inline-flex;align-items:center;gap:2px;font-size:12px;padding:2px 2px 2px 10px;
+  background:var(--color-accent-100);color:var(--color-accent-800)}
+.chip-x{font:inherit;font-size:15px;line-height:1;background:none;border:0;padding:0 6px;cursor:pointer;color:inherit}
+/* sortable headers: the button is added by the table script, so with JS off a
+   header is plain text rather than a control that does nothing */
+.th-sort{font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;background:none;border:0;
+  padding:0;cursor:pointer;white-space:nowrap;text-align:inherit}
+.th-sort:hover,.table th[aria-sort=ascending],.table th[aria-sort=descending]{color:var(--color-text)}
+.table th[aria-sort=ascending] .th-sort::after{content:" \\2191"}
+.table th[aria-sort=descending] .th-sort::after{content:" \\2193"}
+/* stack terms are buttons that filter Open roles to the postings behind them */
+button.tag{font-family:var(--font-body);background:transparent;cursor:pointer}
+button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--color-accent);color:var(--color-bg)}
+.term-btn{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left;
+  text-decoration:underline;text-decoration-color:var(--color-divider);text-underline-offset:3px}
+.term-btn:hover,.term-btn[aria-pressed=true]{color:var(--color-accent-700);text-decoration-color:currentColor}
+.term-btn[aria-pressed=true]{font-weight:600}
+.row-hit{margin-top:5px;font-size:12px;line-height:1.45;color:color-mix(in srgb,var(--color-text) 62%,transparent)}
+.row-hit mark{background:var(--color-accent-100);color:var(--color-accent-900);padding:0 1px}
+.tag-mine{background:var(--color-accent-900);color:#fff}
+.my-terms{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 12px;padding:9px 11px;
+  border:1px dashed var(--color-divider);font-size:12.5px}
+.my-terms-label{font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.my-terms-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;border:1px solid var(--color-accent-900);color:var(--color-accent-900)}
+.chip-term{font:inherit;font-size:12px;background:none;border:0;padding:2px 4px 2px 9px;cursor:pointer;color:inherit}
+.chip-term b{font-weight:600;color:var(--color-accent-700);margin-left:3px}
+.chip-term[aria-pressed=true],.chip-term[aria-pressed=true] b{background:var(--color-accent-900);color:#fff}
+.my-terms-form{display:flex;gap:6px}
+.my-terms-form input{font-family:var(--font-body);font-size:13px;padding:5px 9px;width:210px;max-width:100%;
+  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
+.my-terms-form input:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
 .tbl-empty{margin:0;padding:14px;font-size:12.5px}
 .pager{display:flex;align-items:center;gap:12px;margin-top:11px;flex-wrap:wrap}
 .arch-table tbody tr[data-arch]{cursor:pointer}
@@ -1174,6 +1227,7 @@ a{color:var(--color-accent);text-underline-offset:3px}
   .nav-tabs a{font-size:16px;white-space:nowrap}
   .nav-auth{gap:14px}
   .tbl-controls input[type=search]{width:100%}
+  .my-terms-form{flex:1 0 100%}.my-terms-form input{flex:1;width:auto}
   .hdr h1{font-size:26px!important}
 }
 @media (prefers-reduced-motion:reduce){
@@ -1181,7 +1235,7 @@ a{color:var(--color-accent);text-underline-offset:3px}
     transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 @media print{
-  .nav,.skip-link,.crumb,.btn,.tbl-controls,.pager,.chart-tbl,.arch-dialog{display:none!important}
+  .nav,.skip-link,.crumb,.btn,.tbl-controls,.tbl-filters,.my-terms,.pager,.chart-tbl,.arch-dialog{display:none!important}
   body{background:#fff;font-size:11.5pt}
   .wrap{max-width:none;padding:0}
   .grid,.grid.narrative{grid-template-columns:1fr;gap:14px}
@@ -1509,88 +1563,479 @@ def _copy_script(element_id: str, text: str) -> str:
 ROLES_PAGE_SIZE = 10
 
 
-_ROLE_TABLE_IDS = {"table": "open-roles", "filter": "role-filter", "flag": "new-only",
-                   "flag_attr": "data-new", "count": "row-count", "total": "row-total",
-                   "empty": "no-match", "pager": "roles-pager", "prev": "page-prev",
-                   "next": "page-next", "status": "page-status"}
-_ARCHIVE_TABLE_IDS = {"table": "archive-roles", "filter": "archive-filter", "flag": "archive-tech",
-                      "flag_attr": "data-tech", "count": "archive-count", "total": "archive-total",
-                      "empty": "archive-no-match", "pager": "archive-pager", "prev": "archive-prev",
-                      "next": "archive-next", "status": "archive-status"}
+# The dashboard's two tables, by the ids of their controls. `prefix` keeps each
+# table's keys apart in the URL fragment; `text` names the JSON holding each
+# open role's description (the archive's are already in its detail templates);
+# `terms` marks the table that stack-term and My terms clicks filter.
+_ROLE_TABLE = {"table": "open-roles", "prefix": "", "search": "role-filter", "flags": "role-flags",
+               "count": "row-count", "total": "row-total", "empty": "no-match", "head": "open-roles-head",
+               "pager": "roles-pager", "prev": "page-prev", "next": "page-next", "status": "page-status",
+               "text": "open-roles-text", "terms": True}
+_ARCHIVE_TABLE = {"table": "archive-roles", "prefix": "a", "search": "archive-filter",
+                  "flags": "archive-flags", "count": "archive-count", "total": "archive-total",
+                  "empty": "archive-no-match", "head": "archive", "pager": "archive-pager",
+                  "prev": "archive-prev", "next": "archive-next", "status": "archive-status",
+                  "text": None, "terms": False}
+
+# localStorage key for My terms: one list for every dashboard on the site.
+_MY_TERMS_KEY = "tick-my-terms"
+_MY_TERMS_MAX, _MY_TERM_CHARS = 30, 60
 
 
-def _filter_script(ids: dict = _ROLE_TABLE_IDS) -> str:
-    """Client-side filtering + pagination for a dashboard table — the open roles
-    and the archive share it, each passing the ids of its own controls.
+def _row_attrs(attrs: dict) -> str:
+    """A table row's data attributes: what the table script filters and sorts
+    on. A sort key is blank where the row has no value, so it sinks either way."""
+    return " ".join(f'{k}="{html.escape(str(v), quote=True)}"' for k, v in attrs.items())
 
-    The table ships complete in the HTML and this only toggles row visibility,
-    so with JS off every row is still on the page — which is also why the
-    pager starts hidden and is revealed here rather than rendered ready-made.
-    Paging applies to the FILTERED set, not the raw rows, so the page numbers
-    always describe what the reader is actually looking at."""
-    return f"""<script>
-(function () {{
-  var PAGE = {ROLES_PAGE_SIZE};
-  var q = document.getElementById('{ids["filter"]}');
-  var flag = document.getElementById('{ids["flag"]}');
-  var table = document.getElementById('{ids["table"]}');
-  var count = document.getElementById('{ids["count"]}');
-  var empty = document.getElementById('{ids["empty"]}');
-  var pager = document.getElementById('{ids["pager"]}');
-  var prev = document.getElementById('{ids["prev"]}');
-  var next = document.getElementById('{ids["next"]}');
-  var status = document.getElementById('{ids["status"]}');
-  if (!q || !table) return;
-  var rows = Array.prototype.slice.call(table.tBodies[0].rows)
-    .filter(function (r) {{ return r.hasAttribute('data-q'); }});
-  var matched = rows.slice();
-  var page = 1;
 
-  function pages() {{ return Math.max(1, Math.ceil(matched.length / PAGE)); }}
+def _json_for_script(value) -> str:
+    """JSON that is safe inside a <script> element: '<', '>' and '&' become
+    unicode escapes, so no posting's text can close the element early."""
+    return (json.dumps(value, ensure_ascii=False)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
-  function render() {{
-    if (page > pages()) page = pages();
-    if (page < 1) page = 1;
-    var start = (page - 1) * PAGE;
-    var slice = matched.slice(start, start + PAGE);
-    rows.forEach(function (r) {{ r.hidden = true; }});
-    slice.forEach(function (r) {{ r.hidden = false; }});
 
-    if (count) count.textContent = matched.length;
-    var total = document.getElementById('{ids["total"]}');
-    if (total) total.hidden = matched.length === rows.length;
-    if (empty) empty.hidden = matched.length !== 0;
+def _flag_box(flag: str, label: str, count: int = 0, hidden: bool = False) -> str:
+    """One filter checkbox. A row passes when its data-<flag> is "1"."""
+    # one span for the text: .chk is a flex row, so a bare count would get its own gap
+    return (f'<label class="chk"{" hidden" if hidden else ""}><input type="checkbox" data-flag="{flag}">'
+            f'<span>{label} (<span data-count>{count}</span>)</span></label>')
 
-    if (pager) pager.hidden = matched.length <= PAGE;
-    if (status) {{
-      status.textContent = matched.length
-        ? (start + 1) + '\u2013' + (start + slice.length) + ' of ' + matched.length
-          + ' \u00b7 page ' + page + ' of ' + pages()
-        : '';
-    }}
-    if (prev) prev.disabled = page <= 1;
-    if (next) next.disabled = page >= pages();
-  }}
 
-  function apply() {{
-    var needle = q.value.trim().toLowerCase();
-    var only = flag && flag.checked;
-    matched = rows.filter(function (r) {{
-      var hay = r.getAttribute('data-q') || '';
-      return (!needle || hay.indexOf(needle) !== -1)
-          && (!only || r.getAttribute('{ids["flag_attr"]}') === '1');
-    }});
-    page = 1;               // a new filter always lands the reader on page one
-    render();
-  }}
+def _filter_row(cfg: dict, boxes: list[str], label: str) -> str:
+    """The filters under a table's heading: its checkboxes, the active term
+    filter (if any) and a way to clear them all."""
+    return (f'<div class="tbl-filters" id="{cfg["flags"]}" role="group" aria-label="{label}">'
+            f'{"".join(boxes)}'
+            f'<span class="filter-chip" data-active hidden></span>'
+            f'<button type="button" class="btn-link" data-clear="{cfg["table"]}" hidden>Clear filters</button>'
+            f'</div>')
 
-  q.addEventListener('input', apply);
-  if (flag) flag.addEventListener('change', apply);
-  if (prev) prev.addEventListener('click', function () {{ page--; render(); }});
-  if (next) next.addEventListener('click', function () {{ page++; render(); }});
-  apply();
-}})();
+
+def _my_terms_strip() -> str:
+    """The My terms editor, above Open roles. Hidden until the script runs: it
+    needs both JS and browser storage, and offers nothing without them."""
+    return (f'<div class="my-terms" id="my-terms" hidden>'
+            f'<span class="my-terms-label">My terms</span>'
+            f'<span class="my-terms-list" id="my-terms-list"></span>'
+            f'<form class="my-terms-form" id="my-terms-form">'
+            f'<input id="my-terms-input" type="text" maxlength="300" autocomplete="off" '
+            f'placeholder="Add terms, e.g. kubernetes, sbom" aria-label="Add to My terms">'
+            f'<button type="submit" class="btn btn-secondary btn-sm">Add</button></form>'
+            f'<span class="text-muted" style="font-size:11.5px">Kept in this browser. Every dashboard '
+            f'tags the roles whose title or description mentions one.</span></div>')
+
+
+# Search, sort, filters and pages for the dashboard's tables, plus My terms.
+#
+# Every row ships in the HTML and this only reorders and hides them, so with JS
+# off the whole table is still on the page. Filters narrow, sorting orders what
+# is left, and paging slices that, so the page numbers always describe what the
+# reader is looking at. The view lives in the URL fragment (#q=sbom&sort=pay-desc),
+# so a bookmark or a pasted link opens the same view; it is written only when
+# the reader changes something, so arriving at #archive still scrolls there.
+#
+# A search matches anywhere in the title, location or description. My terms and
+# term filters match whole words, with the collector's boundaries (_term_pattern),
+# so "java" never matches "javascript". A stack term clicked on the page filters
+# on the terms the collector matched, so the count on its card and the rows
+# shown always agree.
+_TABLES_JS = r"""<script>
+(function () {
+  var PAGE = %PAGE%, STORE = %STORE%, MAX_TERMS = %MAX_TERMS%, TERM_CHARS = %TERM_CHARS%;
+  var CONFIG = %CONFIG%;
+  // the view in the fragment; a plain anchor such as #archive carries none
+  function readParams() {
+    try { return new URLSearchParams(location.hash.indexOf('=') > 0 ? location.hash.slice(1) : ''); }
+    catch (e) { return new URLSearchParams(''); }
+  }
+  var params = readParams();
+
+  function writeHash() {
+    var s = params.toString();
+    try { history.replaceState(null, '', location.pathname + location.search + (s ? '#' + s : '')); }
+    catch (e) {}
+  }
+  function setParam(k, v) { if (v) params.set(k, v); else params.delete(k); }
+  function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function wordRe(term) {
+    return new RegExp('(?:^|[^\\w#./-])' + escapeRe(term) + '(?![\\w#-])', 'i');
+  }
+  function same(a, b) { return a.toLowerCase() === b.toLowerCase(); }
+
+  function loadMine() {
+    try {
+      var v = JSON.parse(localStorage.getItem(STORE) || '[]');
+      return Array.isArray(v) ? v.filter(function (t) { return typeof t === 'string' && t.trim(); })
+                                 .slice(0, MAX_TERMS) : [];
+    } catch (e) { return []; }
+  }
+  function storeMine() { try { localStorage.setItem(STORE, JSON.stringify(mine)); } catch (e) {} }
+  var mine = loadMine();
+
+  // an archived req's description, from the template its detail dialog clones
+  function templateText(r) {
+    var tpl = document.getElementById(r.getAttribute('data-arch') || '');
+    var d = tpl && tpl.content.querySelector('.arch-desc-sections, .arch-desc');
+    if (!d) return '';
+    var parts = d.querySelectorAll('p, li');
+    var text = parts.length ? [].map.call(parts, function (n) { return n.textContent; }).join(' ')
+                            : d.textContent;
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  function table(cfg) {
+    var el = document.getElementById(cfg.table);
+    if (!el || !el.tBodies[0]) return null;
+    var tbody = el.tBodies[0];
+    var rows = [].slice.call(tbody.rows).filter(function (r) { return r.hasAttribute('data-q'); });
+    var texts = [];
+    if (cfg.text) {
+      try { texts = JSON.parse(document.getElementById(cfg.text).textContent); } catch (e) {}
+    }
+    rows.forEach(function (r, i) {
+      r._i = i;
+      r._text = cfg.text ? (texts[i] || '') : templateText(r);
+      r._low = r._text.toLowerCase();
+      r._q = r.getAttribute('data-q') || '';
+      r._title = r.getAttribute('data-s-title') || '';
+      r._mine = [];
+    });
+
+    var P = cfg.prefix;
+    var heads = [].slice.call(el.tHead ? el.tHead.rows[0].cells : [])
+      .filter(function (th) { return th.hasAttribute('data-key'); });
+    var keys = heads.map(function (th) { return th.getAttribute('data-key'); });
+    var search = document.getElementById(cfg.search);
+    var box = document.getElementById(cfg.flags);
+    var checks = box ? [].slice.call(box.querySelectorAll('input[data-flag]')) : [];
+    var chip = box && box.querySelector('[data-active]');
+    var clears = [].slice.call(document.querySelectorAll('[data-clear="' + cfg.table + '"]'));
+    var count = document.getElementById(cfg.count), total = document.getElementById(cfg.total);
+    var empty = document.getElementById(cfg.empty), pager = document.getElementById(cfg.pager);
+    var prev = document.getElementById(cfg.prev), next = document.getElementById(cfg.next);
+    var status = document.getElementById(cfg.status);
+    var matched = rows.slice(), page = 1;
+    var mineBox = checks.filter(function (c) { return c.getAttribute('data-flag') === 'mine'; })[0];
+
+    var known = checks.map(function (c) { return c.getAttribute('data-flag'); });
+    var state = {};
+
+    // this table's view from the fragment; anything it does not recognise is dropped
+    function load() {
+      var sort = params.get(P + 'sort') || '';
+      state.q = params.get(P + 'q') || '';
+      state.sort = keys.indexOf(sort.split('-')[0]) === -1 ? '' : sort;
+      state.flags = (params.get(P + 'f') || '').split(',')
+        .filter(function (f) { return known.indexOf(f) !== -1; });
+      state.stack = cfg.terms ? params.get(P + 'stack') || '' : '';
+      state.term = cfg.terms ? params.get(P + 'term') || '' : '';
+      if (search) search.value = state.q;
+      checks.forEach(function (c) { c.checked = state.flags.indexOf(c.getAttribute('data-flag')) !== -1; });
+    }
+    load();
+
+    heads.forEach(function (th) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'th-sort';
+      while (th.firstChild) b.appendChild(th.firstChild);
+      th.appendChild(b);
+      b.addEventListener('click', function () {
+        var key = th.getAttribute('data-key'), first = th.getAttribute('data-first') || 'asc';
+        var cur = state.sort.split('-');
+        // a column's natural direction first, then reversed, then the board's own order
+        state.sort = cur[0] !== key ? key + '-' + first
+                   : cur[1] === first ? key + '-' + (first === 'asc' ? 'desc' : 'asc') : '';
+        apply(true);
+      });
+    });
+
+    function sorted() {
+      if (!state.sort) return rows.slice();
+      var key = state.sort.split('-')[0], desc = state.sort.split('-')[1] === 'desc';
+      var num = heads[keys.indexOf(key)].getAttribute('data-type') === 'num';
+      var attr = 'data-s-' + key;
+      return rows.slice().sort(function (a, b) {
+        var x = a.getAttribute(attr) || '', y = b.getAttribute(attr) || '';
+        // a row without the value (no pay posted, no date) sinks either way
+        if (!x || !y) return (!x && !y) ? a._i - b._i : !x ? 1 : -1;
+        var c = num ? (+x) - (+y) : x.localeCompare(y);
+        return (desc ? -c : c) || a._i - b._i;
+      });
+    }
+
+    // where a search matched inside the description, show the words around it
+    function snippet(r, needle) {
+      if (r._hit) { r._hit.parentNode.removeChild(r._hit); r._hit = null; }
+      var at = needle ? r._low.indexOf(needle) : -1;
+      if (at === -1 || r._q.indexOf(needle) !== -1) return;
+      var end = at + needle.length;
+      var from = Math.max(0, at - 70), to = Math.min(r._text.length, end + 70);
+      var sp = r._text.indexOf(' ', from);
+      if (from && sp !== -1 && sp < at) from = sp + 1;
+      sp = r._text.lastIndexOf(' ', to);
+      if (to < r._text.length && sp > end) to = sp;
+      var div = document.createElement('div'), mark = document.createElement('mark');
+      div.className = 'row-hit';
+      mark.textContent = r._text.slice(at, end);
+      div.appendChild(document.createTextNode((from ? '…' : '') + r._text.slice(from, at)));
+      div.appendChild(mark);
+      div.appendChild(document.createTextNode(r._text.slice(end, to) + (to < r._text.length ? '…' : '')));
+      r.cells[0].appendChild(div);
+      r._hit = div;
+    }
+
+    function render() {
+      var pages = Math.max(1, Math.ceil(matched.length / PAGE));
+      page = Math.min(Math.max(page, 1), pages);
+      var start = (page - 1) * PAGE, slice = matched.slice(start, start + PAGE);
+      rows.forEach(function (r) { r.hidden = true; });
+      slice.forEach(function (r) { r.hidden = false; });
+      if (count) count.textContent = matched.length;
+      if (total) total.hidden = matched.length === rows.length;
+      if (empty) empty.hidden = matched.length !== 0;
+      if (pager) pager.hidden = matched.length <= PAGE;
+      if (status) {
+        status.textContent = matched.length
+          ? (start + 1) + '–' + (start + slice.length) + ' of ' + matched.length
+            + ' · page ' + page + ' of ' + pages
+          : '';
+      }
+      if (prev) prev.disabled = page <= 1;
+      if (next) next.disabled = page >= pages;
+    }
+
+    function showChip() {
+      if (!chip) return;
+      chip.textContent = '';
+      var label = state.stack ? 'Stack term: ' + state.stack : state.term ? 'Term: ' + state.term : '';
+      chip.hidden = !label;
+      if (!label) return;
+      var x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'chip-x';
+      x.setAttribute('aria-label', 'Remove filter ' + label);
+      x.textContent = '×';
+      x.addEventListener('click', function () { state.stack = state.term = ''; apply(true); });
+      chip.appendChild(document.createTextNode(label));
+      chip.appendChild(x);
+    }
+
+    function apply(write) {
+      var needle = state.q.trim().toLowerCase();
+      var re = state.term ? wordRe(state.term) : null;
+      var order = sorted();
+      order.forEach(function (r) { tbody.appendChild(r); });
+      matched = order.filter(function (r) {
+        if (needle && r._q.indexOf(needle) === -1 && r._low.indexOf(needle) === -1) return false;
+        for (var i = 0; i < state.flags.length; i++) {
+          if (r.getAttribute('data-' + state.flags[i]) !== '1') return false;
+        }
+        if (state.stack && ('|' + (r.getAttribute('data-terms') || '') + '|')
+            .indexOf('|' + state.stack + '|') === -1) return false;
+        return !re || re.test(r._title + ' ' + r._text);
+      });
+      rows.forEach(function (r) { snippet(r, needle); });
+      page = 1;   // a new filter or order always starts the reader on page one
+      heads.forEach(function (th) {
+        var s = state.sort.split('-');
+        if (s[0] === th.getAttribute('data-key')) {
+          th.setAttribute('aria-sort', s[1] === 'desc' ? 'descending' : 'ascending');
+        } else {
+          th.removeAttribute('aria-sort');
+        }
+      });
+      showChip();
+      var filtering = !!(needle || state.flags.length || state.stack || state.term);
+      clears.forEach(function (c) { if (c.closest('.tbl-filters')) c.hidden = !filtering; });
+      if (cfg.terms) pressed();
+      if (write) {
+        setParam(P + 'q', state.q.trim());
+        setParam(P + 'sort', state.sort);
+        setParam(P + 'f', state.flags.join(','));
+        setParam(P + 'stack', state.stack);
+        setParam(P + 'term', state.term);
+        writeHash();
+      }
+      render();
+    }
+
+    // which of My terms each row mentions: tags on the row, and data-mine for the filter
+    function refreshMine() {
+      var res = mine.map(function (t) { return {t: t, re: wordRe(t)}; });
+      var n = 0;
+      rows.forEach(function (r) {
+        var hay = r._title + ' ' + r._text;
+        r._mine = res.filter(function (x) { return x.re.test(hay); }).map(function (x) { return x.t; });
+        r.setAttribute('data-mine', r._mine.length ? '1' : '0');
+        if (r._mineTags) { r._mineTags.parentNode.removeChild(r._mineTags); r._mineTags = null; }
+        if (!r._mine.length) return;
+        n++;
+        var div = document.createElement('div');
+        div.className = 'row-flags';
+        r._mine.forEach(function (t) {
+          var s = document.createElement('span');
+          s.className = 'tag tag-mine tag-flag';
+          s.textContent = t;
+          div.appendChild(s);
+        });
+        r.cells[0].insertBefore(div, r._hit || null);
+        r._mineTags = div;
+      });
+      if (mineBox) {
+        mineBox.parentNode.hidden = !mine.length;
+        mineBox.parentNode.querySelector('[data-count]').textContent = n;
+        if (!mine.length && mineBox.checked) {
+          mineBox.checked = false;
+          state.flags = state.flags.filter(function (f) { return f !== 'mine'; });
+        }
+      }
+    }
+
+    function pressed() {
+      [].forEach.call(document.querySelectorAll('[data-stack-term]'), function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-stack-term') === state.stack));
+      });
+      [].forEach.call(document.querySelectorAll('[data-my-term]'), function (b) {
+        b.setAttribute('aria-pressed', String(!!state.term && same(b.getAttribute('data-my-term'), state.term)));
+      });
+    }
+
+    if (search) search.addEventListener('input', function () { state.q = search.value; apply(true); });
+    checks.forEach(function (c) {
+      c.addEventListener('change', function () {
+        state.flags = checks.filter(function (x) { return x.checked; })
+                            .map(function (x) { return x.getAttribute('data-flag'); });
+        apply(true);
+      });
+    });
+    clears.forEach(function (c) {
+      c.addEventListener('click', function () {
+        state.q = state.stack = state.term = '';
+        state.flags = [];
+        if (search) search.value = '';
+        checks.forEach(function (x) { x.checked = false; });
+        apply(true);
+      });
+    });
+    if (prev) prev.addEventListener('click', function () { page--; render(); });
+    if (next) next.addEventListener('click', function () { page++; render(); });
+
+    return {
+      cfg: cfg, load: load, apply: apply, refreshMine: refreshMine, pressed: pressed,
+      // one term filter at a time; choosing the active one again clears it
+      setStack: function (t) { state.term = ''; state.stack = state.stack === t ? '' : t; apply(true); },
+      setTerm: function (t) {
+        state.stack = '';
+        state.term = state.term && same(state.term, t) ? '' : t;
+        apply(true);
+      },
+      mentions: function (t) {
+        return rows.filter(function (r) { return r._mine.indexOf(t) !== -1; }).length;
+      },
+      head: function () { return document.getElementById(cfg.head); }
+    };
+  }
+
+  var tables = CONFIG.map(table).filter(Boolean);
+  var roles = tables.filter(function (t) { return t.cfg.terms; })[0];
+  tables.forEach(function (t) { t.refreshMine(); t.apply(false); });
+
+  // another view of this page, opened in place (a pasted link): show it
+  window.addEventListener('hashchange', function () {
+    if (location.hash.indexOf('=') === -1) return;
+    params = readParams();
+    tables.forEach(function (t) { t.load(); t.refreshMine(); t.apply(false); });
+  });
+
+  // a stack term anywhere on the page filters Open roles to the postings behind it
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-stack-term]');
+    if (!b || !roles) return;
+    roles.setStack(b.getAttribute('data-stack-term'));
+    var head = roles.head();
+    if (head && !head.parentNode.contains(b)) head.scrollIntoView({block: 'start'});
+  });
+
+  var wrap = document.getElementById('my-terms');
+  if (!wrap || !roles) return;
+  var list = document.getElementById('my-terms-list');
+  var form = document.getElementById('my-terms-form');
+  var input = document.getElementById('my-terms-input');
+  wrap.hidden = false;
+
+  function draw() {
+    list.textContent = '';
+    if (!mine.length) {
+      var none = document.createElement('span');
+      none.className = 'text-muted';
+      none.textContent = 'None yet.';
+      list.appendChild(none);
+    }
+    mine.forEach(function (t) {
+      var n = roles.mentions(t);
+      var chip = document.createElement('span'), b = document.createElement('button');
+      var x = document.createElement('button'), num = document.createElement('b');
+      chip.className = 'chip';
+      b.type = x.type = 'button';
+      b.className = 'chip-term';
+      b.setAttribute('data-my-term', t);
+      b.title = n + ' open role' + (n === 1 ? '' : 's') + ' mention ' + t + '. Select to show only those.';
+      b.appendChild(document.createTextNode(t));
+      num.textContent = n;
+      b.appendChild(num);
+      b.addEventListener('click', function () { roles.setTerm(t); });
+      x.className = 'chip-x';
+      x.setAttribute('aria-label', 'Remove ' + t + ' from My terms');
+      x.textContent = '×';
+      x.addEventListener('click', function () {
+        mine = mine.filter(function (m) { return m !== t; });
+        changed();
+      });
+      chip.appendChild(b);
+      chip.appendChild(x);
+      list.appendChild(chip);
+    });
+    roles.pressed();
+  }
+
+  function changed() {
+    storeMine();
+    tables.forEach(function (t) { t.refreshMine(); t.apply(true); });
+    draw();
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    input.value.split(',').forEach(function (raw) {
+      var t = raw.replace(/\s+/g, ' ').trim().slice(0, TERM_CHARS);
+      if (t && mine.length < MAX_TERMS && !mine.some(function (m) { return same(m, t); })) mine.push(t);
+    });
+    input.value = '';
+    changed();
+  });
+  // the list was changed in another tab: follow it
+  window.addEventListener('storage', function (e) {
+    if (e.key !== STORE) return;
+    mine = loadMine();
+    tables.forEach(function (t) { t.refreshMine(); t.apply(false); });
+    draw();
+  });
+  draw();
+})();
 </script>"""
+
+
+def _tables_script() -> str:
+    """The script behind both dashboard tables and My terms; see _TABLES_JS."""
+    subs = {"%PAGE%": str(ROLES_PAGE_SIZE), "%STORE%": json.dumps(_MY_TERMS_KEY),
+            "%MAX_TERMS%": str(_MY_TERMS_MAX), "%TERM_CHARS%": str(_MY_TERM_CHARS),
+            "%CONFIG%": _json_for_script([_ROLE_TABLE, _ARCHIVE_TABLE])}
+    out = _TABLES_JS
+    for k, v in subs.items():
+        out = out.replace(k, v)
+    return out
 
 
 class Citations:
@@ -1619,8 +2064,13 @@ def _term_bucket_card(title: str, tag_class: str, rows: list[dict], footer_fn) -
         count = f'{r["curr_n"]} specs' if r["curr_n"] else f'was {r["prev_n"]}'
         if r.get("since"):
             count += f' &middot; since {date.fromisoformat(r["since"]):%b &rsquo;%y}'
-        body.append(f'<div class="stack-row"><span>{html.escape(r["term"])}</span>'
-                     f'<span class="text-muted" style="font-size:11.5px">{count}</span></div>')
+        term = html.escape(r["term"])
+        # a term still on the board filters Open roles to the postings behind it
+        label = (f'<button type="button" class="term-btn" data-stack-term="{term}" '
+                 f'title="Show the open roles that mention {term}">{term}</button>'
+                 if r["curr_n"] else f'<span>{term}</span>')
+        body.append(f'<div class="stack-row">{label}'
+                    f'<span class="text-muted" style="font-size:11.5px">{count}</span></div>')
     if not rows:
         body.append('<p class="text-muted" style="margin:0;font-size:12.5px">None this period.</p>')
     footer = footer_fn(rows[0]) if rows else ""
@@ -1878,12 +2328,21 @@ def render_dashboard(lake: dict, company: str) -> str:
         if r["is_tech_role"]:
             flags.append('<span class="tag tag-accent tag-flag">Tech role</span>')
         badges = f'<div class="row-flags">{"".join(flags)}</div>' if flags else ""
-        terms = "".join(f'<span class="tag tag-outline" style="margin:0 4px 4px 0">{html.escape(t)}</span>'
+        terms = "".join(f'<button type="button" class="tag tag-outline" data-stack-term="{html.escape(t)}" '
+                        f'style="margin:0 4px 4px 0">{html.escape(t)}</button>'
                         for t in r["terms"]) or "&mdash;"
         seen = html.escape(r["first_seen"] or "—")
         pay = html.escape(pay_label(r.get("pay"), short=True) or "—")
-        return (f'<tr data-new="{int(r["is_new"])}" '
-                f'data-q="{html.escape((r["title"] + " " + r["location"]).lower(), quote=True)}">'
+        attrs = _row_attrs({
+            "data-q": " ".join([r["title"], r["location"], r["team"]]).lower(),
+            "data-new": int(r["is_new"]), "data-tech": int(r["is_tech_role"]),
+            "data-lead": int(r["is_leadership"]),
+            "data-terms": "|".join(r["terms"]),
+            "data-s-title": r["title"].lower(), "data-s-loc": r["location"].lower(),
+            "data-s-seen": r["first_seen"] or "", "data-s-pay": annual_pay(r["pay"]) or "",
+            "data-s-n": len(r["terms"]),
+        })
+        return (f'<tr {attrs}>'
                 f'<td>{link}{badges}</td>'
                 f'<td class="text-muted">{html.escape(r["location"])}</td>'
                 f'<td class="text-muted" style="white-space:nowrap">{seen}</td>'
@@ -1893,20 +2352,39 @@ def render_dashboard(lake: dict, company: str) -> str:
     open_table_rows = "".join(_open_row(r) for r in open_rows)
 
     archive_rows = archived_postings(lake)
-    archive_tech = sum(1 for r in archive_rows if r["is_tech_role"])
+    for r in archive_rows:
+        r["is_leadership"] = bool(_LEADERSHIP_RE.search(r["title"]))
 
     def _archive_row(r: dict, i: int) -> str:
         days = "&mdash;" if r["days_open"] is None else str(r["days_open"])
-        hay = " ".join([r["title"], r["location"], r["team"] or ""]).lower()
         badge = ('<div class="row-flags"><span class="tag tag-accent tag-flag">Tech role</span></div>'
                  if r["is_tech_role"] else "")
-        return (f'<tr data-arch="arch-{i}" data-tech="{int(r["is_tech_role"])}" '
-                f'data-q="{html.escape(hay, quote=True)}">'
+        attrs = _row_attrs({
+            "data-arch": f"arch-{i}",
+            "data-q": " ".join([r["title"], r["location"], r["team"] or ""]).lower(),
+            "data-tech": int(r["is_tech_role"]), "data-lead": int(r["is_leadership"]),
+            "data-s-title": r["title"].lower(), "data-s-loc": r["location"].lower(),
+            "data-s-closed": r["closed_on"],
+            "data-s-days": "" if r["days_open"] is None else r["days_open"],
+        })
+        return (f'<tr {attrs}>'
                 f'<td><a href="{archive_href(company, r["pid"])}" aria-haspopup="dialog">'
                 f'{html.escape(r["title"])}</a>{badge}</td>'
                 f'<td class="text-muted">{html.escape(r["location"])}</td>'
                 f'<td class="text-muted" style="white-space:nowrap">{html.escape(r["closed_on"])}</td>'
                 f'<td class="text-muted num">{days}</td></tr>')
+
+    role_filters = _filter_row(_ROLE_TABLE, [
+        _flag_box("new", f"New in last {NEW_ROLE_DAYS} days", len(new_open)),
+        _flag_box("tech", "Tech role", sum(r["is_tech_role"] for r in open_rows)),
+        _flag_box("lead", "Leadership", sum(r["is_leadership"] for r in open_rows)),
+        _flag_box("mine", "My terms", hidden=True),
+    ], "Filter open roles")
+    archive_filters = _filter_row(_ARCHIVE_TABLE, [
+        _flag_box("tech", "Tech role", sum(r["is_tech_role"] for r in archive_rows)),
+        _flag_box("lead", "Leadership", sum(r["is_leadership"] for r in archive_rows)),
+        _flag_box("mine", "My terms", hidden=True),
+    ], "Filter archived roles")
 
     archive_table_rows = "".join(_archive_row(r, i) for i, r in enumerate(archive_rows))
     archive_details = "".join(_archive_detail(r, i, archive_href(company, r["pid"]))
@@ -2036,21 +2514,22 @@ def render_dashboard(lake: dict, company: str) -> str:
         <div class="stack-grid">{stack_cards}</div>
       </div>
       <div>
-        <div class="tbl-head">
+        <div class="tbl-head" id="open-roles-head">
           <h2 class="section-label text-muted" style="margin:0">Open roles &middot; <span id="row-count">{len(open_rows)}</span><span id="row-total" hidden> of {len(open_rows)}</span></h2>
           <div class="tbl-controls">
-            <input id="role-filter" type="search" placeholder="Filter by title or location" aria-label="Filter open roles">
-            <label class="chk"><input id="new-only" type="checkbox"> New in last {NEW_ROLE_DAYS} days ({len(new_open)})</label>
+            <input id="role-filter" type="search" placeholder="Title, location or description" aria-label="Search open roles by title, location or description">
           </div>
         </div>
+        {role_filters}
+        {_my_terms_strip()}
         <div class="blueprint" style="overflow-x:auto">
           <table class="table" id="open-roles">
             <caption class="visually-hidden">Open roles on the {curr_dt} board. Titles link to the
-              posting on the company&rsquo;s job board and open in a new tab.</caption>
-            <thead><tr><th scope="col">Posting</th><th scope="col">Location</th><th scope="col">First seen</th><th scope="col">Pay</th><th scope="col">Stack signals matched</th></tr></thead>
+              posting on the company&rsquo;s job board and open in a new tab. Column headers sort the table.</caption>
+            <thead><tr><th scope="col" data-key="title">Posting</th><th scope="col" data-key="loc">Location</th><th scope="col" data-key="seen" data-first="desc">First seen</th><th scope="col" data-key="pay" data-type="num" data-first="desc">Pay</th><th scope="col" data-key="n" data-type="num" data-first="desc">Stack signals matched</th></tr></thead>
             <tbody>{open_table_rows or '<tr><td colspan="5" class="text-muted">No open postings on this crawl.</td></tr>'}</tbody>
           </table>
-          <p class="tbl-empty text-muted" id="no-match" hidden>No open role matches that filter. Clear the search box, or untick &ldquo;New in last {NEW_ROLE_DAYS} days&rdquo;, to see the full board.</p>
+          <p class="tbl-empty text-muted" id="no-match" hidden>No open role matches these filters. <button type="button" class="btn-link" data-clear="open-roles">Clear filters</button> to see the full board.</p>
         </div>
         <div class="pager" id="roles-pager" hidden>
           <button type="button" class="btn btn-secondary btn-sm" id="page-prev">&larr; Prev</button>
@@ -2063,18 +2542,18 @@ def render_dashboard(lake: dict, company: str) -> str:
         <div class="tbl-head">
           <h2 class="section-label text-muted" style="margin:0">Archive &middot; <span id="archive-count">{len(archive_rows)}</span><span id="archive-total" hidden> of {len(archive_rows)}</span> closed</h2>
           <div class="tbl-controls">
-            <input id="archive-filter" type="search" placeholder="Filter by title, location or team" aria-label="Filter archived roles">
-            <label class="chk"><input id="archive-tech" type="checkbox"> Tech roles only ({archive_tech})</label>
+            <input id="archive-filter" type="search" placeholder="Title, location, team or description" aria-label="Search archived roles by title, location, team or description">
           </div>
         </div>
+        {archive_filters}
         <div class="blueprint" style="overflow-x:auto">
           <table class="table arch-table" id="archive-roles">
             <caption class="visually-hidden">Postings that have left the board, most recently closed
-              first. Select a posting to see everything TICK recorded about it.</caption>
-            <thead><tr><th scope="col">Posting</th><th scope="col">Location</th><th scope="col">Closed</th><th scope="col" class="num">Days open</th></tr></thead>
+              first. Select a posting to see everything TICK recorded about it. Column headers sort the table.</caption>
+            <thead><tr><th scope="col" data-key="title">Posting</th><th scope="col" data-key="loc">Location</th><th scope="col" data-key="closed" data-first="desc">Closed</th><th scope="col" class="num" data-key="days" data-type="num" data-first="desc">Days open</th></tr></thead>
             <tbody>{archive_table_rows or '<tr><td colspan="4" class="text-muted">No postings have closed since collection started.</td></tr>'}</tbody>
           </table>
-          <p class="tbl-empty text-muted" id="archive-no-match" hidden>No archived role matches that filter.</p>
+          <p class="tbl-empty text-muted" id="archive-no-match" hidden>No archived role matches these filters. <button type="button" class="btn-link" data-clear="archive-roles">Clear filters</button></p>
         </div>
         <div class="pager" id="archive-pager" hidden>
           <button type="button" class="btn btn-secondary btn-sm" id="archive-prev">&larr; Prev</button>
@@ -2125,8 +2604,8 @@ def render_dashboard(lake: dict, company: str) -> str:
   <div id="archive-dialog-body" class="arch-dialog-body"></div>
 </dialog>
 {archive_details}
-{_filter_script()}
-{_filter_script(_ARCHIVE_TABLE_IDS)}
+<script type="application/json" id="open-roles-text">{_json_for_script([" ".join(r["text"].split()) for r in open_rows])}</script>
+{_tables_script()}
 {_archive_script()}
 {_history_chart_script(history)}
 </body>
