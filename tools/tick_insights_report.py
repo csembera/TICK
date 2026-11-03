@@ -3179,7 +3179,7 @@ def render_account_brief(lake_io: dict, lake: dict, company: str, company_name: 
     publisher, so the two cannot disagree about which brief is current."""
     found = load_brief(lake_io, company)
     if found:
-        return render_ai_brief(*found)
+        return render_ai_brief(*found, lake)
     return render_no_brief(company, company_name, fmt_dt(lake["curr"]["captured_at"]))
 
 
@@ -3216,11 +3216,19 @@ def render_no_brief(company: str, company_name: str, generated: str) -> str:
 _AI_CITE_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 
 
-def render_ai_brief(brief: dict, evidence: dict) -> str:
+def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None) -> str:
     """The weekly brief a model wrote (see .claude/skills/tick-brief). The model's text is escaped like any other
     untrusted input; its [[id]] citations become numbered sources resolved
-    against the evidence pack it was written from."""
+    against the evidence pack it was written from.
+
+    Every cited role links somewhere, resolved against the lake as it stands
+    at render time rather than the pack: the pack's standing lists carry no
+    URL, and a role open that week may have closed since. A closed role links
+    to its archive page, which the publisher writes for every req state.json
+    holds as closed; an open one to its posting on the board."""
     company_name = evidence["company"]["name"]
+    state = (lake or {}).get("state") or {}
+    curated = (lake or {}).get("curated") or {}
     window, board = evidence["window"], evidence["board"]
     postings: dict[str, dict] = {}
     for sec in ("opened", "closed", "reopened"):
@@ -3256,9 +3264,13 @@ def render_ai_brief(brief: dict, evidence: dict) -> str:
                 else f'reopened {p["reopened_on"]}' if p.get("reopened_on")
                 else f'open {p.get("days_open")} days')
         where = f' ({p["location"]})' if p.get("location") else ""
+        # today's state wins over the pack's: a req can close, or reopen, after its brief
+        closed = state[cid].get("closed_on") if cid in state else p.get("closed_on")
+        if closed and not p.get("closed_on"):
+            what += f"; closed since, on {closed}"
         # a closed req's board URL now answers "role not found"; its archive page does not
-        url = (archive_href(evidence["company"]["slug"], cid) if p.get("closed_on")
-               else p.get("url"))
+        url = (archive_href(evidence["company"]["slug"], cid) if closed
+               else p.get("url") or (curated.get(cid) or {}).get("url"))
         return f'{cid} — {p["title"]}{where}, {what}.', url
 
     def sup(m: re.Match) -> str:
