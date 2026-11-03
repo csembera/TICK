@@ -1,7 +1,14 @@
-# TICK Collector (SAM)
+# The tick-collector stack
 
-Deterministic daily collection pipeline. Consumes `SourceConfig` artifacts
-produced by the evaluator (`../tools/evaluator.py`).
+Every AWS resource TICK runs on is one SAM stack, `tick-collector` in
+us-east-1, defined in [template.yaml](template.yaml). This file covers the
+stack itself: what is in it, first-time setup, deploys, parameters, the domain
+and sign-in.
+
+- How the system works: [docs/architecture.md](../docs/architecture.md)
+- Operating it day to day, through `tools/tick.py`: [docs/operations.md](../docs/operations.md)
+- File formats: [docs/data-reference.md](../docs/data-reference.md)
+- Local development: [docs/development.md](../docs/development.md)
 
 ```
 EventBridge Scheduler (daily)
@@ -35,8 +42,31 @@ site-static/ ── tools/tick.py publish static ──► the same bucket
         └─► CloudFront ── the only way in
               ├─ /, /docs, /demo  ─► public, no session needed
               ├─ /auth/*          ─► Auth Lambda ─► Cognito hosted UI (TICK's own pool)
+              ├─ /api/*           ─► Join Lambda (waitlist, account requests)
               └─ everything else  ─► CloudFront Function checks the session cookie
 ```
+
+## What is in it
+
+| Resource | What it is |
+|---|---|
+| `DataBucket` | The lake and the SourceConfigs. Versioned, and **retained** if the stack is deleted |
+| `DispatcherFunction` (`tick-collector-dispatcher`) | Queues one crawl per config, on `ScheduleExpression` |
+| `CollectQueue`, `CollectDLQ`, `DLQAlarm`, `AlertTopic` | The crawl queue (30-minute visibility, 3 attempts), the dead-letter queue (14 days), the alarm on it, and the email topic for `AlertEmail` |
+| `CollectorFunction` (`tick-collector-collector`) | Crawls one company per invocation, at most two at a time |
+| `PublisherFunction` (`tick-collector-publisher`) | Renders the lake into the site bucket, on `PublishScheduleExpression` |
+| `SiteBucket`, `SiteDistribution`, `SiteAuthFunction` | The private site bucket, CloudFront in front of it, and the edge function that checks sessions |
+| `AuthFunction` (`tick-collector-auth`) | `/auth/*`: the Cognito code exchange; mints the session cookie |
+| `JoinFunction` (`tick-collector-join`), `JoinRequestsTable`, `AccountRequestsTable` | `/api/*`: the public waitlist and viewers' account requests. Both tables **retained**, with point-in-time recovery |
+| `SiteUserPool`, its domain, client and the `tick-viewers` / `tick-admins` groups | TICK's own invite-only user pool |
+| `SiteCertificate`, `SiteDnsRecords` | The custom domain, when `SiteDomainName` is set |
+| `AuthConfigParameter` | SSM parameter that breaks the build-time cycle between the auth Lambda and the distribution |
+
+The roles GitHub Actions deploys with are a separate stack,
+`tick-github-deploy`, from [github-deploy-roles.yaml](github-deploy-roles.yaml),
+deployed once by hand so that a bad deploy of this stack cannot break the roles
+that deploy it. `tick-github-plan` can only create change sets;
+`tick-github-deploy` can be assumed only by an approved `production` job.
 
 ## First-time setup
 
@@ -44,14 +74,15 @@ Prerequisites: AWS CLI with working credentials (`aws sts get-caller-identity`),
 SAM CLI (`brew install aws-sam-cli`).
 
 ```bash
-# 1. Deploy the stack
+# 1. Deploy the stack (from infra/). Keep SECRET: every later deploy passes it.
+SECRET=$(openssl rand -hex 32); echo "$SECRET"
 sam build
 sam deploy --guided
 #    Stack Name:          tick-collector
 #    ScheduleState:       DISABLED       (enable after first manual run succeeds)
 #    AlertEmail:          you@example.com (optional — DLQ alarm emails)
 #    ViewerGroupName:     tick-viewers
-#    SessionSecret:       $(openssl rand -hex 32)
+#    SessionSecret:       the value of $SECRET
 #    Allow IAM role creation: y
 #    Save to samconfig.toml:  y
 #    -> note the DataBucketName and SiteUrl outputs
@@ -66,17 +97,16 @@ tools/tick.py collect dunder-mifflin --publish
 # 4. Check everything: the company should show a last crawl from just now
 tools/tick.py status
 
-# 5. Turn on the daily schedule
-sam deploy --parameter-overrides ScheduleState=ENABLED
+# 5. Turn on the daily schedule (from infra/). The overrides replace the saved
+#    ones, so pass the secret and the alert address again (see Parameters).
+sam deploy --parameter-overrides "ScheduleState=ENABLED AlertEmail=you@example.com SessionSecret=$SECRET"
+
+# 6. Invite yourself
+tools/tick.py users invite you@example.com --admin
 ```
 
 Every later operation, from inviting a viewer to redriving a failed crawl, is
-a `tools/tick.py` command: `tools/tick.py --help` lists them.
-
-Other parameters at deploy time:
-- `ScheduleExpression="cron(0 3 * * ? *)"` — when the daily run fires (UTC;
-  default 03:00). Note the inner quotes: the value contains spaces (see
-  "Quoting" under [The site](#access)).
+a `tools/tick.py` command; see [docs/operations.md](../docs/operations.md).
 
 ## Deploying a change
 
@@ -102,7 +132,7 @@ SECRET=$(aws lambda get-function-configuration \
 # 1. Static pages first — closes the window described above.
 tools/tick.py publish static
 
-# 2. The stack.
+# 2. The stack (from infra/).
 sam build
 sam deploy --parameter-overrides "AlertEmail=you@example.com SessionSecret=$SECRET"
 
@@ -151,85 +181,41 @@ rolls the stack back. The template does not declare it; the CLI owns it.
 `site-static/branding/` is source for the Cognito banner and is deliberately
 not synced — `tools/tick.py cognito banner` re-renders the PNG from it after a copy edit.
 
-## Register a company
+## Parameters
 
-The tick-evaluator skill writes and verifies a config into the local
-`configs/`; `companies push` uploads it to the bucket's `configs/` prefix, after
-checking its slug and showing how it differs from the live one:
-
-```bash
-tools/tick.py companies push configs/dunder-mifflin_config.json
-tools/tick.py collect dunder-mifflin --publish     # crawl it now rather than tonight
-```
-
-A company is known by the `company_slug` inside its config, not the file's
-name, and the CLI matches on it. Configs with `needs_human_review: true` are
-skipped by the dispatcher.
-
-## Run on demand
-
-```bash
-tools/tick.py collect --all            # every company, as the nightly run does
-tools/tick.py collect geha --publish   # one company; wait for it, then re-render the site
-```
-
-## Test locally (no AWS)
-
-The collector worker doubles as a local script — writes to disk instead of S3:
-
-```bash
-cd src/collector
-LOCAL_OUTPUT_DIR=../../out python3 app.py ../../../configs/<slug>_config.json
-```
-
-Or simulate the full SQS invocation:
-
-```bash
-sam build
-sam local invoke CollectorFunction -e events/dunder-mifflin_sqs_event.json
-```
-
-(The event carries the fictional `dunder-mifflin` config, whose endpoint does
-not resolve: swap in a real config's JSON to exercise a live fetch.
-`sam local invoke` will also attempt the S3 writes — use real credentials and
-`BUCKET_NAME`, or prefer the `LOCAL_OUTPUT_DIR` path above.)
-
-## The site
-
-The lake is rendered into static HTML by the publisher Lambda and served from
-CloudFront. Pages are rendered server-side and land in S3 finished — the
-browser never reads the lake, and the lake bucket is never public.
-
-```
-https://tick.sembasolutions.com/                          marketing page  (public)
-https://tick.sembasolutions.com/docs                      documentation   (public)
-https://tick.sembasolutions.com/demo                      demo            (public)
-https://tick.sembasolutions.com/login                     the way in: signs you in, then /accounts
-https://tick.sembasolutions.com/accounts                  accounts home
-https://tick.sembasolutions.com/<company-slug>/dashboard.html
-https://tick.sembasolutions.com/<company-slug>/brief.html
-https://tick.sembasolutions.com/<company-slug>/archive/<posting-id>   a closed req
-```
-
-The site has two halves in one bucket, and they never collide:
-
-| | Written by | Guarded |
+| Parameter | Default | |
 |---|---|---|
-| `/`, `/docs`, `/demo` | `tools/tick.py publish static` from `site-static/` | no |
-| `/accounts`, `/<slug>/*` | the publisher Lambda, nightly | yes |
+| `ScheduleExpression` | `cron(0 3 * * ? *)` | When the dispatcher fires (UTC) |
+| `PublishScheduleExpression` | `cron(30 3 * * ? *)` | When the publisher fires: keep it after the crawls |
+| `ScheduleState` | `ENABLED` | `DISABLED` stops both schedules |
+| `AlertEmail` | empty | Where the DLQ alarm and request notifications go. **Empty deletes the subscription** |
+| `SessionSecret` | none | The session cookie's HMAC key, shared with the edge function. **Required on every deploy** |
+| `SiteDomainName` | `tick.sembasolutions.com` | The custom domain; empty serves on the CloudFront domain only |
+| `SiteHostedZoneId` | the sembasolutions.com zone | Route 53 zone holding the domain |
+| `SenderDomain`, `SenderAddress` | `sembasolutions.com`, `support@sembasolutions.com` | The SES identity invites and confirmations are sent from (owned by the Semba platform stack) |
+| `ViewerGroupName`, `AdminGroupName` | `tick-viewers`, `tick-admins` | The two groups that may sign in |
 
-The publisher writes `home/<key>/index.html` and per-account keys only, so a nightly
-run cannot overwrite the marketing pages; `tools/tick.py publish static` scopes
-its `--delete` to the `docs/` and `demo/` prefixes, so it cannot reach the app.
+The pipeline reuses every deployed value, so it never changes a parameter.
+**Changing one is a manual deploy**, as in step 2 of
+[Deploying a change](#deploying-a-change), with the new value added to
+`--parameter-overrides`. Pass `SessionSecret` (the recovered one, unless you
+mean to sign everyone out) and `AlertEmail` (readable with
+`aws cloudformation describe-stacks --stack-name tick-collector --query "Stacks[0].Parameters"`)
+every time.
 
-The public pages are hand-authored and carry no lake data — the demo is built
-on a fictional company. Deploy them with:
+> **Quoting.** `--parameter-overrides` takes one string that SAM splits on
+> spaces, so any value containing a space needs its own inner quotes —
+> `'ScheduleExpression="cron(0 3 * * ? *)"'`, the form `samconfig.toml` uses.
+> Without them the cron is truncated to `cron(0` and the schedule update fails
+> the whole deploy. A parameter left out falls back to its template default
+> (`cron(0 3 * * ? *)`, `ENABLED`, `tick-viewers`), which is harmless for all of
+> them except `AlertEmail`, whose empty default deletes the alarm subscription.
 
-```bash
-tools/tick.py publish static
-```
+**Rotating `SessionSecret`** signs every live session out; it is also the only
+way to end a session before its 12 hours are up. See
+[docs/operations.md § Cut off someone's access now](../docs/operations.md#cut-off-someones-access-now).
 
-### Domain
+## Domain
 
 `SiteDomainName` (default `tick.sembasolutions.com`) drives the whole chain, so
 the pieces cannot drift apart: the CloudFront alias, an ACM certificate
@@ -246,19 +232,13 @@ Deploying with `SiteDomainName=""` removes the alias, certificate and DNS
 records and falls back to the CloudFront domain — the way out if certificate
 validation ever wedges a deploy.
 
-The accounts home at `/accounts` lists every account in `s3://<DataBucketName>/configs/` — the
-same list the dispatcher collects from — so an account shows up the moment its
-config is uploaded, marked `Not collected` until its first crawl and
-`Reporting` from then on. A first crawl's dashboard shows the open board
-without change figures, which start with the second crawl. Briefs wait for that
-second crawl too, since they write up a week of movement.
-
-### Access
+## Access
 
 Viewers sign in with Cognito against **TICK's own user pool**, created by this
-stack (`UserPoolId` output). It is invite-only — no self sign-up — and mail
-(invites, password resets) goes out through Cognito's default sender, capped at
-50 emails a day.
+stack (`UserPoolId` output). It is invite-only, with no self sign-up. Mail
+(invites, password resets) goes out through SES as `TICK <SenderAddress>`,
+DKIM-signed from the company domain, rather than from Cognito's no-reply
+address and its 50-a-day cap.
 
 | In the pool | Why |
 |---|---|
@@ -268,303 +248,13 @@ stack (`UserPoolId` output). It is invite-only — no self sign-up — and mail
 | Attribute `custom:accounts` | The accounts a viewer may open: comma-separated company slugs |
 | Hosted-UI domain `tick-login-<account>` | Serves the login page (`SiteLoginDomain` output) |
 
-Being in the pool is not enough — membership in `tick-viewers` is what grants
-access. A pool user who is not in the group gets an explanatory page, not a
-login loop. Users are managed with `tools/tick.py users`:
-
-```bash
-tools/tick.py users invite you@example.com --accounts dunder-mifflin,initech
-#   creates the user, emails a temporary password, adds them to tick-viewers,
-#   sets their accounts, and renders their accounts home if it is new
-tools/tick.py users grant  you@example.com vance-refrigeration   # adds; keeps the rest
-tools/tick.py users revoke you@example.com initech               # removes only that one
-tools/tick.py users admin  you@example.com                       # sees every account
-tools/tick.py users list                                         # who sees what
-tools/tick.py users disable you@example.com                      # stops sign-in
-```
-
-Accounts are company slugs, as in `configs/` and the page URLs; the CLI refuses
-one that is not tracked. Disabling a user or revoking an account does **not**
-end a session they already hold: the cookie is valid for up to 12 hours and
-the edge never asks Cognito. Only deploying a new `SessionSecret` ends every
-session at once.
-
-A viewer sees only their accounts: the accounts home lists nothing else, and
-any other account's `/<slug>/` page sends them back to it. Assignments are
-read at sign-in, so a change applies at the viewer's next sign-in — after the
-publisher has rendered a home for the new set. A viewer with no
-`custom:accounts` and no `tick-admins` sees an empty home. Only the admin API
-can write `custom:accounts`; the app client may not, so a viewer cannot grant
-themselves an account.
-
-Every accounts home ends with a **Track another company** form. It posts to
-`/api/account-request` (the join Lambda, which checks the session cookie
-itself because `/api/*` skips the edge check), stores the request in the
-`account-requests` table and emails the alert address. To fulfil one: run the
-tick-evaluator skill for the company, push its config, grant it, and close the
-request.
-
-```bash
-tools/tick.py requests list --accounts --pending
-tools/tick.py companies push configs/<slug>_config.json
-tools/tick.py collect <slug> --publish
-tools/tick.py users grant <requester email> <slug>
-tools/tick.py requests close <request id> --as done
-```
-
-Waitlist requests from the public "Get started" form are the same:
-`tools/tick.py requests list`, then `users invite`, which marks the waitlist
-request granted.
+Users are managed with `tools/tick.py users`, described in
+[docs/operations.md](../docs/operations.md#invite-someone); how a session is
+checked at the edge is in
+[docs/architecture.md](../docs/architecture.md#how-the-check-works). Custom
+attributes can be added to a live pool but never changed or removed, so think
+twice before adding one.
 
 The hosted UI walks a new user through choosing a password on first sign-in.
 After a deploy that replaces the app client, re-run `tools/tick.py publish login`:
 the sign-in styling is attached per client.
-
-#### How the check works
-
-CloudFront Functions cannot verify an RS256 JWT or make a network call, so the
-work is split:
-
-1. The edge function first resolves extensionless URIs (`/docs` →
-   `/docs/index.html`), because S3 has no directory semantics and
-   `DefaultRootObject` only covers `/`. The two front doors come next: `/`
-   and `/login` with a valid session → 302 to `/accounts`, so a signed-in
-   viewer never lands on the marketing page. Then it lets the public prefixes
-   through. For anything else, no session cookie → 302 to `/auth/login`,
-   preserving the path you asked for (`/login` asks for `/accounts`).
-2. `/auth/login` → the auth Lambda redirects to the Cognito hosted UI.
-3. `/auth/callback` → the Lambda exchanges the code for tokens (client secret,
-   server side), checks `aud` / `iss` / `token_use` / `exp` and the group
-   claim, then mints an HMAC-signed session cookie good for 12 hours. The
-   cookie carries the viewer's scope: `*` for `tick-admins`, else their
-   normalised `custom:accounts`.
-4. Every later request → one HMAC at the edge. No Lambda, no Cognito call.
-   The edge refuses `/<slug>/` pages outside the scope, and serves `/accounts`
-   from `home/<sha256(scope)[:16]>/index.html` — the publisher renders one
-   such home per distinct scope in the pool.
-
-`SessionSecret` is the HMAC key, shared by the Lambda and the edge function.
-It has no default — **every deploy must pass it** — and rotating it signs out
-every live session:
-
-```bash
-SECRET=$(openssl rand -hex 32)
-sam deploy --parameter-overrides "AlertEmail=canyon.work01@gmail.com SessionSecret=$SECRET"
-```
-
-> **Quoting.** `--parameter-overrides` takes one string that SAM splits on
-> spaces, so any value containing a space needs its own inner quotes —
-> `'ScheduleExpression="cron(0 3 * * ? *)"'`, the form `samconfig.toml` uses.
-> Without them the cron is truncated to `cron(0` and the schedule update fails
-> the whole deploy. The command above sidesteps it: neither value has a space,
-> and every parameter left out falls back to a template default that already
-> matches (`cron(0 3 * * ? *)`, `ENABLED`, the pool id, `tick-viewers`).
-> `AlertEmail` is the one exception worth passing — its default is empty, which
-> would delete the DLQ alarm subscription.
-
-Like any CloudFront Function source, it is readable by anyone holding
-`cloudfront:GetFunction` on the account: it authenticates viewers, it is not a
-secret from account principals. Sign out using the **Sign out** link in the
-navigation on any protected app page, or directly at `/auth/logout`.
-
-### Publishing
-
-The publisher runs on `PublishScheduleExpression` (default `cron(30 3 * * ? *)`,
-30 minutes after the dispatcher) and follows `ScheduleState`, so disabling the
-pipeline disables publishing with it. Each run is a **full re-render** of the
-lake as it stands — a removed account or a rolled-back snapshot cannot leave a
-stale page behind — followed by a CloudFront invalidation. Pages carry
-`max-age=300`, so even a failed invalidation self-corrects within 5 minutes.
-
-### Briefs
-
-No code writes brief prose. Each account's brief is written by a model with
-the tick-brief skill (`.claude/skills/tick-brief/`), verified by its
-`check.py` (every citation exists, every quote is verbatim, the length limits
-hold) and uploaded by its `publish.py` to
-`briefs/company=<slug>/week=<window end>/` in the data bucket: `brief.json`
-plus the `evidence.json` it was written from, which the page resolves its
-citations against. A brief that fails the check is never uploaded.
-
-Each publish renders the newest week holding both files per account; an
-account with none gets a "No brief yet" page at the same address. A skipped
-week leaves last week's brief up, dated. To see a new brief before the
-nightly run, republish.
-
-Republish immediately (after uploading a config or a brief, say):
-
-```bash
-tools/tick.py publish pages
-#    Published N accounts, H accounts homes, P pages. CDN invalidation: <id>.
-```
-
-It fails, with the publisher's error, if the render failed: a bare
-`aws lambda invoke` exits 0 either way.
-
-### Comparison window
-
-Both pages compare the latest snapshot against **the most recent one at least 7
-days old**, not against the previous crawl, and the chart plots every snapshot
-between the two. An overnight delta on a daily board is mostly noise: one tracked board
-moves +12/-7 between consecutive days while drifting far less, so a
-crawl-to-crawl comparison reported ±1 and a flat line no matter what the week
-did.
-
-Change it with `--window-days N` locally. Where a company has less history than
-the window — a board collecting for three days — it compares against the oldest
-snapshot it has and labels the real dates, so a short window is visible rather
-than being claimed as a full one.
-
-### One menu bar, several copies
-
-Every page shares the menu bar and tab icon of `/demo`, but nothing generates
-them from one file. They are copied into:
-
-| Copy | Where |
-|---|---|
-| Source of truth | `site-static/demo/**` (`.nav` CSS and markup, `<link rel="icon">`) |
-| Marketing and docs | `site-static/index.html`, `site-static/docs/index.html`: brand and icon (their tabs are their own) |
-| App pages | `_nav`, the `.nav` rules in `_STYLE`, and `_FAVICON` in `../tools/tick_insights_report.py` |
-| Auth error page | `page()` in `src/auth/app.py`: brand, Docs and icon only |
-
-Change them together. The app's bar differs from the demo's in its links only:
-each account's own Dashboard and Brief tabs, and **Sign out** where the demo
-has **Log in** / **Get started**.
-
-### Render locally
-
-To see a branch or PR as a site, use
-[../tools/preview.py](../tools/preview.py). It syncs the lake into
-`local-data/lake`, renders with that version's renderer and serves the result
-alongside `site-static/` on localhost: `python3 tools/preview.py <branch|PR#>`
-from the repo root.
-
-The renderer is [../tools/tick_insights_report.py](../tools/tick_insights_report.py) — the
-same file the Lambda runs, symlinked in as `src/publisher/report.py` so there
-is no second copy to drift. It reads S3 or a local lake:
-
-```bash
-python3 ../tools/tick_insights_report.py s3://<DataBucketName> --out-dir site
-python3 ../tools/tick_insights_report.py . --configs ../configs --out-dir site   # local dry-run lake
-open site/index.html
-```
-
-Or exercise exactly what the Lambda renders, writing to disk instead of S3:
-
-```bash
-cd src/publisher
-DATA_BUCKET=<DataBucketName> SITE_BUCKET=- LOCAL_OUTPUT_DIR=../../../site python3 app.py
-```
-
-## Failure semantics
-
-- One company failing never affects the others: each is its own invocation.
-- A failing message retries up to 3 times (`maxReceiveCount: 3`), then moves
-  to the DLQ and raises the `tick-collector-collect-failures` alarm.
-- A DLQ message means the SourceConfig has drifted. `tools/tick.py dlq list`
-  names the company and `tools/tick.py logs collector --since 1d --grep <slug>`
-  shows why; re-run the tick-evaluator skill for that `company_slug`,
-  `tools/tick.py companies push` the new config, then `tools/tick.py collect
-  <slug>` (the DLQ's copy carries the old config; `tools/tick.py dlq redrive`
-  retries it as it was).
-- The collector also fails deliberately when it collects 0 postings for a
-  company whose state shows open ones (drift detection, not layoffs).
-
-### Running a company more than once a day
-
-A manual re-crawl, an SQS retry or a duplicate delivery can run a company
-twice on one date, and every file the collector writes is keyed by that date.
-The day's change record (`derived/snapshots/.../dt=<day>/diff.json`) is what the
-dashboard's "this window" counts and the weekly brief add up, and a later run
-only sees what changed since the earlier one. So the collector:
-
-- **merges** a re-run into the day's change record: new, closed and reopened
-  are the union of every run that day, and `runs` lists each run's time. A
-  re-run that finds nothing leaves the record as it was.
-- keeps `curated/.../postings.jsonl` as the board as of the **latest** run (the
-  site lists it as open roles), and puts postings an earlier run saw that are
-  gone now in `departed.jsonl` beside it, where the archive and the brief find
-  a closed req's last record.
-- writes `state.json` **last**: a run that fails partway leaves state as it
-  was, so the retry recomputes the same changes instead of finding none.
-
-Check any day after a re-crawl:
-
-```bash
-python3 tools/audit_diffs.py s3://<DataBucketName>   # or a synced local lake
-```
-
-It compares each posting's `first_seen` and `closed_on` in state with that
-day's change record, and exits 1 listing any opening or closure a record lost.
-
-## Descriptions & keyword enrichment
-
-For Workday sources the collector fetches each posting's full description
-(CXS detail endpoint, one GET per posting, 0.1s politeness gap). For Taleo
-it reads each posting's job page (`jobdetail.ftl`), which embeds the
-description, with the same gap ([src/collector/taleo.py](src/collector/taleo.py)).
-ADP and inline boards carry it in the posting payload. Dayforce's job feed
-carries it as plain text, which the collector rewrites as paragraphs and
-lists before parsing ([src/collector/dayforce.py](src/collector/dayforce.py)). The original HTML is
-kept in `raw/` for every ATS (Workday's and Taleo's are attached to the
-posting before `raw/` is written), so descriptions can be re-parsed without
-refetching. Every curated
-row gets:
-
-- `description` — the description in labelled sections, parsed by
-  [src/collector/description.py](src/collector/description.py):
-  `summary`, `responsibilities`, `qualifications`, `preferred_qualifications`,
-  `work_arrangement`, `compensation`, `benefits`, `company_intro`, `eeo`, and
-  `other` for a heading nothing recognises (kept, never dropped); plus
-  `compensation` as `{min, max, currency, period, text}` (a range, a single
-  figure in a sentence about pay where `min == max`, or "up to $X" where `min`
-  is null; figures in the millions, business figures such as premium or
-  revenue, and malformed numbers are never pay), the boilerplate kinds
-  found, and the unmatched headings. Headings match the SourceConfig's
-  `description_format` (the aliases and boilerplate the evaluator learned for
-  that board) first, then generic patterns. A parser error costs the row its
-  `description`, never the run.
-- `description_raw` — the flat text, written only when parsing failed. The
-  sections hold every line, so curated no longer stores each description twice.
-  Rows collected before structured descriptions hold only this field.
-- `keywords` — `{category: [matched terms]}` from the tech-stack taxonomy in
-  [src/collector/app.py](src/collector/app.py) (`cloud_aws` / `cloud_azure` /
-  `cloud_gcp` / `data_platform` / `infra_devops` / `languages` /
-  `analytics_tools` / `signal_terms`)
-- `is_tech_role` — true on any hit outside `signal_terms`/`analytics_tools`
-
-Keywords come from the title and the role text, never the board's intro,
-benefits or equal-opportunity text, which repeat on every posting.
-
-**Reading descriptions.** Every reader goes through the renderer's accessors in
-[../tools/tick_insights_report.py](../tools/tick_insights_report.py):
-`parsed_description()`, `role_text_of()`, `full_text_of()` and `pay_of()`. They
-use the collector's sections when a row has them, and otherwise rebuild
-approximate sections from the old flat text (`description.from_text()`: known
-headings found inside the text, the board's shared opening sentences filed as
-its intro). Nothing in the lake is rewritten; the rebuild happens on read and is
-marked `approximate`. The publisher Lambda gets the parser the way it gets the
-renderer, through a symlink (`src/publisher/description.py`).
-
-Where it shows: archive pages lay a description out in its sections, with the
-board's boilerplate left out and a pay range; the dashboard's open-roles table
-has a Pay column; and the weekly brief's evidence pack sends each posting's
-role text and `pay` (prompt v8).
-
-Each run's summary reports `description_coverage`, the average share of
-description text filed under a known section. A drop means the board's layout
-moved and its `description_format` needs relearning.
-
-Set `FETCH_DESCRIPTIONS=0` on the collector function to skip detail fetches
-(keywords then come from titles only). Keyword matching is word-bounded and
-case-insensitive — extend the `_KEYWORDS` lists freely.
-
-Each run also writes a company tech-stack summary to
-`derived/tech_stack/company=<slug>/dt=<date>/tech_stack.json` — every matched
-term mapped to the posting IDs it appeared in, plus a posting evidence index.
-Render it for account planning with [../tools/tech_report.py](../tools/tech_report.py):
-
-```bash
-python3 ../tools/tech_report.py out --company dunder-mifflin      # local dry-run output
-python3 ../tools/tech_report.py s3://<DataBucketName> --company dunder-mifflin
-```

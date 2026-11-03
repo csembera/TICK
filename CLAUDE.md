@@ -2,9 +2,12 @@
 
 Hiring-signal intelligence: collect a company's job postings daily, diff them
 into a time series, and publish a dashboard and weekly brief per account at
-https://tick.sembasolutions.com. Why it exists and how it is shaped:
-[design-doc.md](design-doc.md). How it is deployed and operated:
+https://tick.sembasolutions.com. How it works:
+[docs/architecture.md](docs/architecture.md) (the original design is
+[design-doc.md](design-doc.md)). How it is operated:
+[docs/operations.md](docs/operations.md). The stack and its deploys:
 [infra/README.md](infra/README.md). Read those before changing anything.
+File formats are in [docs/data-reference.md](docs/data-reference.md).
 
 ## Map
 
@@ -19,7 +22,8 @@ https://tick.sembasolutions.com. Why it exists and how it is shaped:
 | `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `tools/tick.py publish static` |
 | `tools/tick_insights_report.py` | The renderer. `infra/src/publisher/report.py` is a **symlink** to it |
 | `tools/tick.py` | The operations CLI: status, publishing, crawls, companies, users, requests, DLQ, logs, edge checks. The pipeline's deploy steps run it too |
-| `tools/evaluator.py` | Writes a company's SourceConfig |
+| `tools/evaluator.py` | The evaluator as a standalone Strands agent; onboarding normally runs through the tick-evaluator skill |
+| `docs/` | `architecture.md`, `operations.md` (the runbook), `data-reference.md`, `development.md`. Update them in the same PR as the change they describe |
 | `tests/` | `python3 -m unittest discover tests`; stdlib only, synthetic fixtures (the repo is public) |
 | `configs/` | Gitignored local copy of the SourceConfigs. The data bucket's `configs/` prefix is the source of truth |
 | `.claude/skills/` | `tick-evaluator` (onboard a company; learn its description format), `tick-brief` (write, check and publish every account's weekly brief; tune its prompt) |
