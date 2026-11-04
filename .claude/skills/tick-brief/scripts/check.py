@@ -1,5 +1,8 @@
 """
-Verify a weekly brief against the evidence it was written from, then render it.
+Verify a brief against the evidence it was written from, then render it.
+Two kinds: a weekly brief (prompt.md, a 7-day evidence pack) and an overview
+(prompt-overview.md, a pack built with evidence.py --overview). The pack's
+`kind` says which rules apply.
 
     check.py <brief.json> <evidence.json> [--md OUT.md]
 
@@ -10,6 +13,7 @@ The model's claims are not trusted; these are re-checked in code:
   - every paragraph and action item carries at least one citation
   - every quote appears verbatim in the cited posting's description
   - the length, quiet-week and movement limits the prompt sets
+  - the brief is the pack's kind, for the pack's week or as_of date
 
 Exit 0 when nothing FAILs (WARNs are allowed), 1 otherwise. A failure is a
 finding about the prompt — fix prompt.md and regenerate, never hand-edit the
@@ -29,6 +33,25 @@ SITE_URL = "https://tick.sembasolutions.com"
 CITE_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 KINDS = {"outreach", "pitch", "watch"}
 MAX_WORDS, QUIET_WORDS, MAX_QUOTE_WORDS = 450, 120, 40
+OVERVIEW_WORDS, OVERVIEW_PARAS = 550, (3, 5)
+
+
+def kind_of(ev: dict) -> str:
+    """'overview' for a pack built with --overview, else 'weekly' (every pack
+    from before overviews existed is weekly and carries no kind)."""
+    return "overview" if ev.get("kind") == "overview" else "weekly"
+
+
+def date_of(ev: dict) -> str:
+    """The date a brief is filed under: an overview's as_of, a week's end."""
+    return ev["as_of"] if kind_of(ev) == "overview" else ev["window"]["end"]
+
+
+def s3_prefix(ev: dict) -> str:
+    """Where publish.py uploads a brief and its pack, and where the renderer
+    (tools/tick_insights_report.py, _BRIEF_RE) finds them — keep in step."""
+    part = "overview" if kind_of(ev) == "overview" else "week"
+    return f"briefs/company={ev['company']['slug']}/{part}={date_of(ev)}"
 
 
 def _ws(s: str) -> str:
@@ -55,14 +78,22 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
     persona = ev.get("persona")
     valid = set(postings) | {"BOARD", "STACK"} | ({"PERSONA"} if persona else set())
 
-    for key in ("paragraphs", "action_items", "quiet_week", "company_slug", "week"):
+    overview = kind_of(ev) == "overview"
+    required = ("paragraphs", "action_items", "company_slug") + (("as_of",) if overview else ("quiet_week", "week"))
+    for key in required:
         if key not in brief:
             fails.append(f"missing key: {key}")
     if brief.get("company_slug") != ev["company"]["slug"]:
         fails.append(f"company_slug {brief.get('company_slug')!r} != {ev['company']['slug']!r}")
-    week = brief.get("week") or {}
-    if (week.get("start"), week.get("end")) != (ev["window"]["start"], ev["window"]["end"]):
-        fails.append(f"week {week} does not match the evidence window")
+    if (brief.get("kind") or "weekly") != kind_of(ev):
+        fails.append(f"kind {brief.get('kind')!r} but the pack is {kind_of(ev)!r}")
+    if overview:
+        if brief.get("as_of") != ev["as_of"]:
+            fails.append(f"as_of {brief.get('as_of')!r} does not match the pack's {ev['as_of']!r}")
+    else:
+        week = brief.get("week") or {}
+        if (week.get("start"), week.get("end")) != (ev["window"]["start"], ev["window"]["end"]):
+            fails.append(f"week {week} does not match the evidence window")
     # A brief carries the ref of the persona it was written for; a mismatch is
     # a brief written from another pack, or for another reader.
     expected = persona["ref"] if persona else None
@@ -85,6 +116,17 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
         cites(p, f"paragraph {i}")
     words = sum(_words(p) for p in paras)
 
+    if overview:
+        lo, hi = OVERVIEW_PARAS
+        if not lo <= len(paras) <= hi:
+            fails.append(f"{len(paras)} paragraphs (expected {lo}-{hi})")
+        if words > OVERVIEW_WORDS:
+            fails.append(f"narrative is {words} words (limit {OVERVIEW_WORDS})")
+        if brief.get("quiet_week"):
+            fails.append("an overview has no quiet week: it describes the board, not a week of it")
+        check_items(brief, postings, cites, fails)
+        return fails, warns, brief
+
     moved = ev["board"]["opened"] + ev["board"]["closed"] + ev["board"]["reopened"]
     quiet = bool(brief.get("quiet_week"))
     if quiet:
@@ -101,12 +143,20 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
     if moved == 0 and not quiet:
         warns.append("nothing moved, yet quiet_week is false")
 
+    # action items scale with movement: closures alone are not new demand
+    items = brief.get("action_items") or []
+    if ev["board"]["opened"] + ev["board"]["reopened"] == 0 and len(items) > 1:
+        fails.append(f"{len(items)} action items in a week where nothing opened or reopened (limit 1)")
+    check_items(brief, postings, cites, fails)
+    return fails, warns, brief
+
+
+def check_items(brief: dict, postings: dict, cites, fails: list[str]) -> None:
+    """The action-item rules both kinds share: count, kind, citations, steps,
+    and quotes copied verbatim from a cited posting's description."""
     items = brief.get("action_items") or []
     if len(items) > 3:
         fails.append(f"{len(items)} action items (limit 3)")
-    # action items scale with movement: closures alone are not new demand
-    if ev["board"]["opened"] + ev["board"]["reopened"] == 0 and len(items) > 1:
-        fails.append(f"{len(items)} action items in a week where nothing opened or reopened (limit 1)")
     for i, a in enumerate(items, 1):
         where = f"action item {i}"
         if a.get("kind") not in KINDS:
@@ -122,18 +172,19 @@ def check(raw: str, ev: dict) -> tuple[list[str], list[str], dict | None]:
             src = postings.get(q.get("source"))
             if not src:
                 fails.append(f"{where}: quote source {q.get('source')!r} is not a posting in the pack")
-            elif _ws(q.get("text")) not in _ws(src.get("description", "")):
+            elif _ws(q.get("text")) not in _ws(src.get("description") or ""):
                 fails.append(f"{where}: quote is not verbatim in {q['source']}'s description")
             if len((q.get("text") or "").split()) > MAX_QUOTE_WORDS:
                 fails.append(f"{where}: quote over {MAX_QUOTE_WORDS} words")
 
-    return fails, warns, brief
-
 
 def cited_postings(ev: dict) -> dict[str, dict]:
-    """Every posting a brief may cite, by id: the week's movement, the board's
-    open leadership and longest-open roles, and the reader's standing roles."""
-    postings = {p["id"]: p for sec in ("opened", "closed", "reopened") for p in ev[sec]}
+    """Every posting a brief may cite, by id: the week's movement (an
+    overview's listed roles), the board's open leadership and longest-open
+    roles, the overview's leadership stack, and the reader's standing roles."""
+    postings = {p["id"]: p for sec in ("opened", "closed", "reopened", "postings") for p in ev.get(sec, [])}
+    for p in (ev.get("stack") or {}).get("leadership_stack", []):
+        postings.setdefault(p["id"], p)
     for key in ("open_leadership_roles", "longest_open"):
         for p in ev["board"].get(key, []):
             postings.setdefault(p["id"], p)
@@ -162,11 +213,17 @@ def render(brief: dict, ev: dict) -> str:
     def sub(s: str) -> str:
         return CITE_RE.sub(num, s or "")
 
-    c, w = ev["company"], ev["window"]
-    out = [f"# {c['name']} — week to {w['end']}",
-           f"*{w['start']} → {w['end']} · prompt v{brief.get('prompt_version', '?')}"
-           f"{' · quiet week' if brief.get('quiet_week') else ''}"
-           f"{' · written for ' + reader_of(ev) if reader_of(ev) else ''}*", ""]
+    c = ev["company"]
+    reader = f"{' · written for ' + reader_of(ev) if reader_of(ev) else ''}"
+    if kind_of(ev) == "overview":
+        out = [f"# {c['name']} — overview as of {ev['as_of']}",
+               f"*{ev['tracking']['crawls']} crawls since {ev['tracking']['first_crawl']} · "
+               f"overview prompt v{brief.get('prompt_version', '?')}{reader}*", ""]
+    else:
+        w = ev["window"]
+        out = [f"# {c['name']} — week to {w['end']}",
+               f"*{w['start']} → {w['end']} · prompt v{brief.get('prompt_version', '?')}"
+               f"{' · quiet week' if brief.get('quiet_week') else ''}{reader}*", ""]
     out += [sub(p) + "\n" for p in brief.get("paragraphs", [])]
     if brief.get("action_items"):
         out.append("## Action items\n")
@@ -178,7 +235,10 @@ def render(brief: dict, ev: dict) -> str:
             out += [f"- {sub(s)}" for s in a.get("steps", [])] + [""]
     out.append("---\n**Sources**\n")
     for i, cid in enumerate(order, 1):
-        if cid == "BOARD":
+        if cid == "BOARD" and kind_of(ev) == "overview":
+            b = ev["board"]
+            label = f"Board on {ev['as_of']}: {b['open_roles']} open, {b['tech_roles']} tech roles"
+        elif cid == "BOARD":
             b = ev["board"]
             label = (f"Board: {b['open_at_start']} → {b['open_at_end']} open; {b['opened']} opened, "
                      f"{b['closed']} closed, {b['reopened']} reopened")

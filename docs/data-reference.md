@@ -19,11 +19,13 @@ only in the data bucket (`DataBucketName` output). `python3 tools/preview.py
 | `derived/snapshots/company=<slug>/dt=<date>/diff.json` | collector | publisher, tick-brief, `audit_diffs.py` |
 | `derived/state/company=<slug>/state.json` | collector, last | collector (next run), publisher, tick-brief, `audit_diffs.py` |
 | `derived/tech_stack/company=<slug>/dt=<date>/tech_stack.json` | collector | publisher, tick-brief, `tech_report.py` |
-| `briefs/company=<slug>/week=<date>/brief.json`, `evidence.json` | tick-brief `publish.py` | publisher |
+| `briefs/company=<slug>/week=<date>/brief.json`, `evidence.json` | tick-brief `publish.py` | publisher, `tools/tick.py status` |
+| `briefs/company=<slug>/overview=<date>/brief.json`, `evidence.json` | tick-brief `publish.py --overview` | publisher, `tools/tick.py status` |
 | `profiles/<sub>.json` | the join Lambda's `/api/profile` (the persona editor on `/profile` and My terms), `tools/tick.py personas set` | `/api/profile`, `tools/tick.py personas list`, so the tick-brief run |
 
 `<slug>` is the config's `company_slug`; `<date>` is the UTC date of the crawl;
-`<week>` is the last day of the brief's 7-day window. A config's file name
+`<week>` is the last day of the brief's 7-day window; an overview's `<date>`
+is the crawl it describes (`as_of`). A config's file name
 does not have to match its slug (`configs/church-mutual.json` holds
 `church-mutual-insurance`): every reader uses the slug inside, and so must any
 tool. The bucket is versioned, so an overwritten or deleted object can be
@@ -161,6 +163,19 @@ one match; the full board is the curated file.
 `persona_ref` is the `ref` of the pack's persona, or null for the default
 reader (briefs before prompt v9 have no such key).
 
+An overview ([prompt-overview.md](../.claude/skills/tick-brief/prompt-overview.md))
+has `"kind": "overview"` and an `as_of` date in place of `week` and
+`quiet_week`. Its `evidence.json` is built by `evidence.py --overview`:
+`kind`, `company`, `as_of`, `tracking` (first crawl, crawls, date trust),
+`data_quality_flags`, `board` (id `BOARD`: open, tech and leadership roles,
+roles by team and location, `age_bands`, roles listed), `stack` (id `STACK`:
+`by_category`, each term with its count, shares, `baseline`, teams and role
+ids; `co_occurring`, `rare`, `since_first_crawl`, `leadership_stack`), and
+`postings`, the open roles, tech and leadership seats with role text, others
+with `description: null`. `persona`, when there is one, is the weekly
+section with empty movement; its `new_to_board` compares with the first
+crawl, and is null on a single crawl. A pack with no `kind` is weekly.
+
 `evidence.json` is the pack it was written from, built by `evidence.py`:
 `company`, `window` (start, end, crawl days), `data_quality_flags`, `board`
 (id `BOARD`: open counts, movement, open leadership roles, longest open),
@@ -220,6 +235,8 @@ user only (their `sub` comes from the session cookie):
 | `home/profile/index.html` | publisher, one for every viewer | `/profile` (guarded) |
 | `<slug>/dashboard.html`, `<slug>/brief.html` | publisher | the same paths (guarded) |
 | `<slug>/archive/<pid>/index.html` | publisher, one per closed posting | `/<slug>/archive/<pid>` (guarded) |
+| `<slug>/briefs/index.html` | publisher, once an account has a brief | `/<slug>/briefs` (guarded) |
+| `<slug>/briefs/<weekly\|overview>-<date>/index.html` | publisher, one per published brief | `/<slug>/briefs/<kind>-<date>` (guarded) |
 
 ## Users and requests
 

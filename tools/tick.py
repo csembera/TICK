@@ -71,7 +71,7 @@ STATIC_PREFIXES = ("docs", "demo")
 # client-data leak, not a cosmetic bug.
 PUBLIC_PATHS = ["/", "/docs", "/demo", "/demo/dunder-mifflin/brief"]
 GUARDED_PATHS = ["/accounts", "/profile", "/login", "/dunder-mifflin/dashboard.html",
-                 "/dunder-mifflin/brief.html"]
+                 "/dunder-mifflin/brief.html", "/dunder-mifflin/briefs"]
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 # A company slug is the first segment of its pages' URLs, so it cannot be one
@@ -1165,15 +1165,16 @@ def cmd_status(ops: Ops, args) -> int:
 
     crawled = {m.group(1): o["LastModified"] for o in got["states"]
                if (m := re.search(r"company=([^/]+)/state\.json$", o["Key"]))}
-    weeks: dict[str, set] = {}
+    weeks: dict[tuple, set] = {}
     for o in got["briefs"]:
-        m = re.search(r"company=([^/]+)/week=([\d-]+)/(brief|evidence)\.json$", o["Key"])
+        m = re.search(r"company=([^/]+)/(week|overview)=([\d-]+)/(brief|evidence)\.json$", o["Key"])
         if m:
-            weeks.setdefault((m.group(1), m.group(2)), set()).add(m.group(3))
-    latest_brief: dict[str, str] = {}
-    for (slug, week), files in weeks.items():
+            weeks.setdefault((m.group(1), m.group(2), m.group(3)), set()).add(m.group(4))
+    # the brief the site shows: the newest weekly one, else a new account's overview
+    latest_brief: dict[str, tuple] = {}
+    for (slug, kind, dt), files in weeks.items():
         if files == {"brief", "evidence"}:
-            latest_brief[slug] = max(latest_brief.get(slug, ""), week)
+            latest_brief[slug] = max(latest_brief.get(slug, (False, "")), (kind == "week", dt))
 
     print("\nCompanies")
     rows = [["", "LAST CRAWL", "LATEST BRIEF", ""]]
@@ -1188,8 +1189,9 @@ def cmd_status(ops: Ops, args) -> int:
         elif now - datetime.fromisoformat(last) > STALE_AFTER:
             note = "STALE: missed the last nightly crawl"
             attention.append(f"{slug} was last crawled {when(last)}")
-        rows.append([slug, when(last), f"week to {latest_brief[slug]}" if slug in latest_brief else "none",
-                     note])
+        brief = latest_brief.get(slug)
+        rows.append([slug, when(last), ("none" if not brief else f"week to {brief[1]}" if brief[0]
+                                        else f"overview, {brief[1]}"), note])
     table(rows)
 
     published = max((o["LastModified"] for o in got["homes"]), default=None)

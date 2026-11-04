@@ -1,14 +1,17 @@
 ---
 name: tick-brief
-description: Write, check and publish TICK's weekly AI account briefs for every tracked account, from the lake in S3, and tune the brief prompt. Use when asked to generate, publish, test, compare or improve weekly briefs, to run the brief writer for all accounts, to iterate on the brief prompt, or to evaluate brief quality for a TICK company.
+description: Write, check and publish TICK's AI account briefs — every tracked account's weekly brief, and the one-time overview (board and stack) of a newly tracked account — from the lake in S3, and tune the brief prompts. Use when asked to generate, publish, test, compare or improve weekly briefs or new-account overviews, to run the brief writer for all accounts, to iterate on a brief prompt, or to evaluate brief quality for a TICK company.
 ---
 
 # TICK weekly brief — writer and prompt workbench
 
-Every brief on the site is written by a model from one company's last 7 days
-of job-board movement. No Python writes brief prose: the site renders the
-newest brief this skill published for each account, and a "No brief yet"
-page where there is none. Until a Strands agent runs this on a schedule, a
+Every brief on the site is written by a model: weekly, from one company's
+last 7 days of job-board movement, and once for a newly tracked account, an
+overview of its open board and stack (see "Overview run" below). No Python
+writes brief prose: the site shows each account's newest weekly brief (its
+overview until the first weekly one), a "No brief yet" page where there is
+none, and every brief ever published in the account's brief archive at
+`/<slug>/briefs`. A published brief is permanent there, so publish with care. Until a Strands agent runs this on a schedule, a
 weekly run here is how briefs reach the site:
 
     S3 lake → evidence.py (code) → evidence.json → prompt.md + model → brief.json
@@ -92,8 +95,9 @@ Run everything from the project root.
 
 8. **Preview** the drafts in the real page design before anything is public:
    `python3 tools/preview.py --briefs local-data/briefs` → http://127.0.0.1:8000/accounts/
-   Each company's newest draft that passes check.py is shown as if
-   published; nothing is uploaded.
+   Every draft that passes check.py is shown as if published (the newest
+   as the account's brief, all of them in its brief archive); nothing is
+   uploaded.
 
 9. **Report** to the user: per account, the check result, the rubric scores,
    anything you would not publish and why, and proposed edits to
@@ -104,8 +108,43 @@ Run everything from the project root.
    (`--dry-run` first shows what would go). It re-runs check.py and uploads
    each passing brief with its evidence to
    `s3://<DataBucketName>/briefs/company=<slug>/week=<week-end>/`. The site
-   shows it after the next nightly publish (03:30 UTC). `tools/tick.py
+   shows it after the next nightly publish (03:30 UTC), as the account's
+   brief and at its own address in the brief archive. `tools/tick.py
    publish pages` shows it at once, but that is production: ask first.
+
+## Overview run, newly tracked accounts
+
+A new account has no week of movement yet, so its first brief is an
+overview: what the open board says about the company, mostly its stack. Run
+it after a new account's first crawl; it stays the account's brief until the
+first weekly one replaces it, and stays in the archive after that.
+
+    OUT=local-data/briefs/<slug>/overview-<as_of>   # as_of = the pack's as_of
+
+1. Pull the lake and build the personas map (weekly steps 1 and 3), and
+   read every persona the same way.
+2. `python3 $S/accounts.py $L --overview` lists every account with a crawl
+   and no published brief of either kind.
+3. `python3 $S/evidence.py $L <slug> --overview --personas local-data/briefs/personas.json --out $OUT/evidence.json`
+   (`--as-of YYYY-MM-DD` to describe an earlier crawl). It prints a one-line
+   summary: open, tech, roles listed and described, stack terms, size.
+4. Write each in a clean context with the `tick-brief-writer` subagent:
+
+   > Your prompt is `.claude/skills/tick-brief/prompt-overview.md`. Your
+   > evidence pack is `$OUT/evidence.json`. Write the brief to `$OUT/brief.json`.
+
+   (For a `general-purpose` subagent, use the weekly fallback wording with
+   `prompt-overview.md` in place of `prompt.md`.)
+5. Check, review, preview and report exactly as for weekly briefs (steps
+   6–9). The rubric applies with **Lead** read as "opens on the most telling
+   fact about the stack" and **Calibration** as "baseline terms called
+   baseline; one role is not a programme".
+6. Publish once the user agrees:
+   `python3 $S/publish.py --overview [--as-of <as_of>] [--company <slug>]`
+   uploads to `briefs/company=<slug>/overview=<as_of>/`.
+
+`prompt-overview.md` is tuned like `prompt.md` (below) and versions
+separately; an overview records its own `prompt_version`.
 
 ## Tuning the prompt
 

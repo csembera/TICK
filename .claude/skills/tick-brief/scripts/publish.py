@@ -3,6 +3,7 @@ Upload verified briefs to the data bucket, where the publisher Lambda renders
 them onto the site.
 
     publish.py [briefs-dir] [--week-end YYYY-MM-DD] [--company SLUG] [--dry-run]
+    publish.py [briefs-dir] --overview [--as-of YYYY-MM-DD] [--company SLUG] [--dry-run]
 
 For each <briefs-dir>/<slug>/ (default local-data/briefs), takes the newest
 week holding brief.json and evidence.json (or exactly --week-end), re-runs
@@ -10,6 +11,11 @@ check.py on it and uploads only a pass:
 
     s3://<DataBucketName>/briefs/company=<slug>/week=<window end>/evidence.json
     s3://<DataBucketName>/briefs/company=<slug>/week=<window end>/brief.json
+
+With --overview it does the same for overviews, drafted in
+<slug>/overview-<as_of>/ and uploaded to briefs/company=<slug>/overview=<as_of>/.
+Every published brief stays in the bucket: the site shows the newest as the
+account's brief and lists them all in its brief archive.
 
 The evidence goes with the brief because the page resolves the brief's
 citations against it. A brief that fails is reported and stays local: the
@@ -46,9 +52,18 @@ def data_bucket() -> str:
     return r.stdout.strip()
 
 
-def pick_week(slug_dir: str, week_end: str | None) -> str | None:
-    """The week to publish: exactly week_end, else the newest with both files."""
-    weeks = [week_end] if week_end else sorted(os.listdir(slug_dir), reverse=True)
+OVERVIEW_DIR = "overview-"   # a draft overview's directory: overview-<as_of>
+
+
+def pick_week(slug_dir: str, week_end: str | None, overview: bool = False) -> str | None:
+    """The draft directory to publish: exactly that date, else the newest of
+    the kind with both files. Weekly drafts are named <week end>, overviews
+    overview-<as_of>."""
+    if week_end:
+        weeks = [OVERVIEW_DIR + week_end if overview else week_end]
+    else:
+        weeks = sorted((d for d in os.listdir(slug_dir) if d.startswith(OVERVIEW_DIR) == overview),
+                       reverse=True)
     for week in weeks:
         d = os.path.join(slug_dir, week)
         if all(os.path.isfile(os.path.join(d, f)) for f in ("brief.json", "evidence.json")):
@@ -59,7 +74,9 @@ def pick_week(slug_dir: str, week_end: str | None) -> str | None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Upload briefs that pass check.py to the data bucket")
     ap.add_argument("briefs", nargs="?", default=os.path.join(ROOT, "local-data", "briefs"))
-    ap.add_argument("--week-end", help="publish this week only (default: each company's newest)")
+    ap.add_argument("--week-end", "--as-of", dest="week_end",
+                    help="publish this week (or with --overview, this as_of) only (default: each company's newest)")
+    ap.add_argument("--overview", action="store_true", help="publish overviews instead of weekly briefs")
     ap.add_argument("--company", help="publish this company_slug only")
     ap.add_argument("--dry-run", action="store_true", help="check and report, upload nothing")
     args = ap.parse_args()
@@ -74,22 +91,27 @@ def main() -> None:
     bucket = None if args.dry_run else data_bucket()
     published, refused = [], []
     for slug in slugs:
-        week = pick_week(os.path.join(args.briefs, slug), args.week_end)
+        week = pick_week(os.path.join(args.briefs, slug), args.week_end, args.overview)
         if not week:
-            refused.append(f"{slug}: no week with both brief.json and evidence.json")
+            what = "overview" if args.overview else "week"
+            refused.append(f"{slug}: no {what} with both brief.json and evidence.json")
             continue
         d = os.path.join(args.briefs, slug, week)
         ev = json.load(open(os.path.join(d, "evidence.json")))
-        # the page links citations to this slug's archive and labels this window
-        if ev.get("company", {}).get("slug") != slug or ev.get("window", {}).get("end") != week:
-            refused.append(f"{slug} {week}: evidence is for {ev.get('company', {}).get('slug')} "
-                           f"week {ev.get('window', {}).get('end')}")
+        # the page links citations to this slug's archive and labels this date
+        kind = "overview" if args.overview else "weekly"
+        if check.kind_of(ev) != kind:
+            refused.append(f"{slug} {week}: evidence is a {check.kind_of(ev)} pack, not {kind}")
+            continue
+        dated = (OVERVIEW_DIR if args.overview else "") + check.date_of(ev)
+        if ev.get("company", {}).get("slug") != slug or dated != week:
+            refused.append(f"{slug} {week}: evidence is for {ev.get('company', {}).get('slug')} {dated}")
             continue
         fails, warns, brief = check.check(open(os.path.join(d, "brief.json")).read(), ev)
         if fails or brief is None:
             refused.append(f"{slug} {week}: fails check.py — " + "; ".join(fails[:3]))
             continue
-        prefix = f"briefs/company={slug}/week={week}"
+        prefix = check.s3_prefix(ev)
         if bucket:
             # evidence first: the publisher ignores a brief without its evidence
             for name in ("evidence.json", "brief.json"):

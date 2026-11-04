@@ -67,8 +67,9 @@ scheduler.
    ```
 4. Let viewers see it: `tools/tick.py users grant <email> <slug>`.
 
-The dashboard appears after the first crawl; change figures and briefs start
-with the second.
+The dashboard appears after the first crawl; change figures and weekly
+briefs start with the second. Once it has crawled, write its overview (below)
+so its Brief tab is not empty for the first week.
 
 ### Re-crawl a company
 
@@ -190,6 +191,24 @@ brief in a clean context, verifies every citation with `check.py`, scores
 each against its rubric and shows the drafts in the real page design. Nothing is uploaded until
 you agree. Its `publish.py` uploads the ones you approve; they appear at the
 next nightly publish, or now with `tools/tick.py publish pages`.
+
+### Write a new account's overview
+
+In Claude Code, ask for overview briefs for new accounts. The tick-brief
+skill's "Overview run" lists every account with a crawl and no brief yet
+(`accounts.py --overview`), builds each one's overview pack, has a model
+write it from `prompt-overview.md`, checks and previews it like a weekly
+brief, and `publish.py --overview` uploads the ones you approve. It shows on
+the account's Brief tab until the first weekly brief replaces it; `status`
+shows it as "overview, <date>".
+
+### Find an earlier brief
+
+Every published brief stays at `/<slug>/briefs`, linked from the top of
+each brief page as "Brief archive (N)". Nothing is ever removed from it by a
+publish; a brief leaves only if its files are deleted from the data bucket's
+`briefs/` prefix, which the next nightly publish then reflects (the old page
+object stays in the site bucket until deleted by hand).
 
 ### Change the public pages or the sign-in page
 

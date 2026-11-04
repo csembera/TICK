@@ -24,6 +24,7 @@ EventBridge Scheduler (daily)
 
 tick-brief skill (weekly, from a laptop: model-written, check.py-verified)
   └─► briefs/company=<slug>/week=<date>/{brief,evidence}.json   in the same lake
+      briefs/company=<slug>/overview=<date>/{brief,evidence}.json   a new account's first
 
 EventBridge Scheduler (daily, 30 min later)
   └─► Publisher Lambda ── reads the lake + s3://<bucket>/configs/*.json
@@ -31,7 +32,8 @@ EventBridge Scheduler (daily, 30 min later)
               ├─ home/<key>/index.html         an accounts home per viewer scope (/accounts)
               ├─ home/profile/index.html       the profile page, one for everyone (/profile)
               ├─ <slug>/dashboard.html
-              ├─ <slug>/brief.html             newest published brief, or "No brief yet"
+              ├─ <slug>/brief.html             current brief (newest weekly, else overview), or "No brief yet"
+              ├─ <slug>/briefs/index.html      the brief archive, and one page per brief beside it
               └─ <slug>/archive/<pid>/index.html   one per closed req
 
 site-static/ ── tools/tick.py publish static ──► the same bucket
@@ -156,7 +158,7 @@ tools/tick.py verify
 
 It requests each public page (`/`, `/docs`, `/demo`, a demo brief) with no
 cookie and expects 200, then each guarded one (`/accounts`, `/profile`, `/login`, an
-account's dashboard and brief) and expects a 302 to `/auth/login`. **A 200 on a
+account's dashboard, brief and brief archive) and expects a 302 to `/auth/login`. **A 200 on a
 guarded page is a client-data leak, not a cosmetic bug.** The pipeline runs the
 same command as its last step.
 
