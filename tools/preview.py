@@ -19,7 +19,7 @@ renderer never reads it) under the gitignored local-data/; nothing leaves the
 machine and the server binds to 127.0.0.1 only.
 
 Brief pages show what the lake's briefs/ prefix holds: the briefs already
-published. --briefs adds each company's newest draft from the tick-brief
+published. --briefs adds every draft from the tick-brief
 skill, checked with that version's check.py, so a draft can be read in the
 real page before publish.py uploads it. The lake itself is never written to.
 
@@ -83,8 +83,9 @@ def checkout(ref: str) -> tuple[str, str]:
 
 def stage_drafts(code: str, lake: str, briefs: str) -> str:
     """A throwaway lake: symlinks to every part of the real one, plus a briefs/
-    holding the published briefs and each company's newest draft that passes
-    check.py, laid out as publish.py would upload it."""
+    holding the published briefs and every draft that passes check.py, weekly
+    (<slug>/<week end>/) and overview (<slug>/overview-<as_of>/), laid out as
+    publish.py would upload it, so the brief archive shows them too."""
     staged = tempfile.mkdtemp(prefix="tick-lake-")
     for name in os.listdir(lake):
         if name != "briefs":
@@ -103,11 +104,12 @@ def stage_drafts(code: str, lake: str, briefs: str) -> str:
             ok = subprocess.run([sys.executable, checker, *files], capture_output=True).returncode == 0
             print(f"→ draft {slug} {week}: {'shown' if ok else 'fails check.py, not shown'}", flush=True)
             if ok:
-                dest = os.path.join(staged, "briefs", f"company={slug}", f"week={week}")
+                # the same prefix publish.py uploads to (check.py's s3_prefix)
+                part = f"overview={week[len('overview-'):]}" if week.startswith("overview-") else f"week={week}"
+                dest = os.path.join(staged, "briefs", f"company={slug}", part)
                 os.makedirs(dest, exist_ok=True)
                 for f in files:
                     shutil.copy2(f, dest)
-            break
     return staged
 
 

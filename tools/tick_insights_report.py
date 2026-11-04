@@ -15,11 +15,14 @@ page compares the latest snapshot against the most recent one at least that
 old, and plots every snapshot in between. Where history is shorter than the
 window it compares against the oldest snapshot there is and labels the real
 dates, so a short window reads as itself.
-  - Brief — per account, the newest weekly brief a model wrote with the
-    tick-brief skill and uploaded to the lake's briefs/ prefix (see
-    load_brief), its citations numbered against the evidence pack it was
-    written from. No Python writes brief prose; an account with no uploaded
-    brief gets a "No brief yet" page.
+  - Brief — per account, the current brief a model wrote with the
+    tick-brief skill and uploaded to the lake's briefs/ prefix (the newest
+    weekly brief, else a new account's overview; see current_brief), its
+    citations numbered against the evidence pack it was written from. No
+    Python writes brief prose; an account with no uploaded brief gets a
+    "No brief yet" page.
+  - Brief archive — every brief the account has had, at /<slug>/briefs,
+    each on its own permanent page (see render_brief_pages).
   - Archive — per closed req, its last recorded description and dates, at a
     stable address the brief can cite once the board's own link is dead.
   - Profile — the signed-in viewer's persona, opened from the account menu
@@ -31,6 +34,10 @@ Layout written under --out-dir:
     profile/index.html            the viewer's profile, served at /profile
     <company-slug>/dashboard.html
     <company-slug>/brief.html
+    <company-slug>/briefs/index.html
+                                  the brief archive, served at /<company-slug>/briefs
+    <company-slug>/briefs/<weekly|overview>-<date>/index.html
+                                  one per published brief
     <company-slug>/archive/<posting-id>/index.html
                                   one per closed req, served at
                                   /<company-slug>/archive/<posting-id>
@@ -3145,35 +3152,175 @@ def render_profile() -> str:
 
 # ---------------------------------------------------------------- AI brief page
 
-_BRIEF_RE = re.compile(r"(?:^|/)briefs/company=([^/]+)/week=(\d{4}-\d{2}-\d{2})/(brief|evidence)\.json$")
+# Keep in step with s3_prefix() in .claude/skills/tick-brief/scripts/check.py,
+# which is where publish.py uploads each kind.
+_BRIEF_RE = re.compile(r"(?:^|/)briefs/company=([^/]+)/(week|overview)=(\d{4}-\d{2}-\d{2})/(brief|evidence)\.json$")
+_BRIEF_KINDS = {"week": "weekly", "overview": "overview"}
 
 
-def load_brief(lake_io: dict, company: str) -> tuple[dict, dict] | None:
-    """(brief, evidence) for the newest week the lake holds both files for,
-    or None. Briefs live at briefs/company=<slug>/week=<window end>/ and get
-    there only through the tick-brief skill's publish.py, which uploads a
-    brief only after check.py passes it — so a brief here is already
-    verified, and nothing on this side re-writes or repairs one."""
-    weeks: dict[str, dict[str, str]] = {}
+def list_briefs(lake_io: dict, company: str) -> list[dict]:
+    """Every brief the lake holds both files for, newest first, as
+    {"id", "kind", "date", "brief_key", "evidence_key"}. kind is "weekly" or
+    "overview"; on one date a weekly brief sorts before an overview. Briefs
+    reach briefs/ only through the tick-brief skill's publish.py, which
+    uploads a brief only after check.py passes it — so a brief here is
+    already verified, and nothing on this side re-writes or repairs one."""
+    found: dict[tuple[str, str], dict[str, str]] = {}
     for k in lake_io["keys"]:
         m = _BRIEF_RE.search(k.replace(os.sep, "/"))
         if m and m.group(1) == company:
-            weeks.setdefault(m.group(2), {})[m.group(3)] = k
-    for week in sorted(weeks, reverse=True):
-        files = weeks[week]
-        if "brief" in files and "evidence" in files:
-            return lake_io["get"](files["brief"]), lake_io["get"](files["evidence"])
-    return None
+            found.setdefault((_BRIEF_KINDS[m.group(2)], m.group(3)), {})[m.group(4)] = k
+    out = [{"id": f"{kind}-{dt}", "kind": kind, "date": dt,
+            "brief_key": files["brief"], "evidence_key": files["evidence"]}
+           for (kind, dt), files in found.items() if "brief" in files and "evidence" in files]
+    out.sort(key=lambda e: (e["date"], e["kind"] == "weekly"), reverse=True)
+    return out
+
+
+def load_briefs(lake_io: dict, company: str) -> list[dict]:
+    """list_briefs with each entry's brief and evidence loaded."""
+    return [dict(e, brief=lake_io["get"](e["brief_key"]), evidence=lake_io["get"](e["evidence_key"]))
+            for e in list_briefs(lake_io, company)]
+
+
+def current_brief(entries: list[dict]) -> dict | None:
+    """The brief an account's brief.html shows: its newest weekly brief, else
+    its newest overview. An overview is only ever a new account's first brief,
+    so once weekly briefs begin it steps aside, and stays in the archive."""
+    return next((e for e in entries if e["kind"] == "weekly"), entries[0] if entries else None)
+
+
+def load_brief(lake_io: dict, company: str) -> tuple[dict, dict] | None:
+    """(brief, evidence) of the account's current brief, or None."""
+    cur = current_brief(list_briefs(lake_io, company))
+    return (lake_io["get"](cur["brief_key"]), lake_io["get"](cur["evidence_key"])) if cur else None
+
+
+def briefs_href(company: str) -> str:
+    """The account's brief archive. Under /<slug>/, so the edge's per-account
+    check covers it, and every key the archive writes keeps to <slug>/."""
+    return f"/{company}/briefs"
+
+
+def brief_href(company: str, entry: dict) -> str:
+    """One published brief's own, permanent address: /<slug>/briefs/<kind>-<date>.
+    brief.html moves on each week; this does not, so a shared link keeps
+    pointing at the brief it was shared for."""
+    return f"{briefs_href(company)}/{entry['id']}"
+
+
+def _brief_title(entry: dict) -> str:
+    return (f"Overview as of {entry['date']}" if entry["kind"] == "overview"
+            else f"Week to {entry['date']}")
+
+
+def render_brief_pages(lake_io: dict, lake: dict, company: str, company_name: str) -> dict[str, str]:
+    """{key: html} for everything brief-shaped under /<slug>/: brief.html,
+    which shows the current brief (see current_brief) or says there is none
+    yet, and the brief archive — an index of every published brief, weekly and
+    overview, and one page per brief at brief_href. The one entry point for
+    the CLI and the publisher, so the two cannot disagree about which brief is
+    current, and the lake's briefs are read once for all of it.
+
+    Each brief is rendered against its own evidence pack, its citations
+    resolved against the lake as it stands now, so a role an old brief cites
+    that has since closed links to its archive page."""
+    entries = load_briefs(lake_io, company)
+    cur = current_brief(entries)
+    if not cur:
+        return {f"{company}/brief.html": render_no_brief(company, company_name,
+                                                         fmt_dt(lake["curr"]["captured_at"]))}
+    pages = {
+        f"{company}/brief.html": render_ai_brief(
+            cur["brief"], cur["evidence"], lake,
+            archive=_archive_nav(company, entries, cur, cur, on_archive=False)),
+        f"{company}/briefs/index.html": render_briefs_index(
+            company, company_name, entries, cur, fmt_dt(lake["curr"]["captured_at"])),
+    }
+    for e in entries:
+        pages[f"{company}/briefs/{e['id']}/index.html"] = render_ai_brief(
+            e["brief"], e["evidence"], lake, archive=_archive_nav(company, entries, e, cur, on_archive=True))
+    return pages
 
 
 def render_account_brief(lake_io: dict, lake: dict, company: str, company_name: str) -> str:
-    """An account's brief.html: its newest uploaded brief, else the page
-    saying there is none yet. The one entry point for the CLI and the
-    publisher, so the two cannot disagree about which brief is current."""
-    found = load_brief(lake_io, company)
-    if found:
-        return render_ai_brief(*found, lake)
-    return render_no_brief(company, company_name, fmt_dt(lake["curr"]["captured_at"]))
+    """An account's brief.html alone (see render_brief_pages)."""
+    return render_brief_pages(lake_io, lake, company, company_name)[f"{company}/brief.html"]
+
+
+def _shows_reader(entry: dict, cur: dict) -> bool:
+    """A brief names the persona it was written for. An archived brief written
+    for someone other than the current brief's reader keeps its text but drops
+    that line: the account may since have passed to another user, who has no
+    business reading the last one's role and employer."""
+    return entry["brief"].get("persona_ref") == cur["brief"].get("persona_ref")
+
+
+def _archive_nav(company: str, entries: list[dict], entry: dict, cur: dict, on_archive: bool) -> dict:
+    i = next(n for n, e in enumerate(entries) if e is entry)
+    near = lambda e: {"href": brief_href(company, e), "label": _brief_title(e)} if e else None
+    return {"count": len(entries), "index_href": briefs_href(company),
+            "newer": near(entries[i - 1] if i > 0 else None),
+            "older": near(entries[i + 1] if i + 1 < len(entries) else None),
+            "on_archive": on_archive, "is_current": entry is cur,
+            "current_href": f"/{company}/brief.html",
+            "show_reader": _shows_reader(entry, cur), "title": _brief_title(entry)}
+
+
+def _first_sentence(paragraphs: list[str], limit: int = 220) -> str:
+    # a citation leaves a space before the punctuation that followed it
+    text = re.sub(r"\s+([,.;:])", r"\1", _AI_CITE_RE.sub("", (paragraphs or [""])[0])).strip()
+    first = split_sentences(text)[0] if text else ""
+    return first if len(first) <= limit else first[:limit].rsplit(" ", 1)[0] + " …"
+
+
+def render_briefs_index(company: str, company_name: str, entries: list[dict], cur: dict,
+                        generated: str) -> str:
+    """/<slug>/briefs: every brief the account has had, newest first."""
+    rows = []
+    for e in entries:
+        ev, b = e["evidence"], e["brief"]
+        board = ev.get("board") or {}
+        if e["kind"] == "overview":
+            stats = f'{board.get("open_roles", "?")} open roles &middot; {board.get("tech_roles", "?")} tech'
+        else:
+            stats = (f'{board.get("opened", 0)} opened &middot; {board.get("closed", 0)} closed'
+                     f'{" &middot; quiet week" if b.get("quiet_week") else ""}')
+        p = ev.get("persona") or {}
+        reader = ", ".join(x for x in (p.get("role"), p.get("sells_for")) if x)
+        reader = f" &middot; written for {html.escape(reader)}" if reader and _shows_reader(e, cur) else ""
+        tags = (f'<span class="tag tag-neutral tag-flag">{"Overview" if e["kind"] == "overview" else "Weekly"}</span>'
+                + (' <span class="tag tag-solid tag-flag">Current</span>' if e is cur else ""))
+        rows.append(
+            f'<li class="card" style="padding:13px 16px;list-style:none">'
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">'
+            f'<a href="{brief_href(company, e)}" style="font-weight:600;font-family:var(--font-heading)">'
+            f'{html.escape(_brief_title(e))}</a><span>{tags}</span></div>'
+            f'<p style="margin:6px 0 0;font-size:13px;line-height:1.55">{html.escape(_first_sentence(b.get("paragraphs")))}</p>'
+            f'<p class="text-muted" style="margin:5px 0 0;font-size:12px">{stats}{reader}</p></li>')
+    n = len(entries)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{_head(f"{company_name} — TICK brief archive", f"Every brief published for {company_name}, newest first.")}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+{_nav("brief", company)}
+<div class="wrap narrow">
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><a href="/{company}/brief.html">Brief</a><span>/</span><span style="color:var(--color-text)">Archive</span></div>
+  <main id="main">
+  <div class="hdr">
+    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">Brief archive</h1>
+      <p class="text-muted" style="margin:6px 0 0;font-size:13px">{n} brief{"s" if n != 1 else ""}, newest first &middot; each as it was published</p></div>
+  </div>
+  <ol style="display:flex;flex-direction:column;gap:10px;margin:18px 0 0;padding:0">{"".join(rows)}</ol>
+  </main>
+  {_footer(generated)}
+</div>
+</body>
+</html>
+"""
 
 
 def render_no_brief(company: str, company_name: str, generated: str) -> str:
@@ -3194,8 +3341,9 @@ def render_no_brief(company: str, company_name: str, generated: str) -> str:
   <div class="hdr" style="border:0">
     <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">No brief yet</h1></div>
   </div>
-  <p style="margin:6px 0 0;max-width:62ch">Briefs are written weekly from the movement on this
-  account's job board, and every claim in one cites the posting it rests on.
+  <p style="margin:6px 0 0;max-width:62ch">A newly tracked account gets an overview of its
+  board and stack first, then a brief each week from the movement on its job board,
+  and every claim in one cites the posting it rests on.
   This account's first brief has not been published. Until it is, the
   <a href="/{company}/dashboard.html">dashboard</a> has everything the board shows today.</p>
   </main>
@@ -3209,44 +3357,103 @@ def render_no_brief(company: str, company_name: str, generated: str) -> str:
 _AI_CITE_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 
 
-def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None) -> str:
-    """The weekly brief a model wrote (see .claude/skills/tick-brief). The model's text is escaped like any other
-    untrusted input; its [[id]] citations become numbered sources resolved
-    against the evidence pack it was written from.
+def _rail_card(label: str, body: str) -> str:
+    return (f'<div class="card blueprint">{_corners()}'
+            f'<span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;'
+            f'margin-bottom:9px" class="text-muted">{label}</span>{body}</div>')
+
+
+def _rows(pairs: list[tuple[str, object]]) -> str:
+    return ('<div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">'
+            + "".join(f'<div style="display:flex;justify-content:space-between;gap:10px">'
+                      f'<span>{html.escape(str(k))}</span><b>{html.escape(str(v))}</b></div>' for k, v in pairs)
+            + "</div>")
+
+
+def _archive_banner(nav: dict | None) -> str:
+    """Where this brief sits among the account's others. On brief.html, one
+    link to the archive; on an archived brief's own page, which brief it is,
+    whether it is still the current one, and its neighbours."""
+    if not nav:
+        return ""
+    link = f'<a href="{nav["index_href"]}">Brief archive ({nav["count"]})</a>'
+    if not nav["on_archive"]:
+        return f'<p class="text-muted" style="margin:10px 0 0;font-size:12.5px">{link}</p>'
+    status = ("This is the account's current brief." if nav["is_current"] else
+              f'An earlier brief, kept as it was published. '
+              f'<a href="{nav["current_href"]}">Read the current brief</a>.')
+    return (f'<div class="card" style="padding:10px 14px;margin:14px 0 0;font-size:12.5px">'
+            f'<b>{html.escape(nav["title"])}</b> &middot; {status} &middot; {link}</div>')
+
+
+def _archive_pager(nav: dict | None) -> str:
+    if not nav or not nav["on_archive"] or not (nav["older"] or nav["newer"]):
+        return ""
+    older = (f'<a class="btn btn-secondary btn-sm" href="{nav["older"]["href"]}">&larr; '
+             f'{html.escape(nav["older"]["label"])}</a>') if nav["older"] else "<span></span>"
+    newer = (f'<a class="btn btn-secondary btn-sm" href="{nav["newer"]["href"]}">'
+             f'{html.escape(nav["newer"]["label"])} &rarr;</a>') if nav["newer"] else "<span></span>"
+    return (f'<nav aria-label="Other briefs" style="display:flex;justify-content:space-between;gap:10px;'
+            f'flex-wrap:wrap;margin-top:24px">{older}{newer}</nav>')
+
+
+def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archive: dict | None = None) -> str:
+    """A brief a model wrote (see .claude/skills/tick-brief): a weekly brief,
+    or a new account's overview when the pack's kind is "overview". The model's
+    text is escaped like any other untrusted input; its [[id]] citations
+    become numbered sources resolved against the evidence pack it was written
+    from.
 
     Every cited role links somewhere, resolved against the lake as it stands
     at render time rather than the pack: the pack's standing lists carry no
     URL, and a role open that week may have closed since. A closed role links
     to its archive page, which the publisher writes for every req state.json
-    holds as closed; an open one to its posting on the board."""
+    holds as closed; an open one to its posting on the board.
+
+    archive (see _archive_nav) places the brief among the account's others:
+    brief.html links to the brief archive, an archived page names itself and
+    its neighbours, and an archived brief written for another reader drops its
+    "written for" line."""
+    overview = evidence.get("kind") == "overview"
     company_name = evidence["company"]["name"]
+    slug = evidence["company"]["slug"]
     state = (lake or {}).get("state") or {}
     curated = (lake or {}).get("curated") or {}
-    window, board = evidence["window"], evidence["board"]
+    board = evidence["board"]
+    window = evidence.get("window") or {}
+    as_of = evidence["as_of"] if overview else window["end"]
     postings: dict[str, dict] = {}
-    for sec in ("opened", "closed", "reopened"):
+    for sec in ("opened", "closed", "reopened", "postings"):
         for p in evidence.get(sec, []):
             postings.setdefault(p["id"], p)
     for key in ("open_leadership_roles", "longest_open"):
         for p in board.get(key, []):
             postings.setdefault(p["id"], p)
+    for p in (evidence.get("stack") or {}).get("leadership_stack", []):
+        postings.setdefault(p["id"], p)
     persona = evidence.get("persona") or {}
     for p in persona.get("standing_roles", []):
         postings.setdefault(p["id"], p)
     # who the brief was written for: the persona of the user who tracks the
     # account (see tools/persona.py), or nobody named for the default reader
     reader = ", ".join(x for x in (persona.get("role"), persona.get("sells_for")) if x)
+    if archive and not archive["show_reader"]:
+        reader = ""
 
     cx = Citations()
     numbered: dict[str, int] = {}
 
     def label(cid: str) -> tuple[str, str | None]:
+        if cid == "BOARD" and overview:
+            return (f'Board on {as_of}: {board["open_roles"]} open roles, {board["tech_roles"]} tech, '
+                    f'{board["leadership_roles"]} leadership.', None)
         if cid == "BOARD":
             return (f'Board {window["start"]} → {window["end"]}: {board["open_at_start"]} → '
                     f'{board["open_at_end"]} open; {board["opened"]} opened, {board["closed"]} '
                     f'closed, {board["reopened"]} reopened.', None)
         if cid == "STACK":
-            return "Stack terms across the open board.", None
+            return (f"Stack terms across the open board on {as_of}." if overview
+                    else "Stack terms across the open board."), None
         if cid == "PERSONA":
             return f"The reader's terms on the board ({reader or 'persona'}).", None
         p = postings.get(cid)
@@ -3255,14 +3462,14 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None) -> st
         what = (f'closed {p["closed_on"]} after {p.get("days_open")} days' if p.get("closed_on")
                 else f'opened {p["opened_on"]}' if p.get("opened_on")
                 else f'reopened {p["reopened_on"]}' if p.get("reopened_on")
-                else f'open {p.get("days_open")} days')
+                else f'open {p.get("days_open")} days' + (f" on {as_of}" if overview else ""))
         where = f' ({p["location"]})' if p.get("location") else ""
         # today's state wins over the pack's: a req can close, or reopen, after its brief
         closed = state[cid].get("closed_on") if cid in state else p.get("closed_on")
         if closed and not p.get("closed_on"):
             what += f"; closed since, on {closed}"
         # a closed req's board URL now answers "role not found"; its archive page does not
-        url = (archive_href(evidence["company"]["slug"], cid) if closed
+        url = (archive_href(slug, cid) if closed
                else p.get("url") or (curated.get(cid) or {}).get("url"))
         return f'{cid} — {p["title"]}{where}, {what}.', url
 
@@ -3305,40 +3512,81 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None) -> st
             f'<ul style="margin:9px 0 0;padding-left:17px;font-size:12.5px;line-height:1.55">{steps}</ul></div>')
     actions_html = "".join(act_html) or (
         '<p class="text-muted" style="margin:0;font-size:12.5px">'
-        'Nothing moved this week that warrants an approach.</p>')
+        + ("Nothing on the board yet warrants an approach." if overview
+           else "Nothing moved this week that warrants an approach.") + "</p>")
 
     weekly = board.get("weekly_open_totals") or []
     sparkline = _trend_svg(weekly)
     spark_span = f'{weekly[0]["dt"]} &rarr; {weekly[-1]["dt"]}' if weekly else ""
-    delta = board.get("net_change") or 0
-    moves = [("Opened", board["opened"]), ("Closed", board["closed"]), ("Reopened", board["reopened"])]
-    moves_html = "".join(f'<div style="display:flex;justify-content:space-between"><span>{k}</span>'
-                         f'<b>{v}</b></div>' for k, v in moves)
+    host = html.escape(evidence["company"].get("board_host") or "?")
+    version = html.escape(str(brief.get("prompt_version", "?")))
+    if overview:
+        title, heading = "account overview", "Account overview"
+        dated = f"Board as of {as_of}"
+        meta = f"What {company_name}'s open job board says about its stack, as of {as_of}."
+        top = sorted((t for rows in (evidence.get("stack") or {}).get("by_category", {}).values() for t in rows),
+                     key=lambda t: (-t["postings"], t["term"]))[:6]
+        trend_card = _rail_card(
+            "Open board", _rows([("Open roles", board["open_roles"]), ("Tech roles", board["tech_roles"]),
+                                 ("Leadership roles", board["leadership_roles"]),
+                                 ("Stack terms", (evidence.get("stack") or {}).get("terms_on_board", 0))]))
+        moves_card = _rail_card("Most-asked stack", _rows([(t["term"], f'{t["postings"]} role{"s" if t["postings"] != 1 else ""}')
+                                                           for t in top])
+                                if top else '<p class="text-muted" style="margin:0;font-size:12.5px">No stack terms.</p>')
+        tracking = evidence.get("tracking") or {}
+        crawls = tracking.get("crawls", 1)
+        generated = (f'Written from the {as_of} crawl of {host}'
+                     + (f' ({crawls} crawls since {tracking.get("first_crawl")})' if crawls > 1 else ", its first")
+                     + f', overview prompt v{version}.')
+    else:
+        title, heading = "account brief", "Account brief"
+        dated = f"Week to {window['end']}"
+        meta = f"What moved on {company_name}'s job board in the week to {window['end']}, and what to do about it."
+        delta = board.get("net_change") or 0
+        trend_card = (
+            f'<div class="card blueprint">{_corners()}'
+            f'<span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles, {spark_span}</span>'
+            f'{sparkline}'
+            f'<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;flex-wrap:wrap;'
+            f'padding-top:9px;border-top:1px solid var(--color-divider)">'
+            f'<span class="text-muted">{window["start"]} &rarr; {window["end"]}</span>'
+            f'<span>{board["open_at_start"]} &rarr; {board["open_at_end"]} '
+            f'<b style="color:{"var(--color-accent-700)" if delta >= 0 else "inherit"}">{delta:+d}</b></span>'
+            f'</div></div>')
+        moves_card = _rail_card("This week", _rows([("Opened", board["opened"]), ("Closed", board["closed"]),
+                                                    ("Reopened", board["reopened"])]))
+        generated = f'Written from {window["crawl_days"]} daily crawls of {host}, prompt v{version}.'
 
     brief_text = "\n\n".join(
-        [f"{company_name} — account brief, week to {window['end']}"]
+        [f"{company_name} — {title}, {dated[0].lower() + dated[1:]}"]
         + [plain(p) for p in brief.get("paragraphs", [])]
         + (["Action items:"] + [f'- {a.get("title", "")} — {plain(a.get("why", ""))}'
                                 + "".join(f"\n    * {plain(s)}" for s in a.get("steps", []))
                                 for a in brief["action_items"]] if brief.get("action_items") else []))
 
+    if archive and archive["on_archive"]:
+        crumb = (f'<a href="/{slug}/brief.html">Brief</a><span>/</span><a href="{archive["index_href"]}">Archive</a>'
+                 f'<span>/</span><span style="color:var(--color-text)">{html.escape(archive["title"])}</span>')
+    else:
+        crumb = '<span style="color:var(--color-text)">Brief</span>'
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-{_head(f"{company_name} — TICK brief",
-       f"What moved on {company_name}'s job board in the week to {window['end']}, and what to do about it.")}
+{_head(f"{company_name} — TICK {'overview' if overview else 'brief'}", meta)}
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
-{_nav("brief", evidence["company"]["slug"])}
+{_nav("brief", slug)}
 <div class="wrap narrow">
-  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Brief</span></div>
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span>{crumb}</div>
   <main id="main">
   <div class="hdr">
-    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">Account brief</h1>
-      <p class="text-muted" style="margin:6px 0 0;font-size:13px">Week to {window['end']} &middot; every claim carries a citation{f" &middot; written for {html.escape(reader)}" if reader else ""}</p></div>
-    <button class="btn btn-primary" type="button" id="copy-brief">Copy brief</button>
+    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">{heading}</h1>
+      <p class="text-muted" style="margin:6px 0 0;font-size:13px">{dated} &middot; every claim carries a citation{f" &middot; written for {html.escape(reader)}" if reader else ""}</p></div>
+    <button class="btn btn-primary" type="button" id="copy-brief">Copy {'overview' if overview else 'brief'}</button>
   </div>
+  {_archive_banner(archive)}
   <div class="grid narrative">
     <div class="prose">
       {paras}
@@ -3350,32 +3598,17 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None) -> st
         <h2 class="section-label text-muted" style="margin-bottom:10px">Sources &middot; {len(cx.items)} citations</h2>
         <div style="display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.5">{cx.render_list()}</div>
       </div>
+      {_archive_pager(archive)}
     </div>
     <div class="right-col">
-      <div class="card blueprint">{_corners()}
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles, {spark_span}</span>
-        {sparkline}
-        <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;flex-wrap:wrap;
-                    padding-top:9px;border-top:1px solid var(--color-divider)">
-          <span class="text-muted">{window['start']} &rarr; {window['end']}</span>
-          <span>{board['open_at_start']} &rarr; {board['open_at_end']}
-            <b style="color:{'var(--color-accent-700)' if delta >= 0 else 'inherit'}">{delta:+d}</b></span>
-        </div>
-      </div>
-      <div class="card blueprint">{_corners()}
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:9px" class="text-muted">This week</span>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">{moves_html}</div>
-      </div>
-      <div class="card blueprint">{_corners()}
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:9px" class="text-muted">Generated</span>
-        <p style="margin:0;font-size:12.5px;line-height:1.55" class="text-muted">Written from {window['crawl_days']} daily
-        crawls of {html.escape(evidence['company'].get('board_host') or '?')}, prompt v{html.escape(str(brief.get('prompt_version', '?')))}.
-        Every claim above cites the posting or board count it rests on.</p>
-      </div>
+      {trend_card}
+      {moves_card}
+      {_rail_card("Generated", f'<p style="margin:0;font-size:12.5px;line-height:1.55" class="text-muted">{generated} '
+                               'Every claim above cites the posting or board count it rests on.</p>')}
     </div>
   </div>
   </main>
-  {_footer(window['end'], evidence['company'].get('board_host'))}
+  {_footer(as_of, evidence['company'].get('board_host'))}
 </div>
 {_copy_script('copy-brief', brief_text)}
 </body>
@@ -3474,13 +3707,18 @@ if __name__ == "__main__":
         acct_dir = os.path.join(args.out_dir, a["slug"])
         os.makedirs(acct_dir, exist_ok=True)
         dash_path = os.path.join(acct_dir, "dashboard.html")
-        brief_path = os.path.join(acct_dir, "brief.html")
         with open(dash_path, "w") as f:
             f.write(render_dashboard(lake, a["slug"]))
-        with open(brief_path, "w") as f:
-            f.write(render_account_brief(lake_io, lake, a["slug"], a["name"]))
         print(f"wrote {dash_path}")
-        print(f"wrote {brief_path}")
+        briefs = render_brief_pages(lake_io, lake, a["slug"], a["name"])
+        for key, body in briefs.items():
+            path = os.path.join(args.out_dir, key)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(body)
+        print(f"wrote {os.path.join(acct_dir, 'brief.html')}"
+              + (f" and {len(briefs) - 2} archived brief{'s' if len(briefs) != 3 else ''} under "
+                 f"{os.path.join(acct_dir, 'briefs')}" if len(briefs) > 1 else ""))
         archive = render_archive_pages(lake, a["slug"])
         for key, body in archive.items():
             path = os.path.join(args.out_dir, key)

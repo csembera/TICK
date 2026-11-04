@@ -196,7 +196,11 @@ itself within 5 minutes. For each account it writes:
   the roles opened this window, and every open and closed role in tables that
   search descriptions, sort, filter by stack term and tag a viewer's own
   "My terms" (saved to their profile).
-- `<slug>/brief.html`: the newest published brief, or "No brief yet".
+- `<slug>/brief.html`: the account's current brief (its newest weekly
+  brief, else its overview), or "No brief yet".
+- `<slug>/briefs/index.html` and `<slug>/briefs/<kind>-<date>/index.html`:
+  the brief archive, every brief the account has had, each at its own
+  permanent address (see [The brief archive](#the-brief-archive)).
 - `<slug>/archive/<pid>/index.html`: one page per closed req, the stable
   address briefs cite once the board stops serving the posting.
 
@@ -207,7 +211,8 @@ its config is uploaded, marked **Not collected** until its first crawl and
 **Reporting** from then on. A company that is in the lake without a config is
 still listed, so removing a config stops the crawls but not the pages. A first
 crawl's dashboard shows the open board without change figures; those, and
-briefs, start with the second crawl.
+weekly briefs, start with the second crawl. A new account's first brief is an
+overview of the board on one crawl (see [Overview briefs](#overview-briefs)).
 
 ### The comparison window
 
@@ -238,6 +243,42 @@ So a role that closes after its brief stops pointing at a dead board link.
 The site shows each account's newest week holding both files. A skipped week
 leaves last week's brief up, dated. A new brief appears at the next nightly
 publish, or at once with `tools/tick.py publish pages`.
+
+### Overview briefs
+
+A newly tracked account has no week of movement, so before its first weekly
+brief it gets one **overview**: what the open board says about the company
+today, mostly its stack. `evidence.py --overview` builds that pack from one
+crawl: the board by team, location and age; every stack term by category,
+with the teams and roles that ask for it, the share of the board it covers
+(a term on a quarter of a big board is marked baseline), the pairs that occur
+together, the rare ones, the ones that arrived since tracking began, and what
+the leadership seats ask for; and the open roles, the tech and leadership ones
+with their role text. The writer follows
+[prompt-overview.md](../.claude/skills/tick-brief/prompt-overview.md) under
+the weekly brief's hard rules, `check.py` applies the overview's limits, and
+`publish.py --overview` uploads it to `briefs/company=<slug>/overview=<date>/`.
+`brief.html` shows it until the account's first weekly brief exists; on one
+date, a weekly brief wins.
+
+### The brief archive
+
+Every published brief stays in the lake, and the publisher renders all of
+them: `/<slug>/briefs` lists an account's briefs newest first (date, kind,
+first sentence, movement or board size), and each brief has a permanent page
+at `/<slug>/briefs/weekly-<date>` or `/<slug>/briefs/overview-<date>`, with
+links to its neighbours and to the current brief. `brief.html` moves on each
+week; these addresses do not, so a brief can be linked and found again. Each
+is rendered from its own evidence pack, with its citations resolved against
+the lake as it stands at render time, like the current brief's.
+
+The pages sit under `/<slug>/`, so the edge's per-account check guards them
+with no change, and their keys stay in the publisher's half of the bucket.
+An archived brief written for a different reader than the current brief's
+(the account changed hands, or the reader cleared their persona) drops its
+"written for" line, in the archive list too, so one user's role and employer
+are not shown to the next. Its text, which may pitch the earlier reader's
+offer, is kept as written.
 
 ### Who a brief is written for
 
@@ -299,6 +340,8 @@ https://tick.sembasolutions.com/login                     the way in: signs you 
 https://tick.sembasolutions.com/accounts                  accounts home
 https://tick.sembasolutions.com/<company-slug>/dashboard.html
 https://tick.sembasolutions.com/<company-slug>/brief.html
+https://tick.sembasolutions.com/<company-slug>/briefs                  the brief archive
+https://tick.sembasolutions.com/<company-slug>/briefs/weekly-<date>    one brief, permanently
 https://tick.sembasolutions.com/<company-slug>/archive/<posting-id>   a closed req
 ```
 
