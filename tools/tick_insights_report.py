@@ -1218,8 +1218,7 @@ button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--
 .my-terms-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .chip{display:inline-flex;align-items:center;border:1px solid var(--color-accent-900);color:var(--color-accent-900)}
 .chip-term{font:inherit;font-size:12px;background:none;border:0;padding:2px 4px 2px 9px;cursor:pointer;color:inherit}
-.chip-term b{font-weight:600;color:var(--color-accent-700);margin-left:3px}
-.chip-term[aria-pressed=true],.chip-term[aria-pressed=true] b{background:var(--color-accent-900);color:#fff}
+.chip-term[aria-pressed=true]{background:var(--color-accent-900);color:#fff}
 .my-terms-form{display:flex;gap:6px}
 .my-terms-form input{font-family:var(--font-body);font-size:13px;padding:5px 9px;width:210px;max-width:100%;
   background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
@@ -2094,9 +2093,6 @@ _TABLES_JS = r"""<script>
         state.term = state.term && same(state.term, t) ? '' : t;
         apply(true);
       },
-      mentions: function (t) {
-        return rows.filter(function (r) { return r._mine.indexOf(t) !== -1; }).length;
-      },
       head: function () { return document.getElementById(cfg.head); }
     };
   }
@@ -2140,17 +2136,14 @@ _TABLES_JS = r"""<script>
       list.appendChild(none);
     }
     mine.forEach(function (t) {
-      var n = roles.mentions(t);
       var chip = document.createElement('span'), b = document.createElement('button');
-      var x = document.createElement('button'), num = document.createElement('b');
+      var x = document.createElement('button');
       chip.className = 'chip';
       b.type = x.type = 'button';
       b.className = 'chip-term';
       b.setAttribute('data-my-term', t);
-      b.title = n + ' open role' + (n === 1 ? '' : 's') + ' mention ' + t + '. Select to show only those.';
-      b.appendChild(document.createTextNode(t));
-      num.textContent = n;
-      b.appendChild(num);
+      b.title = 'Show only the open roles that mention ' + t + '.';
+      b.textContent = t;
       b.addEventListener('click', function () { roles.setTerm(t); });
       x.className = 'chip-x';
       x.setAttribute('aria-label', 'Remove ' + t + ' from My terms');
