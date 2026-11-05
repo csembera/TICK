@@ -88,12 +88,12 @@ class FirstCrawl(unittest.TestCase):
         page = self.dashboard()
         for title in BOARD.values():
             self.assertIn(title, page)
-        self.assertIn("the first crawl of this board", page)
         self.assertIn(f"First crawl {TODAY}", page)
+        self.assertIn("From the next crawl", page)
         self.assertIn("On the board", page)
         # nothing that is a change between two crawls
         self.assertNotIn("Adopting", page)
-        self.assertNotIn("measured against", page)
+        self.assertNotIn(f"&ndash; {TODAY}", page)
         self.assertNotIn(f"&rarr; {TODAY}", page)
 
     def test_first_crawl_gets_no_brief(self):
@@ -106,9 +106,9 @@ class FirstCrawl(unittest.TestCase):
         self.assertTrue(a["has_baseline"])
         self.assertEqual(a["prev_dt"], then)
         page = self.dashboard()
-        self.assertIn(f"measured against the crawl 14 days earlier ({then})", page)
+        self.assertIn(f"{then} &ndash; {TODAY}", page)   # the window, labelled with its real dates
         self.assertIn("Adopting", page)
-        self.assertNotIn("the first crawl of this board", page)
+        self.assertNotIn("From the next crawl", page)
         self.assertEqual(self.briefed(), [SLUG])
 
 

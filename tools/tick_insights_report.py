@@ -451,9 +451,6 @@ NEW_ROLE_DAYS = 7
 HISTORY_DAYS = 365   # trailing window the dashboard's open-roles chart plots
 STACK_AGE_DAYS = 183  # 6 months: older evidence is Established, newer is Adopting
 
-# open-roles chart geometry, shared by the SVG builder and its hover script
-_CH_W, _CH_H, _CH_L, _CH_R, _CH_T, _CH_B = 440, 210, 34, 10, 12, 26
-
 
 def opening_window(dts: list[str], curr_dt: str, first_seen: str | None,
                    days: int = NEW_ROLE_DAYS) -> bool:
@@ -1036,33 +1033,47 @@ def build_accounts(configs: list[dict], lake_io: dict,
 _STYLE = """
 :root{
   color-scheme:light;
-  --color-bg:#f2f2f3;--color-surface:#e9e9ea;--color-text:#1d1f20;
-  --color-accent:#5980a6;--color-divider:color-mix(in srgb,#1d1f20 16%,transparent);
-  --color-accent-100:#eef6ff;--color-accent-700:#416180;--color-accent-800:#2c455d;--color-accent-900:#1d2d3d;
-  --color-neutral-100:#f5f5f8;--color-neutral-500:#98989b;--color-neutral-800:#424244;
+  --color-bg:#f5f7fa;--color-surface:#fff;--color-surface-2:#f8fafc;
+  --color-text:#17212b;--color-text-2:#4b5866;--color-text-3:#64717f;
+  --color-border:#e3e8ee;--color-border-strong:#cdd5df;--color-divider:var(--color-border);
+  --color-accent:#3d6a96;--color-accent-100:#edf3f9;--color-accent-200:#d3e1ee;
+  --color-accent-700:#30577d;--color-accent-800:#264763;--color-accent-900:#1b3349;
+  --color-neutral-100:#f0f3f6;--color-neutral-500:#8b97a4;--color-neutral-800:#3c4652;
+  --color-live:#2f8f5b;--color-review:#c27c1a;
+  --radius:12px;--radius-sm:8px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.05);
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 4px rgba(16,24,40,.04);
+  --shadow-md:0 6px 18px rgba(16,24,40,.08),0 1px 3px rgba(16,24,40,.05);
+  --shadow-lg:0 24px 56px rgba(16,24,40,.2),0 2px 8px rgba(16,24,40,.06);
+  --ring:0 0 0 3px color-mix(in srgb,var(--color-accent) 24%,transparent);
   --font-heading:"Barlow Condensed",system-ui,sans-serif;--font-body:"Barlow",system-ui,sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box}
 /* the UA rule for [hidden] is display:none, but any author display wins over it —
    .pager's display:flex kept the pager on screen after JS had hidden it */
 [hidden]{display:none!important}
-body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:15px;line-height:1.55}
-h1,h2,h3,h4,h5,h6{font-family:var(--font-heading);font-weight:600;line-height:1.12;letter-spacing:-.015em;margin:0}
-h6{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
-a{color:var(--color-accent);text-underline-offset:3px}
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+h1,h2,h3,h4,h5,h6{font-family:var(--font-heading);font-weight:600;line-height:1.15;letter-spacing:-.01em;margin:0;text-wrap:balance}
+a{color:var(--color-accent);text-underline-offset:3px;text-decoration-thickness:1px}
+a:hover{color:var(--color-accent-700)}
 :focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
-.text-muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.text-muted{color:var(--color-text-3)}
 .visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
   clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
-.skip-link{position:absolute;left:8px;top:-48px;z-index:10;padding:9px 14px;background:var(--color-accent-900);
-  color:#fff;text-decoration:none;font-family:var(--font-heading);font-weight:600;font-size:14px;transition:top .12s}
+.skip-link{position:absolute;left:8px;top:-48px;z-index:10;padding:9px 14px;background:var(--color-accent-900);border-radius:var(--radius-sm);
+  color:#fff;text-decoration:none;font-weight:600;font-size:14px;transition:top .12s}
 .skip-link:focus{top:8px}
 /* page title block: an eyebrow line above the h1, so the heading order stays h1 -> h2 */
-.eyebrow{font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.08em;
-  text-transform:uppercase;line-height:1.12;margin:0}
-.section-label{font-size:13px;letter-spacing:.08em;text-transform:uppercase}
-.wrap{max-width:1280px;margin:0 auto;padding:0 24px 60px}
-.wrap.narrow{max-width:940px}
+.eyebrow{font-family:var(--font-body);font-weight:600;font-size:12.5px;letter-spacing:.08em;
+  text-transform:uppercase;line-height:1.2;margin:0;color:var(--color-accent)}
+.section-label{display:flex;align-items:center;gap:10px;margin:0;font-family:var(--font-heading);font-weight:600;
+  font-size:21px;letter-spacing:-.005em;color:var(--color-text)}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:22px;padding:0 8px;
+  border-radius:999px;background:var(--color-neutral-100);color:var(--color-text-2);font-family:var(--font-body);
+  font-size:12.5px;font-weight:600;letter-spacing:0;font-variant-numeric:tabular-nums}
+.wrap{max-width:1280px;margin:0 auto;padding:0 32px 64px}
+.wrap.narrow{max-width:1040px}
 /* menu bar: a twin of the one in infra/site-static/demo/ (the source of truth),
    colors pinned to that page's palette. Change both — see CLAUDE.md. */
 .nav{display:flex;align-items:center;gap:28px;padding:16px 32px;
@@ -1082,9 +1093,10 @@ a{color:var(--color-accent);text-underline-offset:3px}
 /* the account menu, in the signed-in corner. The demo has no signed-in corner
    (it offers Log in / Get started there), so these rules have no twin in it. */
 .nav-menu{position:relative}
-.nav-menu summary{display:flex;align-items:center;gap:10px;list-style:none;cursor:pointer;color:#9aa9b8;font-size:18px;padding:4px 2px}
+.nav-menu summary{display:flex;align-items:center;gap:10px;list-style:none;cursor:pointer;color:#9aa9b8;font-size:18px;
+  padding:4px 8px 4px 4px;border-radius:999px;transition:background .12s,color .12s}
 .nav-menu summary::-webkit-details-marker{display:none}
-.nav-menu summary:hover,.nav-menu[open] summary{color:#eef2f5}
+.nav-menu summary:hover,.nav-menu[open] summary{color:#eef2f5;background:rgba(134,170,206,.12)}
 .nav-menu svg{display:block;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .nav-avatar{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;
   background:#456e99;color:#fff;font-family:var(--font-heading);font-weight:600;font-size:17px;line-height:1}
@@ -1092,116 +1104,234 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .nav-who{max-width:16ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nav-caret{width:14px;height:14px;transition:transform .12s}
 .nav-menu[open] .nav-caret{transform:rotate(180deg)}
-.nav-menu-panel{position:absolute;right:0;top:calc(100% + 10px);z-index:20;min-width:230px;max-width:calc(100vw - 32px);
-  padding:6px 0;background:#0d151d;border:1px solid rgba(158,186,214,.22);box-shadow:0 12px 28px rgba(0,0,0,.35)}
-.nav-menu-email{margin:0;padding:8px 16px 10px;font-size:13px;color:#9aa9b8;overflow-wrap:anywhere;
+.nav-menu-panel{position:absolute;right:0;top:calc(100% + 10px);z-index:20;min-width:240px;max-width:calc(100vw - 32px);
+  padding:6px;background:#0d151d;border:1px solid rgba(158,186,214,.22);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.4)}
+.nav-menu-email{margin:0 0 4px;padding:8px 10px 10px;font-size:13px;color:#9aa9b8;overflow-wrap:anywhere;
   border-bottom:1px solid rgba(158,186,214,.14)}
-.nav-menu-panel a{display:flex;align-items:center;gap:12px;padding:10px 16px;color:#c9d4de;text-decoration:none;font-size:16px}
-.nav-menu-panel a+a{border-top:1px solid rgba(158,186,214,.14)}
+.nav-menu-panel a{display:flex;align-items:center;gap:12px;padding:9px 10px;color:#c9d4de;text-decoration:none;font-size:16px;border-radius:8px}
 .nav-menu-panel a svg{width:19px;height:19px;color:#86aace}
 .nav-menu-panel a:hover{background:rgba(134,170,206,.12);color:#eef2f5}
-.nav-menu-panel a[aria-current='page']{color:#eef2f5;box-shadow:inset 2px 0 0 #86aace}
-.crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:color-mix(in srgb,var(--color-text) 50%,transparent);margin:18px 0 12px}
-.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--color-divider)}
-.blueprint{position:relative;border:1px solid var(--color-divider)}
-.blueprint>.corner{position:absolute;width:11px;height:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
-.blueprint>.corner::before,.blueprint>.corner::after{content:"";position:absolute;background:currentColor}
-.blueprint>.corner::before{left:5px;top:0;width:1px;height:100%}
-.blueprint>.corner::after{top:5px;left:0;width:100%;height:1px}
-.blueprint>.corner.tl{top:-6px;left:-6px}.blueprint>.corner.tr{top:-6px;right:-6px}
-.blueprint>.corner.bl{bottom:-6px;left:-6px}.blueprint>.corner.br{bottom:-6px;right:-6px}
-.card{padding:15px 16px}
-.tag{display:inline-flex;align-items:center;font-size:11px;letter-spacing:.02em;padding:3px 10px}
-.row-flags{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
-.tag-flag{font-size:10px;padding:2px 8px}
+.nav-menu-panel a[aria-current='page']{color:#eef2f5;background:rgba(134,170,206,.08)}
+.crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--color-text-3);margin:18px 0 8px}
+.crumb a{color:inherit;text-decoration:none}
+.crumb a:hover{color:var(--color-accent)}
+.crumb .here{color:var(--color-text);font-weight:500}
+.hdr{display:flex;align-items:center;justify-content:space-between;gap:12px 24px;flex-wrap:wrap;padding:0 0 18px}
+.hdr-top{padding-top:28px}
+.hdr-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hdr h1{font-size:32px;line-height:1.1;margin:0}
+.hdr .eyebrow+h1{margin-top:4px}
+.hdr-sub{margin:10px 0 0;font-size:14.5px;line-height:1.55;color:var(--color-text-2);max-width:74ch}
+.hdr-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin:8px 0 0;font-size:13.5px;color:var(--color-text-2)}
+.hdr-meta>*+*::before{content:"";display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--color-border-strong);
+  margin-right:14px;vertical-align:middle}
+.blueprint{position:relative;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card{padding:16px 18px}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.card-title{font-family:var(--font-heading);font-weight:600;font-size:19px;line-height:1.2;margin:0}
+.card-sub{display:block;margin:3px 0 0;font-size:13px;line-height:1.45;color:var(--color-text-3)}
+.note{margin:10px 0 0;font-size:12.5px;line-height:1.55;color:var(--color-text-3)}
+.empty{margin:0;font-size:13.5px;line-height:1.55;color:var(--color-text-3)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;line-height:1.45;letter-spacing:.01em;
+  padding:2px 10px;border-radius:999px;white-space:nowrap}
+.row-flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+/* in a table row the flags follow the title: the tables run full width, so a
+   flag on its own line only made every flagged row taller */
+.table .row-flags{display:inline-flex;margin:0 0 0 8px;vertical-align:1px}
+.tag-flag{font-size:11.5px;padding:1px 8px}
 .tag-accent{background:var(--color-accent-100);color:var(--color-accent-800)}
 .tag-neutral{background:var(--color-neutral-100);color:var(--color-neutral-800)}
-.tag-outline{border:1px solid var(--color-accent);color:var(--color-accent)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;text-decoration:none;font-family:var(--font-heading);font-weight:600;font-size:14px;padding:8px 14px;border:1px solid var(--color-divider);background:transparent;color:var(--color-text)}
-.btn-primary{background:var(--color-accent);color:var(--color-bg);border-color:var(--color-accent)}
-.btn-primary:hover{background:var(--color-accent-700)}
-.btn-secondary:hover{background:color-mix(in srgb,var(--color-text) 7%,transparent)}
-.table{width:100%;border-collapse:collapse;font-size:13.5px}
-.table th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 60%,transparent);padding:8px;border-bottom:1px solid var(--color-divider)}
-.table td{padding:8px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent);vertical-align:top}
-.table tbody tr:hover{background:color-mix(in srgb,var(--color-text) 4%,transparent)}
-.stack-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
-.stack-row{display:flex;justify-content:space-between;gap:10px;font-size:13px}
-.stat-row{display:flex;border-top:1px solid var(--color-divider);margin-top:12px}
-.stat{flex:1;padding:9px 0 0}
-.stat b{display:block;font-family:var(--font-heading);font-weight:600;font-size:24px;line-height:1}
-.stat span{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
-.right-col{display:flex;flex-direction:column;gap:14px}
-.grid{display:grid;grid-template-columns:7fr 4fr;gap:24px;margin-top:24px;align-items:start}
+.tag-outline{border:1px solid var(--color-accent-200);color:var(--color-accent-800);background:var(--color-surface)}
+.tag-solid{background:var(--color-accent);color:#fff}
+.tag-mine{background:var(--color-accent-900);color:#fff}
+/* account state: a dot beside the word, so state is never told by color alone */
+.status{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--color-text-2);white-space:nowrap;
+  padding:2px 10px 2px 8px;border-radius:999px;background:var(--color-neutral-100)}
+.status::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--color-neutral-500)}
+.status-live::before{background:var(--color-live);box-shadow:0 0 0 3px color-mix(in srgb,var(--color-live) 18%,transparent)}
+.status-review::before{background:var(--color-review)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 16px;cursor:pointer;
+  text-decoration:none;font-family:var(--font-body);font-weight:600;font-size:14px;line-height:1.2;border-radius:var(--radius-sm);
+  border:1px solid var(--color-border-strong);background:var(--color-surface);color:var(--color-text);box-shadow:var(--shadow-sm);
+  transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+.btn:hover{color:var(--color-text)}
+.btn-primary{background:var(--color-accent);color:#fff;border-color:var(--color-accent)}
+.btn-primary:hover{background:var(--color-accent-700);border-color:var(--color-accent-700);color:#fff}
+.btn-secondary:hover{background:var(--color-surface-2);border-color:var(--color-neutral-500)}
+.btn-sm{min-height:32px;padding:0 12px;font-size:13px}
+.btn[disabled]{opacity:.5;cursor:default}
+.btn-link{font:inherit;font-size:13px;font-weight:500;background:none;border:0;padding:0;color:var(--color-accent);cursor:pointer;
+  text-decoration:underline;text-underline-offset:3px}
+/* every text field in the app shares one look */
+.tbl-controls input[type=search],.my-terms-form input,.acct-add input,.acct-add textarea,
+.pgrid input[type=text],.pgrid textarea,.pgrid select{font-family:var(--font-body);font-size:14px;line-height:1.4;padding:8px 12px;
+  background:var(--color-surface);color:var(--color-text);border:1px solid var(--color-border-strong);border-radius:var(--radius-sm);
+  box-shadow:var(--shadow-sm);transition:border-color .12s,box-shadow .12s}
+.tbl-controls input[type=search]:focus-visible,.my-terms-form input:focus-visible,.acct-add input:focus-visible,
+.acct-add textarea:focus-visible,.pgrid input:focus-visible,.pgrid textarea:focus-visible,.pgrid select:focus-visible{
+  outline:none;border-color:var(--color-accent);box-shadow:var(--ring)}
+::placeholder{color:var(--color-neutral-500)}
+.table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+.table th{text-align:left;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-3);
+  padding:9px 14px;background:var(--color-surface-2);border-bottom:1px solid var(--color-border);white-space:nowrap}
+.table td{padding:10px 14px;border-bottom:1px solid var(--color-border);vertical-align:top}
+.table tbody tr:last-child td{border-bottom:0}
+.table tbody tr{transition:background .1s}
+.table tbody tr:hover{background:var(--color-surface-2)}
+.table td>a{color:var(--color-accent-800);font-weight:600;text-decoration:none}
+.table td>a:hover{color:var(--color-accent);text-decoration:underline}
+.table .num{text-align:right;font-variant-numeric:tabular-nums}
+.table td.nowrap{white-space:nowrap;font-variant-numeric:tabular-nums}
+.tbl-wrap{overflow-x:auto}
+/* the stack's buckets are columns of one card: an empty bucket is a short
+   column, not a card standing half empty beside a full one */
+.stack-card{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);margin-top:12px}
+.stack-col{padding:16px 18px;min-width:0}
+.stack-col+.stack-col{border-left:1px solid var(--color-border)}
+/* a bucket with the card to itself (a first crawl, or an empty neighbour)
+   flows its terms into two columns rather than one long one */
+.stack-list.wide{display:block;columns:2;column-gap:36px}
+.stack-list.wide .stack-row{break-inside:avoid;border-top:0;border-bottom:1px solid var(--color-border);padding:6px 0}
+.stack-list{display:flex;flex-direction:column}
+.stack-row{display:grid;grid-template-columns:minmax(0,1fr) 72px minmax(96px,auto);align-items:center;gap:14px;
+  padding:6px 0;border-top:1px solid var(--color-border);font-size:14px}
+.stack-row:first-child{border-top:0;padding-top:2px}
+.stack-meta{font-size:12.5px;color:var(--color-text-3);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* a term's share of the busiest term's postings: one hue, the track a lighter step of it */
+.meter{height:6px;border-radius:999px;background:var(--color-accent-100);overflow:hidden}
+.meter>i{display:block;height:100%;border-radius:999px;background:var(--color-accent)}
+/* the headline figures: one card, its cells split by hairlines */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0 0 16px}
+.kpi{padding:13px 18px;border-left:1px solid var(--color-border);min-width:0}
+.kpi:first-child{border-left:0}
+.kpi-label{display:block;font-size:13px;font-weight:500;color:var(--color-text-2)}
+.kpi-value{display:block;font-family:var(--font-body);font-weight:600;font-size:28px;line-height:1.1;letter-spacing:-.02em;margin-top:3px}
+.kpi-sub{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;font-size:12.5px;color:var(--color-text-3)}
+.delta{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;
+  font-variant-numeric:tabular-nums;background:var(--color-neutral-100);color:var(--color-neutral-800)}
+.delta.up{background:var(--color-accent-100);color:var(--color-accent-800)}
+.stat-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border-top:1px solid var(--color-border);margin-top:12px;padding-top:12px}
+.stat b{display:block;font-family:var(--font-body);font-weight:600;font-size:24px;line-height:1.1;letter-spacing:-.01em}
+.stat span{display:block;margin-top:3px;font-size:12px;color:var(--color-text-3)}
+.right-col{display:flex;flex-direction:column;gap:16px}
+.grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4fr);gap:16px;align-items:start}
 /* a grid item defaults to min-width:auto, so it refuses to shrink below the
    widest thing inside it — the roles table then pushed the whole page sideways
    instead of scrolling inside its own overflow-x container */
 .grid>*,.right-col>*{min-width:0}
-.grid.narrative{grid-template-columns:1fr 268px}
-.cite{color:var(--color-accent-700);font-size:11px}
-.prose p{margin:0 0 14px;font-size:15.5px;line-height:1.7;max-width:62ch}
-.bar-track{height:6px;background:color-mix(in srgb,var(--color-text) 8%,transparent)}
-.bar-fill{height:100%;background:var(--color-accent)}
+.grid.narrative{grid-template-columns:minmax(0,1fr) 300px;gap:24px}
+.section{margin-top:28px}
+.kv{display:flex;flex-direction:column;font-size:13.5px}
+.kv>div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;border-top:1px solid var(--color-border)}
+.kv>div:first-child{border-top:0;padding-top:0}
+.kv>div:last-child{padding-bottom:0}
+.kv>div>:first-child{color:var(--color-text-3)}
+.kv>div>:last-child{font-weight:600;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.list-rows{display:flex;flex-direction:column}
+.list-rows>div{padding:8px 0;border-top:1px solid var(--color-border)}
+.list-rows>div:first-child{border-top:0;padding-top:0}
+.list-rows a{font-weight:600;color:var(--color-accent-800);text-decoration:none;font-size:14px}
+.list-rows a:hover{color:var(--color-accent);text-decoration:underline}
+.list-rows span{display:block;font-size:12.5px;color:var(--color-text-3);margin-top:1px}
+.cite{font-size:11px;color:var(--color-accent-800)}
+sup.cite{line-height:0;margin-left:1px}
+sup.cite a{padding:0 2px;border-radius:4px;color:var(--color-accent);font-size:11px;font-weight:700;
+  text-decoration:none;font-variant-numeric:tabular-nums;transition:background .12s,color .12s}
+sup.cite a:hover{background:var(--color-accent-100);color:var(--color-accent-800)}
+.prose p{margin:0 0 16px;font-size:16.5px;line-height:1.75;max-width:68ch}
+.prose p:last-child{margin-bottom:0}
+.paper{padding:24px 28px}
 .crumb a{color:inherit;text-decoration:none}
-.crumb a:hover{color:var(--color-accent)}
-/* min() keeps a 330px track from overflowing a 320px phone */
-.acct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:20px;margin-top:24px;align-items:start}
-.acct-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.acct-name{font-family:var(--font-heading);font-weight:600;font-size:19px;line-height:1.15}
-.acct-meta{font-size:11.5px;letter-spacing:.02em;margin-top:2px;overflow-wrap:anywhere}
-.acct-grid>.card{display:flex;flex-direction:column}
-/* inset rather than a real border: a 3px left border would shift the card's
-   contents 2px and pull the blueprint corner marks out of alignment */
-.acct-grid>.card.is-reporting{box-shadow:inset 3px 0 0 var(--color-accent)}
-.acct-grid .stat b{color:var(--color-accent)}
-.acct-grid .is-reporting .acct-name{color:var(--color-accent-900)}
-.tag-solid{background:var(--color-accent);color:var(--color-bg)}
-.acct-lede b{color:var(--color-accent-800);font-weight:600}
-.acct-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:13px}
-.btn-sm{font-size:13px;padding:6px 11px}
-.acct-note{font-size:11.5px;line-height:1.5;margin:13px 0 0}
-.chart-wrap{position:relative;margin:10px 0 4px}
-.ch-svg{display:block;width:100%;height:auto;overflow:visible}
-.ch-grid{stroke:color-mix(in srgb,var(--color-text) 13%,transparent);stroke-width:1;vector-effect:non-scaling-stroke}
+/* min() keeps a 340px track from overflowing a 320px phone */
+.acct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:16px;align-items:stretch}
+.acct-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.acct-name{font-family:var(--font-heading);font-weight:600;font-size:21px;line-height:1.15}
+.acct-name a{color:inherit;text-decoration:none}
+.acct-name a:hover{color:var(--color-accent)}
+.acct-meta{font-size:12.5px;margin-top:4px;color:var(--color-text-3);overflow-wrap:anywhere}
+.acct-add:not([open]){align-self:start}
+.acct-grid>.card{display:flex;flex-direction:column;transition:box-shadow .15s,border-color .15s}
+.acct-grid>.card.is-reporting:hover{border-color:var(--color-border-strong);box-shadow:var(--shadow-md)}
+.acct-lede b{color:var(--color-text);font-weight:600}
+.acct-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:14px}
+/* cards in a row share a height; figures and buttons sit at the bottom, so
+   they line up across the row whatever the length of each name */
+.acct-grid>.card>.stat-row{margin-top:auto}
+.acct-grid>.card>.stat-row+.acct-foot{margin-top:0}
+.acct-foot .acct-when{margin-left:auto;font-size:12.5px;color:var(--color-text-3)}
+.acct-note{font-size:13px;line-height:1.55;margin:14px 0 0;color:var(--color-text-3)}
+/* the request tile: closed, a quiet dashed card; opened, the form */
+.acct-add{background:transparent;border:1.5px dashed var(--color-border-strong);box-shadow:none;padding:0}
+.acct-add[open]{background:var(--color-surface);border-style:solid;border-width:1px;border-color:var(--color-border);box-shadow:var(--shadow)}
+.acct-add>summary{display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer;list-style:none;border-radius:var(--radius)}
+.acct-add>summary::-webkit-details-marker{display:none}
+.acct-add>summary:hover .acct-plus{background:var(--color-accent);color:#fff;border-color:var(--color-accent)}
+.acct-plus{display:inline-flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;border-radius:50%;
+  border:1px solid var(--color-border-strong);background:var(--color-surface);color:var(--color-accent);font-size:22px;line-height:1;
+  transition:background .12s,color .12s,border-color .12s}
+.acct-add[open] .acct-plus{transform:rotate(45deg)}
+.acct-add form{padding:0 18px 16px}
+.acct-add label{display:block;font-size:13px;font-weight:500;margin:14px 0 6px;color:var(--color-text-2)}
+.acct-add label:first-of-type{margin-top:0}
+.acct-add input,.acct-add textarea{width:100%}
+.acct-add textarea{resize:vertical;min-height:64px}
+.acct-add .acct-status{font-size:13px}
+.chart-wrap{position:relative;margin:4px 0 0}
+/* the plot stretches to the card, so its strokes do not scale (vector-effect)
+   and its labels and dots are HTML laid over it by percentage: text stays
+   legible at any width, where a scaled viewBox shrank it to 5px on a phone */
+.ch-frame{padding:8px 30px 28px 34px}
+.ch-plot{position:relative;height:200px}
+.ch-svg{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:visible}
+.ch-grid{stroke:var(--color-border);stroke-width:1;vector-effect:non-scaling-stroke}
+.ch-base{stroke:var(--color-border-strong);stroke-width:1;vector-effect:non-scaling-stroke}
 .ch-line{fill:none;stroke:var(--color-accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
-.ch-area{fill:var(--color-accent);opacity:.10}
-.ch-hot{fill:var(--color-accent);stroke:var(--color-bg);stroke-width:2}
-.ch-hair{stroke:color-mix(in srgb,var(--color-text) 32%,transparent);stroke-width:1;vector-effect:non-scaling-stroke}
-.ch-tick{fill:color-mix(in srgb,var(--color-text) 55%,transparent);font-family:var(--font-body);font-size:10px;font-variant-numeric:tabular-nums}
+.ch-area{fill:var(--color-accent);opacity:.1}
+.ch-hair{stroke:var(--color-neutral-500);stroke-width:1;vector-effect:non-scaling-stroke}
+.ch-dot{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--color-accent);
+  box-shadow:0 0 0 2px var(--color-surface);pointer-events:none}
+.ch-ylab,.ch-xlab,.ch-endlab{position:absolute;font-size:12px;line-height:1;color:var(--color-text-3);font-variant-numeric:tabular-nums;
+  white-space:nowrap;pointer-events:none}
+.ch-ylab{left:-10px;transform:translate(-100%,-50%)}
+.ch-xlab{top:100%;margin-top:10px;transform:translateX(-50%)}
+.ch-xlab.first{transform:none}
+.ch-endlab{margin-left:10px;transform:translateY(-50%);font-weight:600;color:var(--color-text)}
 .ch-hit{cursor:crosshair}
 .ch-hit:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
-.spark{display:block;width:100%;height:auto;margin:8px 0 6px;overflow:visible}
-.chart-tip{position:absolute;top:0;pointer-events:none;background:var(--color-bg);
-  border:1px solid var(--color-divider);padding:5px 8px;font-size:11.5px;line-height:1.35;white-space:nowrap;z-index:2}
-.chart-tip b{display:block;font-family:var(--font-heading);font-size:14px;color:var(--color-text)}
-.chart-tip span{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
-.chart-tbl{margin-top:2px}
-.chart-tbl summary{font-size:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent);cursor:pointer}
-.chart-tbl table{width:100%;border-collapse:collapse;margin-top:7px;font-size:11.5px}
-.chart-tbl th,.chart-tbl td{text-align:left;padding:2px 0;border-bottom:1px solid var(--color-divider)}
+.spark{display:block;width:100%;height:auto;margin:10px 0 8px;overflow:visible}
+.chart-tip{position:absolute;top:0;left:0;pointer-events:none;background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-md);padding:7px 10px;font-size:12px;line-height:1.35;white-space:nowrap;z-index:2}
+.chart-tip b{display:block;font-size:15px;font-weight:600;color:var(--color-text)}
+.chart-tip span{color:var(--color-text-3)}
+.chart-tbl{margin-top:6px}
+.chart-tbl summary{font-size:12.5px;color:var(--color-text-3);cursor:pointer}
+.chart-tbl summary:hover{color:var(--color-accent)}
+.chart-tbl table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
+.chart-tbl th,.chart-tbl td{text-align:left;padding:4px 0;border-bottom:1px solid var(--color-border)}
 .chart-tbl .num{text-align:right;font-variant-numeric:tabular-nums}
-.acct-add{border-style:dashed}
-.acct-add .acct-name{font-size:17px}
-.acct-add{margin:0}
-.acct-add label{display:block;font-size:11.5px;letter-spacing:.02em;margin:11px 0 4px;
-  color:color-mix(in srgb,var(--color-text) 70%,transparent)}
-.acct-add input,.acct-add textarea{font-family:var(--font-body);font-size:13px;padding:6px 9px;width:100%;
-  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
-.acct-add textarea{resize:vertical;min-height:52px}
-.acct-add input:focus-visible,.acct-add textarea:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
-.acct-add .acct-status{font-size:12px}
-.tbl-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.chart-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--color-border);font-size:13px;color:var(--color-text-3)}
+.tbl-head{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;margin-bottom:10px}
 .tbl-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.tbl-controls input[type=search]{font-family:var(--font-body);font-size:13px;padding:6px 10px;width:230px;max-width:100%;
-  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
-.tbl-controls input[type=search]:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
-.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;color:color-mix(in srgb,var(--color-text) 70%,transparent)}
-.tbl-filters{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;margin:-2px 0 12px}
-.btn-link{font:inherit;font-size:12.5px;background:none;border:0;padding:0;color:var(--color-accent);cursor:pointer;
-  text-decoration:underline;text-underline-offset:3px}
-.filter-chip{display:inline-flex;align-items:center;gap:2px;font-size:12px;padding:2px 2px 2px 10px;
-  background:var(--color-accent-100);color:var(--color-accent-800)}
-.chip-x{font:inherit;font-size:15px;line-height:1;background:none;border:0;padding:0 6px;cursor:pointer;color:inherit}
+.tbl-controls input[type=search]{width:290px;max-width:100%;padding-left:36px;
+  background:var(--color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364717f' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M20 20l-4.2-4.2'/%3E%3C/svg%3E") no-repeat 12px center/16px}
+.chk{display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--color-text-2)}
+.chk input{accent-color:var(--color-accent);width:15px;height:15px;margin:0}
+/* filters and the persona's buyer boxes read as pills; the checkbox stays the control */
+.tbl-filters .chk,.pchecks .chk{padding:5px 12px 5px 10px;border:1px solid var(--color-border-strong);border-radius:999px;
+  background:var(--color-surface);transition:background .12s,border-color .12s,color .12s}
+.tbl-filters .chk:hover,.pchecks .chk:hover{border-color:var(--color-neutral-500)}
+.tbl-filters .chk:has(input:checked),.pchecks .chk:has(input:checked){background:var(--color-accent-100);border-color:var(--color-accent);color:var(--color-accent-800)}
+.chk:has(input:focus-visible){outline:2px solid var(--color-accent);outline-offset:2px}
+.chk-n{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:19px;padding:0 6px;border-radius:999px;
+  background:var(--color-neutral-100);color:var(--color-text-2);font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.chk:has(input:checked) .chk-n{background:var(--color-surface);color:var(--color-accent-800)}
+.tbl-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.tbl-filters .btn-link{margin-left:6px}
+.filter-chip{display:inline-flex;align-items:center;gap:2px;font-size:13px;font-weight:500;padding:4px 4px 4px 12px;border-radius:999px;
+  background:var(--color-accent-900);color:#fff}
+.chip-x{font:inherit;font-size:16px;line-height:1;background:none;border:0;padding:0 6px;cursor:pointer;color:inherit;border-radius:999px}
+.chip-x:hover{background:rgba(255,255,255,.18)}
 /* sortable headers: the button is added by the table script, so with JS off a
    header is plain text rather than a control that does nothing */
 .th-sort{font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;background:none;border:0;
@@ -1210,65 +1340,130 @@ a{color:var(--color-accent);text-underline-offset:3px}
 .table th[aria-sort=ascending] .th-sort::after{content:" \\2191"}
 .table th[aria-sort=descending] .th-sort::after{content:" \\2193"}
 /* stack terms are buttons that filter Open roles to the postings behind them */
-button.tag{font-family:var(--font-body);background:transparent;cursor:pointer}
-button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--color-accent);color:var(--color-bg)}
-.term-btn{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left;
-  text-decoration:underline;text-decoration-color:var(--color-divider);text-underline-offset:3px}
+button.tag{font-family:var(--font-body);cursor:pointer;margin:0 4px 4px 0;transition:background .12s,color .12s,border-color .12s}
+button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
+.term-btn{font:inherit;font-weight:500;color:var(--color-text);background:none;border:0;padding:0;cursor:pointer;text-align:left;
+  text-decoration:underline;text-decoration-color:var(--color-border-strong);text-underline-offset:4px;overflow-wrap:anywhere}
 .term-btn:hover,.term-btn[aria-pressed=true]{color:var(--color-accent-700);text-decoration-color:currentColor}
 .term-btn[aria-pressed=true]{font-weight:600}
-.row-hit{margin-top:5px;font-size:12px;line-height:1.45;color:color-mix(in srgb,var(--color-text) 62%,transparent)}
-.row-hit mark{background:var(--color-accent-100);color:var(--color-accent-900);padding:0 1px}
-.tag-mine{background:var(--color-accent-900);color:#fff}
-.my-terms{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 12px;padding:9px 11px;
-  border:1px dashed var(--color-divider);font-size:12.5px}
-.my-terms-label{font-family:var(--font-heading);font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
+.row-hit{margin-top:6px;font-size:12.5px;line-height:1.5;color:var(--color-text-3)}
+.row-hit mark{background:#fdf1c7;color:var(--color-text);padding:0 2px;border-radius:3px}
+.my-terms{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;margin:0 0 10px;padding:9px 12px;
+  background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);font-size:13px}
+.my-terms-label{font-weight:600;font-size:13.5px;color:var(--color-text)}
 .my-terms-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.chip{display:inline-flex;align-items:center;border:1px solid var(--color-accent-900);color:var(--color-accent-900)}
-.chip-term{font:inherit;font-size:12px;background:none;border:0;padding:2px 4px 2px 9px;cursor:pointer;color:inherit}
+.chip{display:inline-flex;align-items:center;border:1px solid var(--color-accent-200);color:var(--color-accent-900);border-radius:999px;
+  background:var(--color-surface);overflow:hidden}
+.chip-term{font:inherit;font-size:12.5px;font-weight:500;background:none;border:0;padding:3px 4px 3px 11px;cursor:pointer;color:inherit}
 .chip-term[aria-pressed=true]{background:var(--color-accent-900);color:#fff}
+.chip .chip-x:hover{background:var(--color-accent-100)}
 .my-terms-form{display:flex;gap:6px}
-.my-terms-form input{font-family:var(--font-body);font-size:13px;padding:5px 9px;width:210px;max-width:100%;
-  background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
-.my-terms-form input:focus-visible{outline:2px solid var(--color-accent);outline-offset:-1px}
-.tbl-empty{margin:0;padding:14px;font-size:12.5px}
-/* the persona editor on /profile: the request card's field style, laid out in two columns */
-.pform{padding:18px 20px 16px}
-.pnote{margin:0 0 4px;font-size:12.5px;line-height:1.5;max-width:72ch}
-.pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 20px}
+.my-terms-form input{width:230px;max-width:100%;padding:6px 11px;font-size:13px}
+.my-terms #my-terms-note{flex:1 0 100%;font-size:12.5px}
+.tbl-empty{margin:0;padding:18px 16px;font-size:13.5px}
+/* the persona editor on /profile: settings sections, a heading beside its fields */
+.callout{display:flex;gap:12px;align-items:flex-start;margin:0 0 20px;padding:12px 16px;border-radius:var(--radius);
+  background:var(--color-accent-100);color:var(--color-accent-900);font-size:14px;line-height:1.55}
+.callout::before{content:"i";flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;margin-top:1px;
+  border-radius:50%;background:var(--color-accent);color:#fff;font-size:12px;font-weight:700;font-style:italic;font-family:Georgia,serif}
+.callout a{color:var(--color-accent-800);font-weight:600}
+.psec{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:12px 40px;padding:22px 0;border-top:1px solid var(--color-border)}
+.psec:first-of-type{border-top:0;padding-top:0}
+.psec h3{font-size:19px}
+.psec-head p{margin:6px 0 0;font-size:13.5px;line-height:1.55;color:var(--color-text-3)}
+.pform{padding:0}
+.pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px;padding:18px}
 .pgrid .wide{grid-column:1/-1}
-.pgrid label:not(.chk),.pgrid legend{display:block;font-size:11.5px;letter-spacing:.02em;margin:11px 0 0;
-  color:color-mix(in srgb,var(--color-text) 70%,transparent)}
-.pgrid input[type=text],.pgrid textarea,.pgrid select{display:block;width:100%;margin-top:4px;font-family:var(--font-body);
-  font-size:13px;padding:6px 9px;background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-divider)}
-.pgrid textarea{resize:vertical;min-height:52px}
-.pgrid fieldset{border:0;padding:0;margin:0}
-.pchecks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px}
-.phint{display:block;margin-top:4px;font-size:11px;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
-@media (max-width:620px){.pgrid{grid-template-columns:1fr}}
-.pager{display:flex;align-items:center;gap:12px;margin-top:11px;flex-wrap:wrap}
+.pgrid label:not(.chk),.pgrid legend{display:block;font-size:13.5px;font-weight:500;margin:0;color:var(--color-text)}
+.pgrid input[type=text],.pgrid textarea,.pgrid select{display:block;width:100%;margin-top:7px}
+.pgrid select{appearance:none;padding-right:36px;cursor:pointer;
+  background:var(--color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364717f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center/16px}
+.pgrid textarea{resize:vertical;min-height:72px}
+.pgrid fieldset{border:0;padding:0;margin:0;min-width:0}
+.pchecks{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.phint{display:block;margin-top:7px;font-size:12.5px;font-weight:400;color:var(--color-text-3)}
+.pform-foot{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-top:8px;
+  padding:14px 0;background:color-mix(in srgb,var(--color-bg) 88%,transparent);backdrop-filter:blur(6px);border-top:1px solid var(--color-border)}
+.pform-foot .acct-status{margin-right:auto;font-size:13.5px}
+@media (max-width:760px){.psec{grid-template-columns:1fr}.pgrid{grid-template-columns:1fr}}
+.pager{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
+.pager [role=status]{font-size:13px;font-variant-numeric:tabular-nums}
+.pager button[disabled]{opacity:.45;cursor:default;box-shadow:none}
 .arch-table tbody tr[data-arch]{cursor:pointer}
-.arch-table .num{text-align:right;font-variant-numeric:tabular-nums}
-.arch-dialog{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;
-  border:1px solid var(--color-divider);background:var(--color-bg);color:var(--color-text)}
-.arch-dialog::backdrop{background:color-mix(in srgb,#1d1f20 45%,transparent)}
-.arch-dialog-bar{position:sticky;top:0;display:flex;justify-content:flex-end;padding:10px 12px;
-  background:var(--color-bg);border-bottom:1px solid var(--color-divider)}
-.arch-dialog-body{padding:16px 22px 22px}
-.arch-title{font-size:26px;margin:4px 0 8px}
-.arch-fields{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:16px 0 0;font-size:13px}
-.arch-fields dt{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.arch-dialog{width:min(780px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:0;border-radius:16px;
+  background:var(--color-surface);color:var(--color-text);box-shadow:var(--shadow-lg)}
+.arch-dialog::backdrop{background:rgba(15,23,32,.5);backdrop-filter:blur(2px)}
+.arch-dialog-bar{position:sticky;top:0;z-index:1;display:flex;justify-content:flex-end;padding:12px 14px;
+  background:color-mix(in srgb,var(--color-surface) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--color-border)}
+.arch-dialog-body{padding:18px 28px 28px}
+.arch-title{font-size:30px;margin:6px 0 10px}
+.arch-fields{display:grid;grid-template-columns:max-content 1fr;gap:0 24px;margin:20px 0 0;font-size:14px;
+  border:1px solid var(--color-border);border-radius:var(--radius);padding:6px 18px;background:var(--color-surface)}
+.arch-fields dt,.arch-fields dd{padding:9px 0;border-top:1px solid var(--color-border)}
+.arch-fields dt:first-of-type,.arch-fields dd:first-of-type{border-top:0}
+.arch-fields dt{color:var(--color-text-3)}
 .arch-fields dd{margin:0;overflow-wrap:anywhere}
-.arch-desc{white-space:pre-wrap;font-size:13.5px;line-height:1.6;max-width:72ch}
-.arch-desc-sections{max-width:72ch;font-size:13.5px;line-height:1.6}
-.arch-sec{font-family:var(--font-heading);font-weight:600;font-size:14px;margin:14px 0 4px}
+.arch-desc-h{margin:28px 0 10px;font-size:19px}
+.arch-desc{white-space:pre-wrap;font-size:14.5px;line-height:1.65;max-width:72ch}
+.arch-desc-sections{max-width:72ch;font-size:14.5px;line-height:1.65}
+.arch-sec{font-family:var(--font-body);font-weight:600;font-size:14.5px;margin:18px 0 6px}
 .arch-sec:first-child{margin-top:0}
-.arch-list{margin:0;padding-left:18px}
+.arch-list{margin:0;padding-left:20px}
+.arch-list li+li{margin-top:3px}
 .arch-para{margin:0}
-.pager [role=status]{font-size:12px;font-variant-numeric:tabular-nums}
-.pager button[disabled]{opacity:.4;cursor:default}
-.site-foot{border-top:1px solid var(--color-divider);margin-top:38px;padding-top:14px;
-  display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:11.5px;line-height:1.5}
-@media (max-width:980px){.grid,.grid.narrative{grid-template-columns:1fr}.stack-grid{grid-template-columns:1fr}}
+/* the brief */
+.actions{display:flex;flex-direction:column;gap:12px}
+.action{padding:16px 18px}
+.action-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.action-title{font-size:19px;line-height:1.25}
+.action-why{margin:8px 0 0;font-size:14.5px;line-height:1.6;color:var(--color-text-2)}
+.action-quote{margin:14px 0 0;padding:2px 0 2px 14px;border-left:3px solid var(--color-accent-200);font-size:14px;line-height:1.6}
+.action-quote q{font-style:italic;quotes:"\\201C" "\\201D"}
+.action-quote span{display:block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-3);margin-bottom:2px}
+.action-steps{list-style:none;counter-reset:step;margin:16px 0 0;padding:0;font-size:14.5px;line-height:1.6}
+.action-steps li{counter-increment:step;position:relative;padding-left:34px}
+.action-steps li+li{margin-top:10px}
+.action-steps li::before{content:counter(step);position:absolute;left:0;top:1px;display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;background:var(--color-accent-100);color:var(--color-accent-800);font-size:12px;font-weight:700}
+.sources{padding:6px 22px}
+.src{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--color-border);font-size:13.5px;line-height:1.5;scroll-margin-top:24px;
+  transition:background .3s}
+.src:first-child{border-top:0}
+.src>.cite{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;margin-top:1px;border-radius:999px;
+  background:var(--color-accent-100);color:var(--color-accent-800);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.src:target{background:var(--color-accent-100);box-shadow:0 0 0 8px var(--color-accent-100);border-radius:4px}
+.src a{color:var(--color-accent-800);text-decoration:none}
+.src a:hover{color:var(--color-accent);text-decoration:underline}
+.rail{position:sticky;top:20px}
+.rail-label{display:block;margin-bottom:10px;font-size:13px;font-weight:600;color:var(--color-text-2)}
+.mini-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mini-stats div{padding:10px 12px;border-radius:var(--radius-sm);background:var(--color-surface-2);border:1px solid var(--color-border)}
+.mini-stats b{display:block;font-size:22px;font-weight:600;line-height:1.1}
+.mini-stats span{display:block;margin-top:2px;font-size:12px;color:var(--color-text-3)}
+.archive-bar{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;margin:0 0 16px;padding:12px 16px;border-radius:var(--radius);
+  background:var(--color-surface);border:1px solid var(--color-border);font-size:13.5px}
+.brief-list{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.brief-item{display:block;padding:16px 18px;transition:box-shadow .15s,border-color .15s}
+.brief-item:hover{border-color:var(--color-border-strong);box-shadow:var(--shadow-md)}
+.brief-item-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.brief-item-head a{font-family:var(--font-heading);font-weight:600;font-size:20px;color:var(--color-text);text-decoration:none}
+.brief-item-head a::after{content:"";position:absolute;inset:0;border-radius:var(--radius)}
+.brief-item-head a:hover{color:var(--color-accent)}
+.brief-item p{margin:8px 0 0;font-size:14.5px;line-height:1.6;color:var(--color-text-2)}
+.brief-item .brief-item-meta{margin-top:10px;font-size:12.5px;color:var(--color-text-3)}
+.empty-state{max-width:640px;margin:16px auto 0;padding:36px 32px;text-align:center}
+.empty-state h1{font-size:32px;margin:8px 0 0}
+.empty-state p{margin:12px auto 0;max-width:56ch;font-size:15px;line-height:1.65;color:var(--color-text-2)}
+.empty-state .btn{margin-top:22px}
+.site-foot{border-top:1px solid var(--color-border);margin-top:40px;padding-top:16px;
+  display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:12.5px;line-height:1.5;color:var(--color-text-3)}
+.site-foot a{color:inherit}
+@media (max-width:980px){
+  .grid,.grid.narrative{grid-template-columns:1fr}.rail{position:static}
+  .stack-card{grid-auto-flow:row;grid-template-columns:1fr!important}
+  .stack-col+.stack-col{border-left:0;border-top:1px solid var(--color-border)}
+  .stack-list.wide{columns:1}
+}
 @media (max-width:620px){
   .wrap{padding:0 16px 44px}
   .nav{gap:10px 16px;padding:12px 20px}
@@ -1277,9 +1472,18 @@ button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--
   .nav-auth{gap:14px}
   /* the avatar alone: the name stays for screen readers, as .visually-hidden does */
   .nav-who{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-  .tbl-controls input[type=search]{width:100%}
+  .tbl-controls,.tbl-controls input[type=search]{width:100%}
   .my-terms-form{flex:1 0 100%}.my-terms-form input{flex:1;width:auto}
-  .hdr h1{font-size:26px!important}
+  .hdr h1{font-size:28px!important}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi:nth-child(odd){border-left:0}.kpi:nth-child(n+3){border-top:1px solid var(--color-border)}
+  .kpi-value{font-size:24px}
+  .card,.action,.stack-col{padding:14px}
+  .paper{padding:18px 16px}
+  .ch-frame{padding-right:24px}
+  .ch-plot{height:170px}
+  .ch-xlab.alt{display:none}
+  .table th,.table td{padding-left:12px;padding-right:12px}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;
@@ -1290,7 +1494,8 @@ button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--
   body{background:#fff;font-size:11.5pt}
   .wrap{max-width:none;padding:0}
   .grid,.grid.narrative{grid-template-columns:1fr;gap:14px}
-  .blueprint{border-color:#bbb}
+  .blueprint{border-color:#bbb;box-shadow:none}
+  .rail{position:static}
   .prose p{max-width:none}
   a{color:inherit;text-decoration:none}
   .card,.blueprint{break-inside:avoid}
@@ -1348,45 +1553,48 @@ def _footer(generated: str, source: str | None = None) -> str:
             f'Verify before acting.</span></footer>')
 
 
+def _chart_scale(pts: list[dict]) -> tuple[int, int]:
+    """The y-range, rounded out to multiples of 5. Deliberately NOT pinned to
+    zero: these are board sizes in the 30s, and a zero floor would flatten a
+    year of movement into a hairline. The floor is a labelled tick, so the
+    truncation is stated on the axis rather than hidden."""
+    totals = [p["total"] for p in pts]
+    lo = (min(totals) // 5) * 5
+    hi = -(-max(totals) // 5) * 5
+    return lo, (hi if hi != lo else lo + 5)
+
+
 def _history_chart(history: list[dict], chart_id: str = "roles-history") -> str:
     """Open roles over the trailing year — one series, so no legend box: the
     card's own heading names what is plotted.
 
-    Geometry is a fixed viewBox scaled to the card's width. The y-axis is
-    deliberately NOT pinned to zero: these are board sizes in the 30s, and a
-    zero floor would flatten a year of movement into a hairline. The floor is
-    rounded to a labelled multiple of 5 so the truncation is stated on the axis
-    rather than hidden."""
+    The plot stretches to its card (preserveAspectRatio="none", in a 0-100
+    viewBox, so every coordinate is a percentage), its strokes keep their
+    width (vector-effect), and the tick labels and dots are HTML laid over it
+    by the same percentages. A fixed viewBox scaled its text with the card:
+    readable in a 400px rail, 5px on a phone."""
     pts = [p for p in history if p.get("total") is not None]
     if len(pts) < 2:
         return _trend_svg(history)   # not enough history to plot a year
 
-    W, H = _CH_W, _CH_H
-    L, R, T, B = _CH_L, _CH_R, _CH_T, _CH_B   # margins: y-labels, air, x-band
-    pw, ph = W - L - R, H - T - B
     totals = [p["total"] for p in pts]
-    lo = (min(totals) // 5) * 5
-    hi = -(-max(totals) // 5) * 5
-    if hi == lo:
-        hi = lo + 5
-    x = lambda i: L + (pw * i / (len(pts) - 1))
-    y = lambda v: T + ph - ph * (v - lo) / (hi - lo)
+    lo, hi = _chart_scale(pts)
+    x = lambda i: 100 * i / (len(pts) - 1)
+    y = lambda v: 100 - 100 * (v - lo) / (hi - lo)
 
     ticks = list(range(lo, hi + 1, 5))
     if len(ticks) > 6:                    # keep the grid recessive, not a ladder
         ticks = ticks[::2] if ticks[-1] in ticks[::2] else ticks[::2] + [ticks[-1]]
-    grid = "".join(
-        f'<line x1="{L}" y1="{y(t):.1f}" x2="{L + pw}" y2="{y(t):.1f}" '
-        f'class="ch-grid"/>'
-        f'<text x="{L - 7}" y="{y(t) + 3.5:.1f}" class="ch-tick" text-anchor="end">{t}</text>'
-        for t in ticks)
+    grid = "".join(f'<line x1="0" y1="{y(t):.2f}" x2="100" y2="{y(t):.2f}" '
+                   f'class="{"ch-base" if t == lo else "ch-grid"}"/>' for t in ticks)
+    ylab = "".join(f'<span class="ch-ylab" style="top:{y(t):.2f}%">{t}</span>' for t in ticks)
 
     # Aim for ~7 ticks whatever the crawl cadence. A fixed every-4th-point step
     # is two months apart on a fortnightly lake but only four weeks on a weekly
     # one, which printed "Oct" twice on a 53-point axis.
     step = max(1, round(len(pts) / 7))
     idxs = [i for i in range(0, len(pts), step) if i <= len(pts) - 3]
-    xlab, shown_year, last_month = "", None, None
+    xlab, shown_year, last_month, n_lab = "", None, None, 0
     for i in idxs:
         d = date.fromisoformat(pts[i]["dt"])
         if (d.year, d.month) == last_month:      # never print the same month twice
@@ -1396,31 +1604,37 @@ def _history_chart(history: list[dict], chart_id: str = "roles-history") -> str:
         # axis says where 2026 starts even when no tick lands in January
         lab = d.strftime("%b") + (f" &rsquo;{d:%y}" if shown_year != d.year else "")
         shown_year = d.year
-        xlab += (f'<text x="{x(i):.1f}" y="{T + ph + 17}" class="ch-tick" '
-                 f'text-anchor="middle">{lab}</text>')
+        # every other label is .alt, which a phone drops: seven months do not fit in 320px
+        cls = ("ch-xlab" + (" first" if i == 0 else "") + (" alt" if n_lab % 2 else ""))
+        n_lab += 1
+        xlab += f'<span class="{cls}" style="left:{x(i):.2f}%">{lab}</span>'
 
-    line = " ".join(f"{x(i):.1f},{y(p['total']):.1f}" for i, p in enumerate(pts))
-    area = (f'M{L},{T + ph} L' + line.replace(" ", " L") +
-            f' L{L + pw},{T + ph} Z')
+    line = " ".join(f"{x(i):.2f},{y(p['total']):.2f}" for i, p in enumerate(pts))
+    area = "M0,100 L" + line.replace(" ", " L") + " L100,100 Z"
     last = pts[-1]
+    end = f'left:100%;top:{y(last["total"]):.2f}%'
 
     rows = "".join(f'<tr><td>{p["dt"]}</td><td class="num">{p["total"]}</td></tr>' for p in pts)
     span_lbl = f'{pts[0]["dt"]} to {last["dt"]}'
 
     return f"""<div class="chart-wrap" id="{chart_id}">
-<svg viewBox="0 0 {W} {H}" class="ch-svg" role="img"
+<div class="ch-frame"><div class="ch-plot">
+<svg viewBox="0 0 100 100" preserveAspectRatio="none" class="ch-svg" role="img"
      aria-label="Open roles from {pts[0]['dt']} to {last['dt']}, {len(pts)} snapshots, ranging {min(totals)} to {max(totals)}.">
   <g>{grid}</g>
   <path d="{area}" class="ch-area"/>
   <polyline points="{line}" class="ch-line"/>
-  <line class="ch-hair" x1="0" y1="{T}" x2="0" y2="{T + ph}" style="display:none"/>
-  <circle class="ch-hot" r="4.5" cx="0" cy="0" style="display:none"/>
-  {xlab}
-  <rect x="{L}" y="{T}" width="{pw}" height="{ph}" fill="transparent" class="ch-hit"
+  <line class="ch-hair" x1="0" y1="0" x2="0" y2="100" style="display:none"/>
+  <rect x="0" y="0" width="100" height="100" fill="transparent" class="ch-hit"
         tabindex="0" role="img" aria-label="Open-roles history, interactive. Use the left and right
         arrow keys to step through snapshots. Every figure is also in the table below."/>
 </svg>
+{ylab}{xlab}
+<span class="ch-dot" style="{end}" aria-hidden="true"></span>
+<span class="ch-endlab" style="{end}" aria-hidden="true">{last["total"]}</span>
+<span class="ch-dot ch-hot" hidden></span>
 <div class="chart-tip" hidden></div>
+</div></div>
 <p class="visually-hidden" id="{chart_id}-readout" role="status" aria-live="polite"></p>
 <details class="chart-tbl"><summary>Table view &mdash; {len(pts)} snapshots, {span_lbl}</summary>
 <table><thead><tr><th>Crawl</th><th class="num">Open roles</th></tr></thead><tbody>{rows}</tbody></table>
@@ -1435,20 +1649,20 @@ def _history_chart_script(history: list[dict], chart_id: str = "roles-history") 
     pts = [p for p in history if p.get("total") is not None]
     if len(pts) < 2:
         return ""
+    lo, hi = _chart_scale(pts)
     return f"""<script>
 (function () {{
   var DATA = {json.dumps(pts)};
   var root = document.getElementById({json.dumps(chart_id)});
   if (!root) return;
-  var svg = root.querySelector('.ch-svg'), tip = root.querySelector('.chart-tip'),
-      hair = root.querySelector('.ch-hair'), hot = root.querySelector('.ch-hot'),
-      hit = root.querySelector('.ch-hit'),
+  var plot = root.querySelector('.ch-plot'), svg = root.querySelector('.ch-svg'),
+      tip = root.querySelector('.chart-tip'), hair = root.querySelector('.ch-hair'),
+      hot = root.querySelector('.ch-hot'), hit = root.querySelector('.ch-hit'),
       say = document.getElementById("{chart_id}-readout");
-  var L = {_CH_L}, PW = {_CH_W - _CH_L - _CH_R}, T = {_CH_T}, PH = {_CH_H - _CH_T - _CH_B};
-  var lo = {(min(p["total"] for p in pts) // 5) * 5}, hi = {-(-max(p["total"] for p in pts) // 5) * 5};
+  var lo = {lo}, hi = {hi};
   var i = -1;
-  function vx(k) {{ return L + PW * k / (DATA.length - 1); }}
-  function vy(v) {{ return T + PH - PH * (v - lo) / (hi - lo || 1); }}
+  function vx(k) {{ return 100 * k / (DATA.length - 1); }}
+  function vy(v) {{ return 100 - 100 * (v - lo) / (hi - lo || 1); }}
   function fmt(iso) {{
     var d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString(undefined, {{ day: 'numeric', month: 'short', year: 'numeric' }});
@@ -1458,7 +1672,7 @@ def _history_chart_script(history: list[dict], chart_id: str = "roles-history") 
     i = k;
     var px = vx(k), py = vy(DATA[k].total);
     hair.setAttribute('x1', px); hair.setAttribute('x2', px); hair.style.display = '';
-    hot.setAttribute('cx', px); hot.setAttribute('cy', py); hot.style.display = '';
+    hot.style.left = px + '%'; hot.style.top = py + '%'; hot.hidden = false;
     tip.textContent = '';
     var v = document.createElement('b'); v.textContent = DATA[k].total + ' open';
     var s = document.createElement('span'); s.textContent = fmt(DATA[k].dt);
@@ -1467,19 +1681,20 @@ def _history_chart_script(history: list[dict], chart_id: str = "roles-history") 
     // the crosshair is a sighted affordance; mirror it into a live region so the
     // same value is spoken when the chart is stepped through from the keyboard
     if (say) {{ say.textContent = DATA[k].total + ' open roles on ' + fmt(DATA[k].dt); }}
-    // clamp inside the card so the readout never hangs off the edge
-    var frac = px / {_CH_W}, w = root.clientWidth;
-    tip.style.left = Math.max(4, Math.min(w - tip.offsetWidth - 4, frac * w - tip.offsetWidth / 2)) + 'px';
+    // above the point, clamped inside the plot so the readout never hangs off the card
+    var w = plot.clientWidth, h = plot.clientHeight;
+    tip.style.left = Math.max(0, Math.min(w - tip.offsetWidth, px / 100 * w - tip.offsetWidth / 2)) + 'px';
+    var top = py / 100 * h - tip.offsetHeight - 14;
+    tip.style.top = (top < 0 ? py / 100 * h + 14 : top) + 'px';
   }}
   function hide() {{
-    tip.hidden = true; hair.style.display = 'none'; hot.style.display = 'none'; i = -1;
+    tip.hidden = true; hair.style.display = 'none'; hot.hidden = true; i = -1;
     if (say) {{ say.textContent = ''; }}
   }}
   function nearest(evt) {{
     var r = svg.getBoundingClientRect();
-    var vxp = (evt.clientX - r.left) / r.width * {_CH_W};
     return Math.max(0, Math.min(DATA.length - 1,
-      Math.round((vxp - L) / PW * (DATA.length - 1))));
+      Math.round((evt.clientX - r.left) / r.width * (DATA.length - 1))));
   }}
   svg.addEventListener('pointermove', function (e) {{ show(nearest(e)); }});
   svg.addEventListener('pointerleave', hide);
@@ -1520,20 +1735,42 @@ def _trend_svg(series: list[dict]) -> str:
     line = " ".join(f"{x:.1f},{v:.1f}" for x, v in pts_xy)
     label = (f"Open roles from {pts[0]['dt']} to {pts[-1]['dt']}, "
              f"{n} snapshots, ranging {lo} to {hi}.")
+    area = f"M{pts_xy[0][0]:.1f},56 L" + line.replace(" ", " L") + f" L{pts_xy[-1][0]:.1f},56 Z"
     return (f'<svg viewBox="0 0 240 60" class="spark" role="img" '
             f'aria-label="{html.escape(label)}">'
-            f'<line x1="0" y1="56" x2="240" y2="56" stroke="var(--color-divider)"/>'
+            f'<line x1="0" y1="56" x2="240" y2="56" stroke="var(--color-border-strong)"/>'
+            f'<path d="{area}" fill="var(--color-accent)" opacity=".1"/>'
             f'<polyline points="{line}" fill="none" stroke="var(--color-accent)" '
             f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
-            f'<circle cx="{pts_xy[0][0]:.1f}" cy="{pts_xy[0][1]:.1f}" r="3" '
-            f'fill="var(--color-accent)" opacity=".55"/>'
-            f'<circle cx="{pts_xy[-1][0]:.1f}" cy="{pts_xy[-1][1]:.1f}" r="3.5" '
-            f'fill="var(--color-accent)"/>'
+            f'<circle cx="{pts_xy[-1][0]:.1f}" cy="{pts_xy[-1][1]:.1f}" r="4" '
+            f'fill="var(--color-accent)" stroke="var(--color-surface)" stroke-width="2"/>'
             f'</svg>')
 
 
-def _corners() -> str:
-    return '<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>'
+def _signed(n: int) -> str:
+    """A change with its sign, minus as a real minus sign: "+5", "−11", "0"."""
+    return f"+{n}" if n > 0 else f"&minus;{-n}" if n < 0 else "0"
+
+
+def _delta(n: int, pct: float | None = None) -> str:
+    """A change as a pill. Up and down are not good and bad here (a board can
+    grow for reasons a seller does not care about), so only up takes the accent
+    and the number carries its own sign."""
+    txt = _signed(n)
+    if pct is not None:
+        txt += " &middot; " + ("+" if pct > 0 else "&minus;" if pct < 0 else "") + f"{abs(pct):.1f}%"
+    return f'<span class="delta{" up" if n > 0 else ""}">{txt}</span>'
+
+
+def _kpi(label: str, value, sub: str = "") -> str:
+    """One stat tile: label, value, and an optional line under it."""
+    return (f'<div class="kpi"><span class="kpi-label">{label}</span>'
+            f'<span class="kpi-value">{value}</span>'
+            f'{f"<span class=\"kpi-sub\">{sub}</span>" if sub else ""}</div>')
+
+
+def _short_date(iso: str | None) -> str:
+    return f"{date.fromisoformat(iso):%-d %b}" if iso else ""
 
 
 _NAV_MARK = ('<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">'
@@ -1761,9 +1998,8 @@ def _json_for_script(value) -> str:
 
 def _flag_box(flag: str, label: str, count: int = 0, hidden: bool = False) -> str:
     """One filter checkbox. A row passes when its data-<flag> is "1"."""
-    # one span for the text: .chk is a flex row, so a bare count would get its own gap
     return (f'<label class="chk"{" hidden" if hidden else ""}><input type="checkbox" data-flag="{flag}">'
-            f'<span>{label} (<span data-count>{count}</span>)</span></label>')
+            f'<span>{label}</span><span class="chk-n" data-count>{count}</span></label>')
 
 
 def _filter_row(cfg: dict, boxes: list[str], label: str) -> str:
@@ -1786,7 +2022,7 @@ def _my_terms_strip() -> str:
             f'<input id="my-terms-input" type="text" maxlength="300" autocomplete="off" '
             f'placeholder="Add terms, e.g. kubernetes, sbom" aria-label="Add to My terms">'
             f'<button type="submit" class="btn btn-secondary btn-sm">Add</button></form>'
-            f'<span class="text-muted" style="font-size:11.5px" id="my-terms-note">Kept in this browser. '
+            f'<span class="text-muted" id="my-terms-note">Kept in this browser. '
             f'Every dashboard tags the roles whose title or description mentions one.</span></div>')
 
 
@@ -2248,20 +2484,29 @@ class Citations:
 
     def cite(self, label: str, url: str | None = None) -> str:
         self.items.append({"n": len(self.items) + 1, "label": label, "url": url})
-        return f'<sup class="cite"> {len(self.items)}</sup>'
+        return self.marker(len(self.items))
+
+    @staticmethod
+    def marker(n: int) -> str:
+        """The superscript in the text, a link down to its source."""
+        return f'<sup class="cite"><a href="#src-{n}" aria-label="Source {n}">{n}</a></sup>'
 
     def render_list(self) -> str:
         rows = []
         for c in self.items:
             body = (f'<a href="{html.escape(c["url"])}" target="_blank" rel="noopener">'
                     f'{html.escape(c["label"])}</a>') if c["url"] else html.escape(c["label"])
-            rows.append(f'<div style="display:flex;gap:9px"><span class="cite" style="width:16px;flex:none">{c["n"]}</span><span>{body}</span></div>')
+            rows.append(f'<div class="src" id="src-{c["n"]}"><span class="cite">{c["n"]}</span><span>{body}</span></div>')
         return "".join(rows)
 
 
 # ---------------------------------------------------------------- dashboard page
 
-def _term_bucket_card(title: str, tag_class: str, rows: list[dict], footer_fn) -> str:
+def _term_bucket(title: str, sub: str, rows: list[dict], footer_fn, scale: int = 0,
+                 wide: bool = False) -> str:
+    """One bucket of stack terms, a column of the stack card. Each row's meter
+    is its postings against the busiest term on the page (scale), so the
+    columns read on one scale."""
     body = []
     for r in rows[:8]:
         count = f'{r["curr_n"]} specs' if r["curr_n"] else f'was {r["prev_n"]}'
@@ -2271,19 +2516,20 @@ def _term_bucket_card(title: str, tag_class: str, rows: list[dict], footer_fn) -
         # a term still on the board filters Open roles to the postings behind it
         label = (f'<button type="button" class="term-btn" data-stack-term="{term}" '
                  f'title="Show the open roles that mention {term}">{term}</button>'
-                 if r["curr_n"] else f'<span>{term}</span>')
+                 if r["curr_n"] else f'<span class="text-muted">{term}</span>')
+        share = round(100 * r["curr_n"] / scale) if scale else 0
         body.append(f'<div class="stack-row">{label}'
-                    f'<span class="text-muted" style="font-size:11.5px">{count}</span></div>')
-    if not rows:
-        body.append('<p class="text-muted" style="margin:0;font-size:12.5px">None this period.</p>')
+                    f'<span class="meter" aria-hidden="true"><i style="width:{share}%"></i></span>'
+                    f'<span class="stack-meta">{count}</span></div>')
+    stack = (f'<div class="stack-list{" wide" if wide else ""}">{"".join(body)}</div>' if rows
+             else '<p class="empty">None this period.</p>')
     footer = footer_fn(rows[0]) if rows else ""
-    return (f'<div class="card blueprint">{_corners()}'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
-            f'<span style="font-family:var(--font-heading);font-weight:600;font-size:14px;'
-            f'letter-spacing:.06em;text-transform:uppercase">{title}</span>'
-            f'<span class="tag {tag_class}">{len(rows)}</span></div>'
-            f'<div style="display:flex;flex-direction:column;gap:8px">{"".join(body)}</div>'
-            f'{f"<p style=\"margin:11px 0 0;font-size:11.5px;line-height:1.5\" class=\"text-muted\">{footer}</p>" if footer else ""}'
+    return (f'<div class="stack-col">'
+            f'<div class="card-head"><div><h3 class="card-title">{title}</h3>'
+            f'<span class="card-sub">{sub}</span></div>'
+            f'<span class="count">{len(rows)}</span></div>'
+            f'{stack}'
+            f'{f"<p class=\"note\">{footer}</p>" if footer else ""}'
             f'</div>')
 
 
@@ -2310,7 +2556,7 @@ def _archive_record(r: dict, href: str | None = None, heading: str = "h2") -> st
                     for t in r["terms"]) or '<span class="text-muted">None matched</span>'
     if r["url"]:
         link = (f'<a href="{html.escape(r["url"])}" target="_blank" rel="noopener">'
-                f'{html.escape(r["url"])}</a><br><span class="text-muted" style="font-size:11.5px">'
+                f'{html.escape(r["url"])}</a><br><span class="text-muted" style="font-size:12.5px">'
                 f'The req has closed, so the board may no longer serve this page.</span>')
     else:
         link = '<span class="text-muted">Not captured</span>'
@@ -2321,13 +2567,13 @@ def _archive_record(r: dict, href: str | None = None, heading: str = "h2") -> st
     elif r["description"]:
         desc = f'<div class="arch-desc">{html.escape(r["description"])}</div>'
     elif r["has_record"]:
-        desc = ('<p class="text-muted" style="margin:0;font-size:12.5px">The board served no '
+        desc = ('<p class="empty">The board served no '
                 'description for this req on its last crawl.</p>')
     else:
-        desc = (f'<p class="text-muted" style="margin:0;font-size:12.5px">No curated crawl for '
+        desc = (f'<p class="empty">No curated crawl for '
                 f'{html.escape(r["last_seen"] or "its last sighting")} is in the lake, so only the '
                 f'title, location and dates tracked in state survive for this req.</p>')
-    return (f'<p class="eyebrow text-muted" style="margin:0">Archived posting</p>'
+    return (f'<p class="eyebrow">Archived posting</p>'
             f'<{heading} class="arch-title">{html.escape(r["title"])}</{heading}>'
             f'<div class="row-flags">{"".join(flags)}</div>'
             f'<dl class="arch-fields">'
@@ -2340,7 +2586,7 @@ def _archive_record(r: dict, href: str | None = None, heading: str = "h2") -> st
             f'<dt>Original posting</dt><dd>{link}</dd>{page}'
             f'<dt>Stack signals</dt><dd>{terms}</dd>'
             f'</dl>'
-            f'<h3 class="section-label text-muted" style="margin:18px 0 8px">Description</h3>{desc}')
+            f'<h3 class="arch-desc-h">Description</h3>{desc}')
 
 
 _SECTION_LABELS = {
@@ -2378,8 +2624,7 @@ def _description_sections(parsed: dict) -> str:
     if parsed.get("approximate"):
         notes.append("Sections were rebuilt from the posting's flattened text, so a heading "
                      "the board worded unusually may sit inside the text above it.")
-    note = (f'<p class="text-muted" style="margin:10px 0 0;font-size:11.5px">{" ".join(notes)}</p>'
-            if notes else "")
+    note = f'<p class="note">{" ".join(notes)}</p>' if notes else ""
     return f'<div class="arch-desc-sections">{"".join(out)}</div>{note}'
 
 
@@ -2406,10 +2651,10 @@ def render_archive_page(r: dict, company: str, company_name: str, generated: str
 <a class="skip-link" href="#main">Skip to content</a>
 {_nav("archive", company)}
 <div class="wrap narrow">
-  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><a href="{dash}">{html.escape(company_name)}</a><span>/</span><a href="{dash}#archive">Archive</a><span>/</span><span style="color:var(--color-text)">{html.escape(r["pid"])}</span></div>
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><a href="{dash}">{html.escape(company_name)}</a><span>/</span><a href="{dash}#archive">Archive</a><span>/</span><span class="here">{html.escape(r["pid"])}</span></div>
   <main id="main">
-  {_archive_record(r, heading="h1")}
-  <p style="margin:26px 0 0"><a class="btn btn-secondary btn-sm" href="{dash}#archive">&larr; Back to the archive</a></p>
+  <div class="blueprint paper">{_archive_record(r, heading="h1")}</div>
+  <p style="margin:24px 0 0"><a class="btn btn-secondary btn-sm" href="{dash}#archive">&larr; Back to the archive</a></p>
   </main>
   {_footer(generated, domain)}
 </div>
@@ -2494,15 +2739,18 @@ def render_dashboard(lake: dict, company: str) -> str:
         # while a company is still building up history
         window_days = (date.fromisoformat(curr_dt) - date.fromisoformat(prev_dt)).days
 
+    scale = max((r["curr_n"] for k in ("adopting", "established") for r in buckets[k][:8]), default=0)
     if first:
         # With nothing to compare against, categorize_terms files every term as
         # adopting. That is a window artefact, not a finding, so the first crawl
         # shows one unlabelled card of what the board mentions. Its first-seen
         # date is only the day collection started, so it is left off.
-        stack_cards = _term_bucket_card(
-            "On the board", "tag-neutral", [{**r, "since": None} for r in buckets["adopting"]],
+        stack_cards = _term_bucket(
+            "On the board", f"Terms in the {curr_dt} postings",
+            [{**r, "since": None} for r in buckets["adopting"]],
             lambda r: (f'Present on the {curr_dt} board. A term is split into Adopting or '
-                       f'Established once there is an earlier crawl to date it from.'))
+                       f'Established once there is an earlier crawl to date it from.'), scale, wide=True)
+        stack_cols = ""
     else:
         if age_cutoff:
             adopt_note = (f'First seen in a posting after {age_cutoff} &mdash; inside the last '
@@ -2514,10 +2762,18 @@ def render_dashboard(lake: dict, company: str) -> str:
                           f'earlier. (Lake reaches back under 6 months, so this is a window '
                           f'comparison, not a term age.)')
             estab_note = f'Present in both the {prev_dt} and {curr_dt} crawls.'
-        stack_cards = (_term_bucket_card("Adopting", "tag-accent", buckets["adopting"],
-                                         lambda r: adopt_note)
-                       + _term_bucket_card("Established", "tag-neutral", buckets["established"],
-                                           lambda r: estab_note))
+        adopt_sub, estab_sub = (("New in the last 6 months", "Carried for 6 months or more") if age_cutoff
+                                else (f"New since {prev_dt}", "In both crawls"))
+        # an empty bucket keeps a narrow column; the other takes the room
+        adopt, estab = bool(buckets["adopting"]), bool(buckets["established"])
+        lopsided = adopt != estab
+        stack_cards = (_term_bucket("Adopting", adopt_sub, buckets["adopting"],
+                                    lambda r: adopt_note, scale, wide=lopsided)
+                       + _term_bucket("Established", estab_sub, buckets["established"],
+                                      lambda r: estab_note, scale, wide=lopsided))
+        stack_cols = ("" if not lopsided else
+                      ' style="grid-template-columns:minmax(200px,1fr) minmax(0,3fr)"' if estab else
+                      ' style="grid-template-columns:minmax(0,3fr) minmax(200px,1fr)"')
 
     def _open_row(r: dict) -> str:
         title = html.escape(r["title"])
@@ -2531,8 +2787,8 @@ def render_dashboard(lake: dict, company: str) -> str:
         if r["is_tech_role"]:
             flags.append('<span class="tag tag-accent tag-flag">Tech role</span>')
         badges = f'<div class="row-flags">{"".join(flags)}</div>' if flags else ""
-        terms = "".join(f'<button type="button" class="tag tag-outline" data-stack-term="{html.escape(t)}" '
-                        f'style="margin:0 4px 4px 0">{html.escape(t)}</button>'
+        terms = "".join(f'<button type="button" class="tag tag-outline" data-stack-term="{html.escape(t)}">'
+                        f'{html.escape(t)}</button>'
                         for t in r["terms"]) or "&mdash;"
         seen = html.escape(r["first_seen"] or "—")
         pay = html.escape(pay_label(r.get("pay"), short=True) or "—")
@@ -2548,8 +2804,8 @@ def render_dashboard(lake: dict, company: str) -> str:
         return (f'<tr {attrs}>'
                 f'<td>{link}{badges}</td>'
                 f'<td class="text-muted">{html.escape(r["location"])}</td>'
-                f'<td class="text-muted" style="white-space:nowrap">{seen}</td>'
-                f'<td class="text-muted" style="white-space:nowrap">{pay}</td>'
+                f'<td class="text-muted nowrap">{seen}</td>'
+                f'<td class="text-muted nowrap">{pay}</td>'
                 f'<td>{terms}</td></tr>')
 
     open_table_rows = "".join(_open_row(r) for r in open_rows)
@@ -2574,7 +2830,7 @@ def render_dashboard(lake: dict, company: str) -> str:
                 f'<td><a href="{archive_href(company, r["pid"])}" aria-haspopup="dialog">'
                 f'{html.escape(r["title"])}</a>{badge}</td>'
                 f'<td class="text-muted">{html.escape(r["location"])}</td>'
-                f'<td class="text-muted" style="white-space:nowrap">{html.escape(r["closed_on"])}</td>'
+                f'<td class="text-muted nowrap">{html.escape(r["closed_on"])}</td>'
                 f'<td class="text-muted num">{days}</td></tr>')
 
     role_filters = _filter_row(_ROLE_TABLE, [
@@ -2628,14 +2884,12 @@ def render_dashboard(lake: dict, company: str) -> str:
     tech_title, tech_sub = (("Tech roles open", f"On the {curr_dt} board and classified as technical")
                             if first else
                             ("Tech roles opened", "Opened this period and classified as technical"))
-    tech_new_html = "".join(
-        f'<div style="padding-bottom:11px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)">'
-        f'<div style="font-size:13.5px;font-weight:500"><a href="{html.escape(r["url"])}" target="_blank" rel="noopener">{html.escape(r["title"])}</a></div>'
-        f'<div style="font-size:12px" class="text-muted">{html.escape(r["location"])}</div></div>'
-        for r in tech_shown) or '<p class="text-muted" style="margin:0;font-size:12.5px">None this period.</p>'
+    tech_new_html = (f'<div class="list-rows">' + "".join(
+        f'<div><a href="{html.escape(r["url"])}" target="_blank" rel="noopener">{html.escape(r["title"])}</a>'
+        f'<span>{html.escape(r["location"])}</span></div>' for r in tech_shown) + '</div>'
+        if tech_shown else '<p class="empty">None this period.</p>')
     if len(tech_rows) > len(tech_shown):
-        tech_new_html += (f'<p class="text-muted" style="margin:0;font-size:12.5px">'
-                          f'{len(tech_rows) - len(tech_shown)} more in Open roles.</p>')
+        tech_new_html += f'<p class="note">{len(tech_rows) - len(tech_shown)} more in Open roles.</p>'
 
     history = lake.get("history") or lake["series"]
     history_chart = _history_chart(history)
@@ -2670,28 +2924,28 @@ def render_dashboard(lake: dict, company: str) -> str:
     brief_lines.append(f"Source: {domain} · {len(curr['postings'])} postings with stack signals, captured {fmt_dt(curr['captured_at'])}.")
     brief_text = "\n".join(brief_lines)
 
+    tech_open = sum(r["is_tech_role"] for r in open_rows)
+    tech_share = (f"{round(100 * tech_open / len(open_rows))}% of open roles" if open_rows
+                  else "No open roles")
     if first:
         head_desc = (f"Hiring signals for {company_name}: {curr['postings_total']} open postings "
                      f"captured {curr_dt}, the first crawl of this board.")
-        lede = (f"Built from {curr['postings_total']} open postings captured {curr_dt}, the first crawl "
-                f"of this board. Change figures start with the next crawl. Every row links back to "
-                f"the posting it came from.")
-        change_row = (f'<span class="text-muted">First crawl {curr_dt}</span>'
-                      f'<span>{curr["postings_total"]} open</span>')
-        flow = {k: "&mdash;" for k in ("new", "closed", "reopened")}
         window_label = f"First crawl {curr_dt}"
+        kpis = (_kpi("Open roles", curr["postings_total"], f"First crawl {curr_dt}")
+                + _kpi("Opened", "&mdash;", "From the next crawl")
+                + _kpi("Closed", "&mdash;", "From the next crawl")
+                + _kpi("Tech roles", tech_open, tech_share))
     else:
         head_desc = (f"Hiring signals for {company_name}: {curr['postings_total']} open postings "
                      f"captured {curr_dt}, compared with {prev_dt}.")
-        lede = (f"Built from {curr['postings_total']} open postings captured {curr_dt},\n"
-                f"        measured against the crawl {window_days} days earlier ({prev_dt}). Every row "
-                f"links back to the posting it came from.")
-        change_row = (f'<span class="text-muted">{prev_dt} &rarr; {curr_dt}</span>\n'
-                      f'          <span>{prev["postings_total"]} &rarr; {curr["postings_total"]}\n'
-                      f'            <b style="color:{"var(--color-accent-700)" if delta >= 0 else "inherit"}">'
-                      f'{delta:+d} ({pct:+.1f}%)</b></span>')
-        flow = {k: counts.get(k, "?") for k in ("new", "closed", "reopened")}
         window_label = f"{prev_dt} &ndash; {curr_dt}"
+        since = f"since {_short_date(prev_dt)}"
+        reopened = counts.get("reopened") or 0
+        kpis = (_kpi("Open roles", curr["postings_total"], f"{_delta(delta, pct)} {since}")
+                + _kpi("Opened", counts.get("new", "?"),
+                       since + (f" &middot; {reopened} reopened" if reopened else ""))
+                + _kpi("Closed", counts.get("closed", "?"), since)
+                + _kpi("Tech roles", tech_open, tech_share))
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -2702,102 +2956,96 @@ def render_dashboard(lake: dict, company: str) -> str:
 <a class="skip-link" href="#main">Skip to content</a>
 {_nav("dashboard", company)}
 <div class="wrap">
-  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Dashboard</span></div>
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span class="here">Dashboard</span></div>
   <main id="main">
   <div class="hdr">
-    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:34px;margin:3px 0">Dashboard</h1>
-      <p class="text-muted" style="margin:6px 0 0;font-size:13px;max-width:70ch">{lede}</p></div>
-    <button class="btn btn-primary" type="button" id="copy-brief">Copy summary</button>
+    <h1>{html.escape(company_name)}</h1>
+    <div class="hdr-actions"><button class="btn btn-secondary btn-sm" type="button" id="copy-brief">Copy summary</button></div>
   </div>
+
+  <section class="blueprint kpis" aria-label="This window at a glance">{kpis}</section>
 
   <div class="grid">
-    <div style="display:flex;flex-direction:column;gap:24px">
-      <div>
-        <h2 class="section-label text-muted" style="margin-bottom:12px">Tech stack, as evidenced by hiring</h2>
-        <div class="stack-grid">{stack_cards}</div>
-      </div>
-      <div>
-        <div class="tbl-head" id="open-roles-head">
-          <h2 class="section-label text-muted" style="margin:0">Open roles &middot; <span id="row-count">{len(open_rows)}</span><span id="row-total" hidden> of {len(open_rows)}</span></h2>
-          <div class="tbl-controls">
-            <input id="role-filter" type="search" placeholder="Title, location or description" aria-label="Search open roles by title, location or description">
-          </div>
-        </div>
-        {role_filters}
-        {_my_terms_strip()}
-        <div class="blueprint" style="overflow-x:auto">
-          <table class="table" id="open-roles">
-            <caption class="visually-hidden">Open roles on the {curr_dt} board. Titles link to the
-              posting on the company&rsquo;s job board and open in a new tab. Column headers sort the table.</caption>
-            <thead><tr><th scope="col" data-key="title">Posting</th><th scope="col" data-key="loc">Location</th><th scope="col" data-key="seen" data-first="desc">First seen</th><th scope="col" data-key="pay" data-type="num" data-first="desc">Pay</th><th scope="col" data-key="n" data-type="num" data-first="desc">Stack signals matched</th></tr></thead>
-            <tbody>{open_table_rows or '<tr><td colspan="5" class="text-muted">No open postings on this crawl.</td></tr>'}</tbody>
-          </table>
-          <p class="tbl-empty text-muted" id="no-match" hidden>No open role matches these filters. <button type="button" class="btn-link" data-clear="open-roles">Clear filters</button> to see the full board.</p>
-        </div>
-        <div class="pager" id="roles-pager" hidden>
-          <button type="button" class="btn btn-secondary btn-sm" id="page-prev">&larr; Prev</button>
-          <span class="text-muted" id="page-status" role="status" aria-live="polite"></span>
-          <button type="button" class="btn btn-secondary btn-sm" id="page-next">Next &rarr;</button>
-        </div>
-        <p class="text-muted" style="margin:10px 0 0;font-size:11.5px;line-height:1.5">{recency_note}</p>
-      </div>
-      <div id="archive">
-        <div class="tbl-head">
-          <h2 class="section-label text-muted" style="margin:0">Archive &middot; <span id="archive-count">{len(archive_rows)}</span><span id="archive-total" hidden> of {len(archive_rows)}</span> closed</h2>
-          <div class="tbl-controls">
-            <input id="archive-filter" type="search" placeholder="Title, location, team or description" aria-label="Search archived roles by title, location, team or description">
-          </div>
-        </div>
-        {archive_filters}
-        <div class="blueprint" style="overflow-x:auto">
-          <table class="table arch-table" id="archive-roles">
-            <caption class="visually-hidden">Postings that have left the board, most recently closed
-              first. Select a posting to see everything TICK recorded about it. Column headers sort the table.</caption>
-            <thead><tr><th scope="col" data-key="title">Posting</th><th scope="col" data-key="loc">Location</th><th scope="col" data-key="closed" data-first="desc">Closed</th><th scope="col" class="num" data-key="days" data-type="num" data-first="desc">Days open</th></tr></thead>
-            <tbody>{archive_table_rows or '<tr><td colspan="4" class="text-muted">No postings have closed since collection started.</td></tr>'}</tbody>
-          </table>
-          <p class="tbl-empty text-muted" id="archive-no-match" hidden>No archived role matches these filters. <button type="button" class="btn-link" data-clear="archive-roles">Clear filters</button></p>
-        </div>
-        <div class="pager" id="archive-pager" hidden>
-          <button type="button" class="btn btn-secondary btn-sm" id="archive-prev">&larr; Prev</button>
-          <span class="text-muted" id="archive-status" role="status" aria-live="polite"></span>
-          <button type="button" class="btn btn-secondary btn-sm" id="archive-next">Next &rarr;</button>
-        </div>
-        <p class="text-muted" style="margin:10px 0 0;font-size:11.5px;line-height:1.5">Every req that has
-          disappeared from the board since collection began. Closed is the first crawl it was missing from;
-          details are from the last crawl it appeared on. A req that comes back moves to Open roles.</p>
-      </div>
+    <div class="card blueprint">
+      <div class="card-head"><div><h2 class="card-title">Open roles over time</h2>
+        <span class="card-sub">{hist_span} &middot; {len(history)} crawl{"s" if len(history) != 1 else ""}</span></div></div>
+      {history_chart}
     </div>
-
     <div class="right-col">
-      <div class="card blueprint">{_corners()}
-        <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles &mdash; {hist_span}</span>
-        {history_chart}
-        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding-top:9px;border-top:1px solid var(--color-divider)">
-          {change_row}
-        </div>
-        <div class="stat-row">
-          <div class="stat"><b>{flow['new']}</b><span>Opened</span></div>
-          <div class="stat"><b>{flow['closed']}</b><span>Closed</span></div>
-          <div class="stat"><b>{flow['reopened']}</b><span>Reopened</span></div>
-        </div>
+      <div class="card blueprint">
+        <div class="card-head"><div><h2 class="card-title">{tech_title}</h2><span class="card-sub">{tech_sub}</span></div>
+          <span class="count">{len(tech_rows)}</span></div>
+        {tech_new_html}
       </div>
-      <div class="card blueprint">{_corners()}
-        <h2 style="margin:0 0 3px;font-size:20px">{tech_title}</h2>
-        <span style="font-size:11.5px;display:block;margin-bottom:12px" class="text-muted">{tech_sub}</span>
-        <div style="display:flex;flex-direction:column;gap:11px">{tech_new_html}</div>
-      </div>
-      <div class="card blueprint">{_corners()}
-        <h2 style="margin:0 0 10px;font-size:20px">Source coverage</h2>
-        <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
-          <div style="display:flex;justify-content:space-between"><span class="text-muted">Postings analyzed</span><span>{curr['postings_total']}</span></div>
-          <div style="display:flex;justify-content:space-between"><span class="text-muted">Window</span><span>{window_label}</span></div>
-          <div style="display:flex;justify-content:space-between"><span class="text-muted">Last crawl</span><span>{fmt_dt(curr['captured_at'])}</span></div>
-          <div style="display:flex;justify-content:space-between"><span class="text-muted">Board</span><span><a href="https://{html.escape(domain)}" target="_blank" rel="noopener">{html.escape(domain)}</a></span></div>
+      <div class="card blueprint">
+        <div class="card-head"><h2 class="card-title">Source coverage</h2></div>
+        <div class="kv">
+          <div><span>Postings analyzed</span><span>{curr['postings_total']}</span></div>
+          <div><span>Window</span><span>{window_label}</span></div>
+          <div><span>Last crawl</span><span>{fmt_dt(curr['captured_at'])}</span></div>
+          <div><span>Board</span><span><a href="https://{html.escape(domain)}" target="_blank" rel="noopener">{html.escape(domain)}</a></span></div>
         </div>
       </div>
     </div>
   </div>
+
+  <section class="section" aria-labelledby="stack-h">
+    <h2 class="section-label" id="stack-h">Tech stack, as evidenced by hiring</h2>
+    <div class="blueprint stack-card"{stack_cols}>{stack_cards}</div>
+  </section>
+
+  <section class="section" aria-labelledby="open-roles-h">
+    <div class="tbl-head" id="open-roles-head">
+      <h2 class="section-label" id="open-roles-h">Open roles <span class="count"><span id="row-count">{len(open_rows)}</span><span id="row-total" hidden>&nbsp;of {len(open_rows)}</span></span></h2>
+      <div class="tbl-controls">
+        <input id="role-filter" type="search" placeholder="Search title, location or description" aria-label="Search open roles by title, location or description">
+      </div>
+    </div>
+    {role_filters}
+    {_my_terms_strip()}
+    <div class="blueprint tbl-wrap">
+      <table class="table" id="open-roles">
+        <caption class="visually-hidden">Open roles on the {curr_dt} board. Titles link to the
+          posting on the company&rsquo;s job board and open in a new tab. Column headers sort the table.</caption>
+        <thead><tr><th scope="col" data-key="title">Posting</th><th scope="col" data-key="loc">Location</th><th scope="col" data-key="seen" data-first="desc">First seen</th><th scope="col" data-key="pay" data-type="num" data-first="desc">Pay</th><th scope="col" data-key="n" data-type="num" data-first="desc">Stack signals matched</th></tr></thead>
+        <tbody>{open_table_rows or '<tr><td colspan="5" class="text-muted">No open postings on this crawl.</td></tr>'}</tbody>
+      </table>
+      <p class="tbl-empty text-muted" id="no-match" hidden>No open role matches these filters. <button type="button" class="btn-link" data-clear="open-roles">Clear filters</button> to see the full board.</p>
+    </div>
+    <div class="pager" id="roles-pager" hidden>
+      <button type="button" class="btn btn-secondary btn-sm" id="page-prev">&larr; Prev</button>
+      <span class="text-muted" id="page-status" role="status" aria-live="polite"></span>
+      <button type="button" class="btn btn-secondary btn-sm" id="page-next">Next &rarr;</button>
+    </div>
+    <p class="note">{recency_note}</p>
+  </section>
+
+  <section class="section" id="archive" aria-labelledby="archive-h">
+    <div class="tbl-head">
+      <h2 class="section-label" id="archive-h">Archive <span class="count"><span id="archive-count">{len(archive_rows)}</span><span id="archive-total" hidden>&nbsp;of {len(archive_rows)}</span></span> <span class="visually-hidden">closed</span></h2>
+      <div class="tbl-controls">
+        <input id="archive-filter" type="search" placeholder="Search title, location, team or description" aria-label="Search archived roles by title, location, team or description">
+      </div>
+    </div>
+    {archive_filters}
+    <div class="blueprint tbl-wrap">
+      <table class="table arch-table" id="archive-roles">
+        <caption class="visually-hidden">Postings that have left the board, most recently closed
+          first. Select a posting to see everything TICK recorded about it. Column headers sort the table.</caption>
+        <thead><tr><th scope="col" data-key="title">Posting</th><th scope="col" data-key="loc">Location</th><th scope="col" data-key="closed" data-first="desc">Closed</th><th scope="col" class="num" data-key="days" data-type="num" data-first="desc">Days open</th></tr></thead>
+        <tbody>{archive_table_rows or '<tr><td colspan="4" class="text-muted">No postings have closed since collection started.</td></tr>'}</tbody>
+      </table>
+      <p class="tbl-empty text-muted" id="archive-no-match" hidden>No archived role matches these filters. <button type="button" class="btn-link" data-clear="archive-roles">Clear filters</button></p>
+    </div>
+    <div class="pager" id="archive-pager" hidden>
+      <button type="button" class="btn btn-secondary btn-sm" id="archive-prev">&larr; Prev</button>
+      <span class="text-muted" id="archive-status" role="status" aria-live="polite"></span>
+      <button type="button" class="btn btn-secondary btn-sm" id="archive-next">Next &rarr;</button>
+    </div>
+    <p class="note">Every req that has
+      disappeared from the board since collection began. Closed is the first crawl it was missing from;
+      details are from the last crawl it appeared on. A req that comes back moves to Open roles.</p>
+  </section>
   </main>
   {_footer(fmt_dt(curr['captured_at']), domain)}
 </div>
@@ -2824,17 +3072,19 @@ def render_dashboard(lake: dict, company: str) -> str:
 def _account_card(a: dict) -> str:
     """One account. Every number shown is one the lake actually holds; an
     account that has not collected gets a state line instead of figures."""
-    meta = " &middot; ".join(html.escape(str(x)) for x in [
-        a["ats"] or "ats unknown", f'tier {a["tier"]}' if a["tier"] else None, a["board"]] if x)
     # the page's one real distinction — an account with pages to open, or not —
-    # so the accent is spent there and nowhere else
-    tag_class = "tag-solid" if a["has_pages"] else "tag-neutral"
+    # so the live dot is spent there and nowhere else
+    status_class = ("status-live" if a["has_pages"] else
+                    "status-review" if a["status"] == _REVIEW else "")
+    name = html.escape(a["name"])
+    if a["has_pages"]:
+        name = f'<a href="/{html.escape(a["slug"])}/dashboard.html">{name}</a>'
 
     if a["open_roles"] is not None:
         if a["delta"] is None:
-            delta_val, delta_lbl = "&mdash;", "no prior crawl"
+            delta_val, delta_lbl = "&mdash;", "No prior crawl"
         else:
-            delta_val, delta_lbl = f'{a["delta"]:+d}', f'vs {a["prev_dt"]}'
+            delta_val, delta_lbl = _signed(a["delta"]), f'Since {_short_date(a["prev_dt"])}'
         stats = (f'<div class="stat-row">'
                  f'<div class="stat"><b>{a["open_roles"]}</b><span>Open roles</span></div>'
                  f'<div class="stat"><b>{delta_val}</b><span>{delta_lbl}</span></div>'
@@ -2848,8 +3098,7 @@ def _account_card(a: dict) -> str:
         # would resolve under it (/accounts/<slug>/dashboard.html) and 404.
         foot = (f'<a class="btn btn-primary btn-sm" href="/{html.escape(a["slug"])}/dashboard.html">Dashboard</a>'
                 f'<a class="btn btn-secondary btn-sm" href="/{html.escape(a["slug"])}/brief.html">Brief</a>'
-                f'<span class="text-muted" style="margin-left:auto;font-size:11.5px">'
-                f'Crawled {a["curr_dt"]}</span>')
+                f'<span class="acct-when">Crawled {a["curr_dt"]}</span>')
         note = ""
     else:
         foot = (f'<a class="btn btn-secondary btn-sm" href="{html.escape(a["careers_url"])}">Careers board</a>'
@@ -2859,44 +3108,45 @@ def _account_card(a: dict) -> str:
             note = f'Config flagged for human review{conf} — not collecting yet.'
         else:
             note = 'Config verified. Nothing in the lake for this account yet.'
-        note = f'<p class="acct-note text-muted">{note}</p>'
+        note = f'<p class="acct-note">{note}</p>'
 
-    return (f'<div class="card blueprint{" is-reporting" if a["has_pages"] else ""}">{_corners()}'
-            f'<div class="acct-head"><div>'
-            f'<h2 class="acct-name">{html.escape(a["name"])}</h2>'
-            f'<div class="acct-meta text-muted">{meta}</div></div>'
-            f'<span class="tag {tag_class}" style="white-space:nowrap">{a["status"]}</span></div>'
+    return (f'<div class="card blueprint{" is-reporting" if a["has_pages"] else ""}">'
+            f'<div class="acct-head"><h2 class="acct-name">{name}</h2>'
+            f'<span class="status {status_class}">{a["status"]}</span></div>'
             f'{stats}{note}'
             f'{f'<div class="acct-foot">{foot}</div>' if foot else ""}'
             f'</div>')
 
 
-def _add_account_card() -> str:
+def _add_account_card(open_: bool = False) -> str:
     """Trailing tile in the account grid: any viewer can ask for a company the
     lake does not track yet. The form posts to /api/account-request, which
     records the request against the viewer's session and alerts an admin, who
-    onboards it with the evaluator and assigns it to the viewer."""
+    onboards it with the evaluator and assigns it to the viewer. Folded into a
+    disclosure, so the grid ends in one quiet tile rather than a tall form; a
+    viewer with no accounts yet finds it open."""
     return (
-        '<form class="card blueprint acct-add" id="acct-form" novalidate>' + _corners() +
-        '<div class="acct-head"><div>'
-        '<h2 class="acct-name">Track another company</h2>'
-        '<div class="acct-meta text-muted">request &middot; reviewed by an administrator</div>'
-        '</div><span class="tag tag-neutral" style="white-space:nowrap">Not tracked</span></div>'
-        '<p class="acct-note text-muted" style="margin-top:11px">Tell us which company to track. Once '
+        f'<details class="blueprint acct-add"{" open" if open_ else ""}>'
+        '<summary><span class="acct-plus" aria-hidden="true">+</span><span>'
+        '<span class="acct-name" style="display:block">Track another company</span>'
+        '<span class="acct-meta" style="display:block">Request an account &middot; reviewed by an administrator</span>'
+        '</span></summary>'
+        '<form id="acct-form" novalidate>'
+        '<p class="acct-note" style="margin:0 0 16px">Tell us which company to track. Once '
         'it&rsquo;s set up and crawled, it appears here with a dashboard.</p>'
         '<label for="acct-name-in">Company name</label>'
         '<input id="acct-name-in" name="company" type="text" placeholder="Acme Industrial Supply" '
         'autocomplete="organization" spellcheck="false" maxlength="120" required>'
-        '<label for="acct-url-in">Careers URL <span style="opacity:.65">(optional)</span></label>'
+        '<label for="acct-url-in">Careers URL <span class="text-muted">(optional)</span></label>'
         '<input id="acct-url-in" name="careers_url" type="url" placeholder="https://careers.example.com" '
         'inputmode="url" autocomplete="url" spellcheck="false" maxlength="500">'
-        '<label for="acct-note-in">Notes <span style="opacity:.65">(optional)</span></label>'
+        '<label for="acct-note-in">Notes <span class="text-muted">(optional)</span></label>'
         '<textarea id="acct-note-in" name="note" rows="2" maxlength="1000" '
         'placeholder="Why this company..."></textarea>'
         '<div class="acct-foot">'
         '<button class="btn btn-primary btn-sm" id="acct-submit" type="submit">Request account</button>'
         '<span class="acct-status text-muted" id="acct-status" role="status" aria-live="polite"></span>'
-        '</div></form>')
+        '</div></form></details>')
 
 
 def _add_account_script() -> str:
@@ -2967,18 +3217,18 @@ def render_home(accounts: list[dict]) -> str:
     tracked = sum(a["open_roles"] for a in collected)
     last = max((a["captured_at"] for a in collected if a["captured_at"]), default=None)
 
-    sub = (f'{len(accounts)} account{"s" if len(accounts) != 1 else ""} &middot; '
-           f'<b>{len(reporting)} reporting</b> &middot; <b>{tracked}</b> open postings tracked'
-           f'{f" &middot; last crawl {fmt_dt(last)}" if last else ""}')
+    sub = (f'<span><b>{len(accounts)}</b> account{"s" if len(accounts) != 1 else ""}</span>'
+           f'<span><b>{len(reporting)}</b> reporting</span><span><b>{tracked}</b> open postings tracked</span>'
+           f'{f"<span>Last crawl {fmt_dt(last)}</span>" if last else ""}')
 
     cards = "".join(_account_card(a) for a in accounts)
     if not accounts:
-        cards = ('<div class="card blueprint">' + _corners() +
+        cards = ('<div class="card blueprint">'
                  '<h2 class="acct-name">No accounts yet</h2>'
-                 '<p class="acct-note text-muted" style="margin-top:11px">No accounts have been '
+                 '<p class="acct-note">No accounts have been '
                  'assigned to you yet. Request one alongside; once it&rsquo;s set up it appears '
                  'here the next time you sign in.</p></div>')
-    cards += _add_account_card()
+    cards += _add_account_card(open_=not accounts)
     last_crawl_label = fmt_dt(last) if last else "no crawl yet"
     description = (f'TICK tracks hiring signals across {len(accounts)} '
                    f'account{"s" if len(accounts) != 1 else ""} — '
@@ -2993,11 +3243,10 @@ def render_home(accounts: list[dict]) -> str:
 <a class="skip-link" href="#main">Skip to content</a>
 {_nav("home")}
 <div class="wrap">
-  <div class="crumb"><span style="color:var(--color-text)">Accounts</span></div>
   <main id="main">
-  <div class="hdr">
-    <div><p class="eyebrow text-muted">TICK</p><h1 style="font-size:34px;margin:3px 0">Accounts</h1>
-      <p class="text-muted acct-lede" style="margin:6px 0 0;font-size:13px">{sub}</p></div>
+  <div class="hdr hdr-top">
+    <div><h1>Accounts</h1>
+      <p class="hdr-meta acct-lede">{sub}</p></div>
   </div>
   <div class="acct-grid">{cards}</div>
   </main>
@@ -3014,32 +3263,49 @@ def render_home(accounts: list[dict]) -> str:
 def _persona_section() -> str:
     """The viewer's persona editor. Hidden until /api/profile answers: the
     page is shared by every viewer, so the form holds no one's data until the
-    script fills it, and without the API it can do nothing."""
+    script fills it, and without the API it can do nothing. Laid out as
+    settings: each group's heading and purpose beside its fields."""
     roles = "".join(f'<option value="{k}">{html.escape(v)}</option>' for k, v in persona.ROLES.items())
     buyers = "".join(f'<label class="chk"><input type="checkbox" name="buyers" value="{k}">'
                      f'<span>{html.escape(v)}</span></label>' for k, v in persona.BUYERS.items())
     return f"""<section class="persona" id="persona" aria-labelledby="persona-h" hidden>
-  <h2 class="section-label text-muted" id="persona-h" style="margin:26px 0 12px">Your persona</h2>
-  <form class="card blueprint pform" id="persona-form" novalidate>{_corners()}
-    <p class="text-muted pnote" id="persona-tracks">Your weekly briefs are written for the reader you
-      describe here: who you are, what you sell, and the terms you watch.</p>
-    <div class="pgrid">
-      <label>Your role<select id="p-role" name="role"><option value="">Choose&hellip;</option>{roles}</select></label>
-      <label>The company you sell for<input id="p-sells-for" name="sells_for" type="text"
-        maxlength="{persona.NAME_CHARS}" autocomplete="organization" placeholder="Initech"></label>
-      <label class="wide">What you sell<textarea id="p-offer" name="offer" rows="2" maxlength="{persona.OFFER_CHARS}"
-        placeholder="Hardened container images with signed SBOMs and build provenance"></textarea></label>
-      <fieldset class="wide"><legend>Who you sell to</legend><div class="pchecks">{buyers}</div></fieldset>
-      <label class="wide">Focus terms<input id="p-focus" name="focus_terms" type="text" autocomplete="off"
-        placeholder="kubernetes, sbom, terraform">
-        <span class="phint">Comma-separated, up to {persona.MAX_FOCUS}. These are also your My terms on every dashboard.</span></label>
-      <label class="wide">Competitor terms<input id="p-competitors" name="competitor_terms" type="text"
-        autocomplete="off" placeholder="products that compete with yours">
-        <span class="phint">Comma-separated, up to {persona.MAX_COMPETITORS}. A posting that names one says what the company uses or is weighing.</span></label>
+  <h2 class="visually-hidden" id="persona-h">Your persona</h2>
+  <p class="callout" id="persona-tracks">Your weekly briefs are written for the reader you
+    describe here: who you are, what you sell, and the terms you watch.</p>
+  <form class="pform" id="persona-form" novalidate>
+    <div class="psec">
+      <div class="psec-head"><h3>About you</h3>
+        <p>Who the brief is written for. It decides what ranks first, never what is true.</p></div>
+      <div class="blueprint pgrid">
+        <label>Your role<select id="p-role" name="role"><option value="">Choose&hellip;</option>{roles}</select></label>
+        <label>The company you sell for<input id="p-sells-for" name="sells_for" type="text"
+          maxlength="{persona.NAME_CHARS}" autocomplete="organization" placeholder="Initech"></label>
+      </div>
     </div>
-    <div class="acct-foot">
-      <button class="btn btn-primary btn-sm" id="p-save" type="submit">Save persona</button>
+    <div class="psec">
+      <div class="psec-head"><h3>What you sell</h3>
+        <p>The offer and the teams that buy it, so a brief can say which postings matter to you.</p></div>
+      <div class="blueprint pgrid">
+        <label class="wide">What you sell<textarea id="p-offer" name="offer" rows="2" maxlength="{persona.OFFER_CHARS}"
+          placeholder="Hardened container images with signed SBOMs and build provenance"></textarea></label>
+        <fieldset class="wide"><legend>Who you sell to</legend><div class="pchecks">{buyers}</div></fieldset>
+      </div>
+    </div>
+    <div class="psec">
+      <div class="psec-head"><h3>What you watch</h3>
+        <p>Terms every brief counts for you, and the ones that name a competing product.</p></div>
+      <div class="blueprint pgrid">
+        <label class="wide">Focus terms<input id="p-focus" name="focus_terms" type="text" autocomplete="off"
+          placeholder="kubernetes, sbom, terraform">
+          <span class="phint">Comma-separated, up to {persona.MAX_FOCUS}. These are also your My terms on every dashboard.</span></label>
+        <label class="wide">Competitor terms<input id="p-competitors" name="competitor_terms" type="text"
+          autocomplete="off" placeholder="products that compete with yours">
+          <span class="phint">Comma-separated, up to {persona.MAX_COMPETITORS}. A posting that names one says what the company uses or is weighing.</span></label>
+      </div>
+    </div>
+    <div class="pform-foot">
       <span class="acct-status text-muted" id="p-status" role="status" aria-live="polite"></span>
+      <button class="btn btn-primary" id="p-save" type="submit">Save</button>
     </div>
   </form>
 </section>"""
@@ -3135,11 +3401,11 @@ def render_profile() -> str:
 <a class="skip-link" href="#main">Skip to content</a>
 {_nav("profile")}
 <div class="wrap narrow">
-  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span style="color:var(--color-text)">Profile</span></div>
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span class="here">Profile</span></div>
   <main id="main">
   <div class="hdr">
-    <div><p class="eyebrow text-muted">TICK</p><h1 style="font-size:34px;margin:3px 0">Your profile</h1>
-      <p class="text-muted" id="profile-lede" role="status" style="margin:6px 0 0;font-size:13px">Loading your profile&hellip;</p></div>
+    <div><p class="eyebrow">Settings</p><h1>Your profile</h1>
+      <p class="hdr-sub" id="profile-lede" role="status">Loading your profile&hellip;</p></div>
   </div>
   {_persona_section()}
   </main>
@@ -3292,12 +3558,11 @@ def render_briefs_index(company: str, company_name: str, entries: list[dict], cu
         tags = (f'<span class="tag tag-neutral tag-flag">{"Overview" if e["kind"] == "overview" else "Weekly"}</span>'
                 + (' <span class="tag tag-solid tag-flag">Current</span>' if e is cur else ""))
         rows.append(
-            f'<li class="card" style="padding:13px 16px;list-style:none">'
-            f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">'
-            f'<a href="{brief_href(company, e)}" style="font-weight:600;font-family:var(--font-heading)">'
-            f'{html.escape(_brief_title(e))}</a><span>{tags}</span></div>'
-            f'<p style="margin:6px 0 0;font-size:13px;line-height:1.55">{html.escape(_first_sentence(b.get("paragraphs")))}</p>'
-            f'<p class="text-muted" style="margin:5px 0 0;font-size:12px">{stats}{reader}</p></li>')
+            f'<li class="blueprint brief-item">'
+            f'<div class="brief-item-head"><a href="{brief_href(company, e)}">{html.escape(_brief_title(e))}</a>'
+            f'<span>{tags}</span></div>'
+            f'<p>{html.escape(_first_sentence(b.get("paragraphs")))}</p>'
+            f'<p class="brief-item-meta">{stats}{reader}</p></li>')
     n = len(entries)
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -3308,13 +3573,13 @@ def render_briefs_index(company: str, company_name: str, entries: list[dict], cu
 <a class="skip-link" href="#main">Skip to content</a>
 {_nav("brief", company)}
 <div class="wrap narrow">
-  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><a href="/{company}/brief.html">Brief</a><span>/</span><span style="color:var(--color-text)">Archive</span></div>
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><a href="/{company}/brief.html">Brief</a><span>/</span><span class="here">Archive</span></div>
   <main id="main">
   <div class="hdr">
-    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">Brief archive</h1>
-      <p class="text-muted" style="margin:6px 0 0;font-size:13px">{n} brief{"s" if n != 1 else ""}, newest first &middot; each as it was published</p></div>
+    <div><p class="eyebrow">Brief archive</p><h1>{html.escape(company_name)}</h1>
+      <p class="hdr-sub">{n} brief{"s" if n != 1 else ""}, newest first &middot; each as it was published</p></div>
   </div>
-  <ol style="display:flex;flex-direction:column;gap:10px;margin:18px 0 0;padding:0">{"".join(rows)}</ol>
+  <ol class="brief-list">{"".join(rows)}</ol>
   </main>
   {_footer(generated)}
 </div>
@@ -3336,16 +3601,17 @@ def render_no_brief(company: str, company_name: str, generated: str) -> str:
 <a class="skip-link" href="#main">Skip to content</a>
 {_nav("brief", company)}
 <div class="wrap narrow">
-  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span style="color:var(--color-text)">Brief</span></div>
+  <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span><span class="here">Brief</span></div>
   <main id="main">
-  <div class="hdr" style="border:0">
-    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">No brief yet</h1></div>
+  <div class="blueprint empty-state">
+    <p class="eyebrow">{html.escape(company_name)}</p><h1>No brief yet</h1>
+    <p>A newly tracked account gets an overview of its
+    board and stack first, then a brief each week from the movement on its job board,
+    and every claim in one cites the posting it rests on.
+    This account's first brief has not been published. Until it is, the
+    <a href="/{company}/dashboard.html">dashboard</a> has everything the board shows today.</p>
+    <a class="btn btn-primary" href="/{company}/dashboard.html">Open the dashboard</a>
   </div>
-  <p style="margin:6px 0 0;max-width:62ch">A newly tracked account gets an overview of its
-  board and stack first, then a brief each week from the movement on its job board,
-  and every claim in one cites the posting it rests on.
-  This account's first brief has not been published. Until it is, the
-  <a href="/{company}/dashboard.html">dashboard</a> has everything the board shows today.</p>
   </main>
   {_footer(generated)}
 </div>
@@ -3358,32 +3624,33 @@ _AI_CITE_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
 
 
 def _rail_card(label: str, body: str) -> str:
-    return (f'<div class="card blueprint">{_corners()}'
-            f'<span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;'
-            f'margin-bottom:9px" class="text-muted">{label}</span>{body}</div>')
+    return f'<div class="card blueprint"><span class="rail-label">{label}</span>{body}</div>'
 
 
 def _rows(pairs: list[tuple[str, object]]) -> str:
-    return ('<div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">'
-            + "".join(f'<div style="display:flex;justify-content:space-between;gap:10px">'
-                      f'<span>{html.escape(str(k))}</span><b>{html.escape(str(v))}</b></div>' for k, v in pairs)
+    return ('<div class="kv">'
+            + "".join(f'<div><span>{html.escape(str(k))}</span><span>{html.escape(str(v))}</span></div>'
+                      for k, v in pairs)
             + "</div>")
 
 
-def _archive_banner(nav: dict | None) -> str:
-    """Where this brief sits among the account's others. On brief.html, one
-    link to the archive; on an archived brief's own page, which brief it is,
-    whether it is still the current one, and its neighbours."""
+def _archive_button(nav: dict | None) -> str:
+    """The way into the brief archive, a button in the brief's header."""
     if not nav:
         return ""
-    link = f'<a href="{nav["index_href"]}">Brief archive ({nav["count"]})</a>'
-    if not nav["on_archive"]:
-        return f'<p class="text-muted" style="margin:10px 0 0;font-size:12.5px">{link}</p>'
+    return f'<a class="btn btn-secondary btn-sm" href="{nav["index_href"]}">Brief archive ({nav["count"]})</a>'
+
+
+def _archive_banner(nav: dict | None) -> str:
+    """On an archived brief's own page: which brief it is, and whether it is
+    still the current one."""
+    if not nav or not nav["on_archive"]:
+        return ""
     status = ("This is the account's current brief." if nav["is_current"] else
               f'An earlier brief, kept as it was published. '
               f'<a href="{nav["current_href"]}">Read the current brief</a>.')
-    return (f'<div class="card" style="padding:10px 14px;margin:14px 0 0;font-size:12.5px">'
-            f'<b>{html.escape(nav["title"])}</b> &middot; {status} &middot; {link}</div>')
+    return (f'<div class="archive-bar"><b>{html.escape(nav["title"])}</b>'
+            f'<span>{status}</span></div>')
 
 
 def _archive_pager(nav: dict | None) -> str:
@@ -3394,7 +3661,7 @@ def _archive_pager(nav: dict | None) -> str:
     newer = (f'<a class="btn btn-secondary btn-sm" href="{nav["newer"]["href"]}">'
              f'{html.escape(nav["newer"]["label"])} &rarr;</a>') if nav["newer"] else "<span></span>"
     return (f'<nav aria-label="Other briefs" style="display:flex;justify-content:space-between;gap:10px;'
-            f'flex-wrap:wrap;margin-top:24px">{older}{newer}</nav>')
+            f'flex-wrap:wrap;margin-top:32px">{older}{newer}</nav>')
 
 
 def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archive: dict | None = None) -> str:
@@ -3402,7 +3669,7 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archi
     or a new account's overview when the pack's kind is "overview". The model's
     text is escaped like any other untrusted input; its [[id]] citations
     become numbered sources resolved against the evidence pack it was written
-    from.
+    from, each number a link down to its source.
 
     Every cited role links somewhere, resolved against the lake as it stands
     at render time rather than the pack: the pack's standing lists carry no
@@ -3478,10 +3745,11 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archi
         if cid not in numbered:
             cx.cite(*label(cid))
             numbered[cid] = len(cx.items)
-        return f'<sup class="cite"> {numbered[cid]}</sup>'
+        return Citations.marker(numbered[cid])
 
     def rich(text: str) -> str:
-        return _AI_CITE_RE.sub(sup, html.escape(text or ""))
+        # the marker sits against the word it supports, as a footnote mark does
+        return _AI_CITE_RE.sub(sup, html.escape(re.sub(r"\s+(?=\[\[)", "", text or "")))
 
     def plain(text: str) -> str:
         return _AI_CITE_RE.sub("", text or "").replace("  ", " ").strip()
@@ -3494,32 +3762,27 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archi
         quote = ""
         q = a.get("quote")
         if q and q.get("text"):
-            quote = (f'<p style="margin:9px 0 0;font-size:12.5px;line-height:1.55">'
-                     f'<span class="text-muted">In their words &mdash; </span>'
-                     f'<span style="font-style:italic">&ldquo;{html.escape(q["text"])}&rdquo;</span>'
-                     f'{rich(f"[[{q.get("source", "")}]]")}</p>')
-        steps = "".join(f'<li style="margin-top:6px">{rich(s)}</li>' for s in a.get("steps", []))
+            quote = (f'<blockquote class="action-quote"><span>In their words</span>'
+                     f'<em>&ldquo;{html.escape(q["text"])}&rdquo;</em>'
+                     f'{rich(f"[[{q.get("source", "")}]]")}</blockquote>')
+        steps = "".join(f'<li>{rich(s)}</li>' for s in a.get("steps", []))
         kind = a.get("kind", "")
         act_html.append(
-            f'<div class="card blueprint" style="padding:14px 16px;margin-bottom:12px">{_corners()}'
-            f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">'
-            f'<div style="font-size:14.5px;font-weight:600;font-family:var(--font-heading)">'
-            f'{html.escape(a.get("title", ""))}</div>'
+            f'<div class="blueprint action">'
+            f'<div class="action-head"><h3 class="action-title">{html.escape(a.get("title", ""))}</h3>'
             f'<span class="tag tag-{"solid" if kind == "outreach" else "neutral"} tag-flag">'
             f'{html.escape(kind)}</span></div>'
-            f'<p class="text-muted" style="margin:5px 0 0;font-size:12.5px">{rich(a.get("why", ""))}</p>'
+            f'<p class="action-why">{rich(a.get("why", ""))}</p>'
             f'{quote}'
-            f'<ul style="margin:9px 0 0;padding-left:17px;font-size:12.5px;line-height:1.55">{steps}</ul></div>')
+            f'{f"<ol class=\"action-steps\">{steps}</ol>" if steps else ""}</div>')
     actions_html = "".join(act_html) or (
-        '<p class="text-muted" style="margin:0;font-size:12.5px">'
+        '<p class="empty">'
         + ("Nothing on the board yet warrants an approach." if overview
            else "Nothing moved this week that warrants an approach.") + "</p>")
 
     weekly = board.get("weekly_open_totals") or []
     sparkline = _trend_svg(weekly)
     spark_span = f'{weekly[0]["dt"]} &rarr; {weekly[-1]["dt"]}' if weekly else ""
-    host = html.escape(evidence["company"].get("board_host") or "?")
-    version = html.escape(str(brief.get("prompt_version", "?")))
     if overview:
         title, heading = "account overview", "Account overview"
         dated = f"Board as of {as_of}"
@@ -3532,30 +3795,21 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archi
                                  ("Stack terms", (evidence.get("stack") or {}).get("terms_on_board", 0))]))
         moves_card = _rail_card("Most-asked stack", _rows([(t["term"], f'{t["postings"]} role{"s" if t["postings"] != 1 else ""}')
                                                            for t in top])
-                                if top else '<p class="text-muted" style="margin:0;font-size:12.5px">No stack terms.</p>')
-        tracking = evidence.get("tracking") or {}
-        crawls = tracking.get("crawls", 1)
-        generated = (f'Written from the {as_of} crawl of {host}'
-                     + (f' ({crawls} crawls since {tracking.get("first_crawl")})' if crawls > 1 else ", its first")
-                     + f', overview prompt v{version}.')
+                                if top else '<p class="empty">No stack terms.</p>')
     else:
         title, heading = "account brief", "Account brief"
         dated = f"Week to {window['end']}"
         meta = f"What moved on {company_name}'s job board in the week to {window['end']}, and what to do about it."
         delta = board.get("net_change") or 0
         trend_card = (
-            f'<div class="card blueprint">{_corners()}'
-            f'<span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase" class="text-muted">Open roles, {spark_span}</span>'
+            f'<div class="card blueprint"><span class="rail-label">Open roles, {spark_span}</span>'
             f'{sparkline}'
-            f'<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;flex-wrap:wrap;'
-            f'padding-top:9px;border-top:1px solid var(--color-divider)">'
-            f'<span class="text-muted">{window["start"]} &rarr; {window["end"]}</span>'
-            f'<span>{board["open_at_start"]} &rarr; {board["open_at_end"]} '
-            f'<b style="color:{"var(--color-accent-700)" if delta >= 0 else "inherit"}">{delta:+d}</b></span>'
-            f'</div></div>')
-        moves_card = _rail_card("This week", _rows([("Opened", board["opened"]), ("Closed", board["closed"]),
-                                                    ("Reopened", board["reopened"])]))
-        generated = f'Written from {window["crawl_days"]} daily crawls of {host}, prompt v{version}.'
+            f'<div class="chart-foot"><span>{window["start"]} &rarr; {window["end"]}</span>'
+            f'<span>{board["open_at_start"]} &rarr; {board["open_at_end"]} {_delta(delta)}</span></div></div>')
+        moves_card = _rail_card(
+            "This week", '<div class="mini-stats">' + "".join(
+                f'<div><b>{board[k]}</b><span>{k.capitalize()}</span></div>'
+                for k in ("opened", "closed", "reopened")) + '</div>')
 
     brief_text = "\n\n".join(
         [f"{company_name} — {title}, {dated[0].lower() + dated[1:]}"]
@@ -3566,9 +3820,12 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archi
 
     if archive and archive["on_archive"]:
         crumb = (f'<a href="/{slug}/brief.html">Brief</a><span>/</span><a href="{archive["index_href"]}">Archive</a>'
-                 f'<span>/</span><span style="color:var(--color-text)">{html.escape(archive["title"])}</span>')
+                 f'<span>/</span><span class="here">{html.escape(archive["title"])}</span>')
     else:
-        crumb = '<span style="color:var(--color-text)">Brief</span>'
+        crumb = '<span class="here">Brief</span>'
+    hdr_meta = "".join(f"<span>{x}</span>" for x in (
+        dated, f"Brief written for {html.escape(reader)}" if reader else "") if x)
+    n_actions = len(brief.get("action_items") or [])
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -3582,30 +3839,28 @@ def render_ai_brief(brief: dict, evidence: dict, lake: dict | None = None, archi
   <div class="crumb"><a href="{APP_HOME}">Accounts</a><span>/</span><span>{html.escape(company_name)}</span><span>/</span>{crumb}</div>
   <main id="main">
   <div class="hdr">
-    <div><p class="eyebrow text-muted">{html.escape(company_name)}</p><h1 style="font-size:30px;margin:3px 0">{heading}</h1>
-      <p class="text-muted" style="margin:6px 0 0;font-size:13px">{dated} &middot; every claim carries a citation{f" &middot; written for {html.escape(reader)}" if reader else ""}</p></div>
-    <button class="btn btn-primary" type="button" id="copy-brief">Copy {'overview' if overview else 'brief'}</button>
+    <div><p class="eyebrow">{heading}</p><h1>{html.escape(company_name)}</h1>
+      <p class="hdr-meta">{hdr_meta}</p></div>
+    <div class="hdr-actions">{_archive_button(archive)}<button class="btn btn-secondary btn-sm" type="button" id="copy-brief">Copy {'overview' if overview else 'brief'}</button></div>
   </div>
   {_archive_banner(archive)}
   <div class="grid narrative">
-    <div class="prose">
-      {paras}
-      <div style="margin-top:26px">
-        <h2 class="section-label text-muted" style="margin-bottom:12px">Action items</h2>
-        {actions_html}
-      </div>
-      <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-divider)">
-        <h2 class="section-label text-muted" style="margin-bottom:10px">Sources &middot; {len(cx.items)} citations</h2>
-        <div style="display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.5">{cx.render_list()}</div>
-      </div>
+    <div>
+      <article class="blueprint paper prose">{paras}</article>
+      <section class="section" aria-labelledby="actions-h">
+        <h2 class="section-label" id="actions-h">Action items <span class="count">{n_actions}</span></h2>
+        <div class="actions" style="margin-top:14px">{actions_html}</div>
+      </section>
+      <section class="section" aria-labelledby="sources-h">
+        <h2 class="section-label" id="sources-h">Sources <span class="count">{len(cx.items)}</span></h2>
+        <div class="blueprint sources" style="margin-top:14px">{cx.render_list()}</div>
+      </section>
       {_archive_pager(archive)}
     </div>
-    <div class="right-col">
+    <aside class="right-col rail" aria-label="The board behind this brief">
       {trend_card}
       {moves_card}
-      {_rail_card("Generated", f'<p style="margin:0;font-size:12.5px;line-height:1.55" class="text-muted">{generated} '
-                               'Every claim above cites the posting or board count it rests on.</p>')}
-    </div>
+    </aside>
   </div>
   </main>
   {_footer(as_of, evidence['company'].get('board_host'))}
@@ -3629,13 +3884,13 @@ def render_404() -> str:
 {_nav("none", signed_in=False)}
 <div class="wrap narrow">
   <main id="main">
-  <div class="hdr" style="border:0">
-    <div><p class="eyebrow text-muted">Error 404</p><h1 style="font-size:34px;margin:3px 0">Page not found</h1>
-      <p class="text-muted" style="margin:8px 0 0;font-size:14px;max-width:60ch">That address is not part of this
-        site. Account pages are only written for companies TICK has crawled, so a dashboard or brief
-        you had bookmarked can disappear if the account stopped reporting.</p></div>
+  <div class="blueprint empty-state" style="margin-top:48px">
+    <p class="eyebrow">Error 404</p><h1>Page not found</h1>
+    <p>That address is not part of this
+      site. Account pages are only written for companies TICK has crawled, so a dashboard or brief
+      you had bookmarked can disappear if the account stopped reporting.</p>
+    <a class="btn btn-primary" href="{APP_HOME}">Back to accounts</a>
   </div>
-  <p style="margin:22px 0 0"><a class="btn btn-primary" href="{APP_HOME}">Back to accounts</a></p>
   </main>
 </div>
 </body>
