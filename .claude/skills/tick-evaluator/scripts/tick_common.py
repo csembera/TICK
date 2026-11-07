@@ -16,8 +16,9 @@ exactly as the collector will apply it.
 Taleo boards page across career sections, and their descriptions sit in each
 job page. Both are read with the collector's own taleo.py, imported the same
 way, so the gate pages a Taleo board exactly as the collector does. Dayforce
-job feeds are grouped into requisitions by the collector's dayforce.py, for
-the same reason.
+job feeds are grouped into requisitions by the collector's dayforce.py, and
+SuccessFactors job feeds are read by its successfactors.py, for the same
+reason.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ sys.path.insert(0, os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "infra", "src", "collector")))
 import dayforce  # noqa: E402  the collector's job-feed grouping
 import description  # noqa: E402  the collector's parser, not a copy
+import successfactors  # noqa: E402  the collector's SuccessFactors feed reader
 import taleo  # noqa: E402  the collector's Taleo paging and job-page reader
 
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -57,6 +59,7 @@ FINGERPRINTS: list[tuple[str, str]] = [
     ("adp",            r"myjobs\.adp\.com/([A-Za-z0-9\-_]+)"),
     ("dayforce",       r"jobs\.dayforcehcm\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9\-_]+)/([A-Za-z0-9\-_]+)"),
     ("taleo",          r"([a-z0-9\-]+)\.taleo\.net/careersection/(?!rest/)([A-Za-z0-9\-_+%.]+)/"),
+    ("successfactors", r"rmkcdn\.successfactors\.(?:com|eu)|career\d*\.successfactors\.(?:com|eu)(?:/career\?company=([A-Za-z0-9_]+))?"),
 ]
 
 # Default sweep for an SPA's API contract: quoted /api/ paths, versioned routes,
@@ -155,6 +158,8 @@ def description_html(cfg: dict, posting: dict, get_json: GetJson,
             return (row or {}).get("jobDescription")
     if cfg.get("ats") == "dayforce":
         return posting.get(dayforce.DESCRIPTION_KEY)
+    if cfg.get("ats") == "successfactors":
+        return posting.get(successfactors.DESCRIPTION_KEY)
     if cfg.get("ats") == "taleo" and cfg.get("detail_endpoint") and get_text:
         return taleo.description(get_text(taleo.detail_url(cfg["detail_endpoint"], posting)))
     return None
@@ -170,6 +175,12 @@ def collect_dayforce(cfg: dict, get_json: GetJson) -> tuple[list, int]:
     """A Dayforce job feed's requisitions and their count, grouped by the
     collector's own code."""
     return dayforce.fetch_all(cfg, get_json)
+
+
+def collect_successfactors(cfg: dict, get_text: GetText) -> tuple[list, int]:
+    """A SuccessFactors job feed's postings and their count, read by the
+    collector's own code."""
+    return successfactors.fetch_all(cfg, get_text)
 
 
 def merge_detail(cfg: dict, posting: dict, get_json: GetJson) -> dict:

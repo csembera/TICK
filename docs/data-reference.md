@@ -39,7 +39,7 @@ verbatim by the collector.
 | Field | Meaning |
 |---|---|
 | `company_name`, `company_slug` | Display name; the key for every partition and page URL (lowercase letters, digits, hyphens; not a reserved name) |
-| `ats` | `workday`, `greenhouse`, `lever`, `ashby`, `adp`, `dayforce`, `taleo` or `other` (a custom JSON board) |
+| `ats` | `workday`, `greenhouse`, `lever`, `ashby`, `adp`, `dayforce`, `taleo`, `successfactors` (its XML job feed) or `other` (a custom JSON board) |
 | `tier` | 1 direct ATS JSON, 2 aggregator, 3 web search or headless render |
 | `endpoint`, `http_method`, `request_body`, `request_headers` | The verified listing request |
 | `pagination` | How to page: `offset`, `page_param`, `none`, ... |
