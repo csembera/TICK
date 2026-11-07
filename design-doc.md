@@ -60,6 +60,7 @@ Two collection modes, combined:
 - Ashby, Workday, Workable, SmartRecruiters — each has its own pattern
 - Oracle Taleo — a REST search per career section that pages at a fixed size; descriptions sit in each job page
 - Dayforce — the job feed Dayforce publishes for job boards, open when the company enables it; one row per posting per location, grouped into requisitions
+- SAP SuccessFactors — the job feed a career site publishes for search engines (`/sitemap.xml`), every posting in one XML document
 - Custom/hand-rolled pages — fall back to HTML parsing or a headless browser
 
 Direct collection is the backbone: it's the cleanest data and ties unambiguously to one company.

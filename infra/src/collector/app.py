@@ -43,6 +43,7 @@ from datetime import date, datetime, timezone
 
 import dayforce
 import description
+import successfactors
 import taleo
 
 BUCKET = os.environ.get("BUCKET_NAME")
@@ -194,6 +195,12 @@ def fetch_all(config: dict) -> tuple[list, int]:
         # The job feed, one posting per requisition: see dayforce.py.
         return dayforce.fetch_all(
             config, lambda url: _http_json(url, "GET", None, headers, timeout))
+
+    if ats == "successfactors":
+        # The career site's job feed, every posting in one XML document: see
+        # successfactors.py.
+        return successfactors.fetch_all(
+            config, lambda url: _http_text(url, headers, timeout))
 
     data = _http_json(endpoint, config.get("http_method", "GET"),
                       config.get("request_body"), headers, timeout)
@@ -408,8 +415,11 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
     # ADP descriptions arrive with the detail payload fetch_all already merged,
     # so there is nothing extra to fetch (and nothing to sleep between).
     adp = ats == "adp" and FETCH_DESCRIPTIONS
-    # Dayforce's feed carries the description; dayforce.py rewrites it as HTML.
-    dayforce_feed = ats == "dayforce" and FETCH_DESCRIPTIONS
+    # Dayforce's and SuccessFactors' feeds carry the description, already made
+    # HTML by dayforce.py (from plain text) and successfactors.py (unescaped).
+    feed_key = ({"dayforce": dayforce.DESCRIPTION_KEY,
+                 "successfactors": successfactors.DESCRIPTION_KEY}.get(ats)
+                if FETCH_DESCRIPTIONS else None)
     taleo_pages = ats == "taleo" and FETCH_DESCRIPTIONS and bool(config.get("detail_endpoint"))
     # description_field is a resolve_field expr naming a description already in
     # the posting payload, for boards that ship it inline with the listing. It
@@ -427,8 +437,8 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
             time.sleep(_DETAIL_DELAY_S)
         elif adp:
             raw_html = posting.get("jobDescription")
-        elif dayforce_feed:
-            raw_html = posting.get(dayforce.DESCRIPTION_KEY)
+        elif feed_key:
+            raw_html = posting.get(feed_key)
         elif taleo_pages:
             raw_html = fetch_taleo_description(config, posting)
             if raw_html:

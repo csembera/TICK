@@ -37,9 +37,9 @@ except ImportError as e:  # pragma: no cover
     print(f"missing dependency ({e}) — run: .venv/bin/pip install httpx pydantic", file=sys.stderr)
     sys.exit(1)
 
-from tick_common import (URL_TOKEN, collect_dayforce, collect_taleo, collector_headers,
-                         dayforce, description_html, format_report, locate_postings,
-                         merge_detail, prune_format, resolve_field, spread)
+from tick_common import (URL_TOKEN, collect_dayforce, collect_successfactors, collect_taleo,
+                         collector_headers, dayforce, description_html, format_report,
+                         locate_postings, merge_detail, prune_format, resolve_field, spread)
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.7
 
@@ -52,7 +52,7 @@ PASSTHROUGH_IF_SET = ("postings_key", "timeout_s", "description_field", "descrip
 
 ATS = Literal[
     "workday", "greenhouse", "lever", "ashby", "workable",
-    "smartrecruiters", "adp", "dayforce", "taleo", "other",
+    "smartrecruiters", "adp", "dayforce", "taleo", "successfactors", "other",
 ]
 
 
@@ -178,6 +178,7 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 
     v.ran = True
     postings = (_collect_taleo(draft, hdrs, v) if draft.ats == "taleo"
                 else _collect_dayforce(draft, hdrs, v) if draft.ats == "dayforce"
+                else _collect_successfactors(draft, hdrs, v) if draft.ats == "successfactors"
                 else _collect_one(draft, hdrs, v))
     v.postings_found = len(postings)
     if not postings:
@@ -332,6 +333,30 @@ def _collect_dayforce(draft: SourceConfigDraft, hdrs: dict, v: Verification) -> 
         return []
     rows = sum(len(p[dayforce.ROWS_KEY]) for p in postings)
     v.findings.append(f"{len(postings)} requisitions, grouped from {rows} feed rows")
+    return postings
+
+
+def _collect_successfactors(draft: SourceConfigDraft, hdrs: dict, v: Verification) -> list:
+    """The job feed read by the collector's successfactors.py. The feed is
+    XML, so parsed_json here records that the collector parsed it, as for the
+    other feed readers."""
+    try:
+        with httpx.Client(headers=hdrs, follow_redirects=True, timeout=30) as c:
+            def get_text(url):
+                r = c.get(url)
+                v.status, v.content_type = r.status_code, r.headers.get("content-type")
+                r.raise_for_status()
+                return r.text
+            postings, _ = collect_successfactors(draft.model_dump(), get_text)
+    except Exception as e:
+        v.findings.append(f"successfactors job feed failed: {type(e).__name__}: {e}")
+        return []
+
+    v.parsed_json = True
+    if not postings:
+        v.findings.append("the job feed listed no postings")
+        return []
+    v.findings.append(f"{len(postings)} postings in the job feed")
     return postings
 
 
