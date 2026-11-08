@@ -54,7 +54,7 @@ Four ideas carry the design:
 The [tick-evaluator skill](../.claude/skills/tick-evaluator/SKILL.md) is how a
 company is onboarded. Working in Claude Code, it fingerprints the company's
 careers page to find its applicant-tracking system (Workday, Greenhouse, Lever,
-Ashby, ADP, Dayforce, Taleo, or a custom JSON board), probes the endpoint, and
+Ashby, ADP, Dayforce, Taleo, SuccessFactors, or a custom JSON board), probes the endpoint, and
 drafts a SourceConfig. Then `verify.py` re-executes that config in code and
 overrides the tier and confidence the model claimed with what actually came
 back: a config that never returned a posting cannot be emitted as verified.
@@ -128,7 +128,10 @@ each posting's job page (`jobdetail.ftl`), which embeds the description, with
 the same gap ([taleo.py](../infra/src/collector/taleo.py)). ADP and inline
 boards carry it in the posting payload. Dayforce's job feed carries it as plain
 text, which [dayforce.py](../infra/src/collector/dayforce.py) rewrites as
-paragraphs and lists before parsing. The original HTML is kept in `raw/` for
+paragraphs and lists before parsing. A SuccessFactors career site's job feed
+(`/sitemap.xml`, one XML document listing every posting) carries it HTML-escaped,
+which [successfactors.py](../infra/src/collector/successfactors.py) unescapes.
+The original HTML is kept in `raw/` for
 every ATS, so descriptions can be re-parsed without refetching.
 
 [description.py](../infra/src/collector/description.py) files each description

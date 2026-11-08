@@ -1,6 +1,6 @@
 ---
 name: tick-evaluator
-description: Discover and verify a company's job-posting collection endpoint, and learn how its job descriptions are laid out, emitting a verified TICK SourceConfig JSON for the deterministic daily collector. Use when asked to evaluate, onboard, or re-evaluate a target company for TICK, to find a company's ATS or careers API (Workday, Greenhouse, Lever, Ashby, ADP, Dayforce, Taleo), to learn or relearn a board's description format, or when a collector run fails and its config must be rebuilt.
+description: Discover and verify a company's job-posting collection endpoint, and learn how its job descriptions are laid out, emitting a verified TICK SourceConfig JSON for the deterministic daily collector. Use when asked to evaluate, onboard, or re-evaluate a target company for TICK, to find a company's ATS or careers API (Workday, Greenhouse, Lever, Ashby, ADP, Dayforce, Taleo, SuccessFactors), to learn or relearn a board's description format, or when a collector run fails and its config must be rebuilt.
 ---
 
 # TICK Evaluator
@@ -161,6 +161,23 @@ Field rules that cost real data when broken:
   collector unwraps. Set `detail_endpoint` and `schema_map.url` to
   `https://<tenant>.taleo.net/careersection/{careerSection}/jobdetail.ftl?job={contestNo}&lang=en`:
   descriptions are read from that page.
+- **SuccessFactors** (a career site whose pages load `rmkcdn.successfactors.com`
+  and link `/job/<slug>/<id>/`): `ats: "successfactors"`. Its search pages
+  are HTML, 25 at a time, and its JSON search
+  (`/services/recruiting/v1/jobs`) answers 401 without a browser session;
+  use neither. Collect from the job feed the site publishes for search
+  engines: `GET https://<careers host>/sitemap.xml`, no body, no
+  `request_headers`, no `detail_endpoint`, `pagination: "none"`. It is RSS,
+  one `<item>` per posting, and the collector reads every field under its
+  local name (`g:location` is `location`). Map `posting_id` `id`, `title`
+  `title`, `location` `location`, `url` `link`; map `team` `job_function` only
+  if it is on at least 90% of items; `posted_on` stays null (the feed has no
+  posted date). The collector drops the " (<location>)" the feed appends to
+  each title and unescapes each description. The feed has no requisition
+  number: `id` is the posting's id on the career site, so say in
+  `identity_notes` that its stability across re-posts is unverified until
+  `audit_diffs` has a week of crawls. The rss/category feeds list only the
+  latest 10 postings; do not use them.
 - `posting_id` must be the STABLE requisition identity. Where a source exposes
   both a requisition id and a per-revision id, take the requisition id. A
   revision id turns one edited opening into N postings and makes every edit diff
@@ -271,8 +288,9 @@ The gate re-executes the config exactly as the collector will: the collector's
 headers, not the browser set the discovery tools send (some boards answer a
 browser `Accept-Language` with an empty posting list), for ADP each
 posting's detail merged in before `schema_map` is checked, for Taleo
-every page of every career section, and for Dayforce the feed grouped into
-requisitions, both with the collector's own code. A Taleo
+every page of every career section, for Dayforce the feed grouped into
+requisitions, and for SuccessFactors the feed read item by item, each with
+the collector's own code. A Taleo
 section that returns fewer postings than it reports fails the gate, as it
 would fail the collector's run.
 
