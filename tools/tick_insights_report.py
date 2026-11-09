@@ -2202,10 +2202,7 @@ _TABLES_JS = r"""<script>
       if (empty) empty.hidden = matched.length !== 0;
       if (pager) pager.hidden = matched.length <= PAGE;
       if (status) {
-        status.textContent = matched.length
-          ? (start + 1) + '–' + (start + slice.length) + ' of ' + matched.length
-            + ' · page ' + page + ' of ' + pages
-          : '';
+        status.textContent = matched.length ? 'Page ' + page + ' of ' + pages : '';
       }
       if (prev) prev.disabled = page <= 1;
       if (next) next.disabled = page >= pages;
@@ -2876,11 +2873,11 @@ def render_dashboard(lake: dict, company: str) -> str:
                         + carve)
 
     # Nothing has opened yet on a first crawl, so the card lists the tech roles
-    # already on the board rather than an empty "opened" list. A whole board's
-    # tech roles can run to hundreds, so the rail shows the first few and the
-    # table holds the rest.
+    # already on the board rather than an empty "opened" list. Either list can
+    # outgrow the rail, so the card shows the first three and the table holds
+    # the rest.
     tech_rows = [r for r in open_rows if r["is_tech_role"]] if first else tech_new
-    tech_shown = tech_rows[:8] if first else tech_rows
+    tech_shown = tech_rows[:3]
     tech_title, tech_sub = (("Tech roles open", f"On the {curr_dt} board and classified as technical")
                             if first else
                             ("Tech roles opened", "Opened this period and classified as technical"))

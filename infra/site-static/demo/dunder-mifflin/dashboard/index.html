@@ -609,10 +609,7 @@ button.tag-outline:hover,button.tag-outline[aria-pressed=true]{background:var(--
 
     if (pager) pager.hidden = matched.length <= PAGE;
     if (status) {
-      status.textContent = matched.length
-        ? (start + 1) + '–' + (start + slice.length) + ' of ' + matched.length
-          + ' · page ' + page + ' of ' + pages()
-        : '';
+      status.textContent = matched.length ? 'Page ' + page + ' of ' + pages() : '';
     }
     if (prev) prev.disabled = page <= 1;
     if (next) next.disabled = page >= pages();
