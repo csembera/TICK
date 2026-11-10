@@ -10,8 +10,8 @@ It reads the account's current brief and the evidence pack it was written from
 glimpse of it: the board's numbers, one paragraph and one move from the brief,
 the tech and leadership roles that opened, and the stack terms on the move.
 Two files come out: teaser.html, a printable page (--pdf also saves it as a
-PDF through headless Chrome), and email.html, the same content in tables and
-inline styles for pasting into an email.
+PDF through headless Chrome), and email.html, the same content in the shared
+email layout (tools/email_layout.py) for pasting into an email.
 
 The brief's words are quoted whole, never trimmed or rewritten: a brief is
 written by a model, never by code. Its [[id]] citations become numbered links
@@ -31,12 +31,13 @@ from datetime import date
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import email_layout as mail  # noqa: E402
 import tick_insights_report as report  # noqa: E402
 
 LAKE = os.path.join(ROOT, "local-data", "lake")
 OUT = os.path.join(ROOT, "local-data", "teasers")
 CHROME = os.environ.get("CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-SITE = "https://tick.sembasolutions.com"
+SITE = mail.SITE
 _CITE = re.compile(r"\[\[([^\[\]]+)\]\]")
 _CITE_RUN = re.compile(r"(?:\s*\[\[[^\[\]]+\]\])+")   # with the space before it, which the mark replaces
 MAX_ROLES = 4
@@ -419,85 +420,64 @@ def render_page(c: dict) -> str:
 
 # ------------------------------------------------------------------ the email
 
-# Gmail and Outlook drop <style>, web fonts and SVG: tables and inline styles only
-_F = "font-family:Barlow,'Helvetica Neue',Helvetica,Arial,sans-serif"
-_FH = "font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif"
-_LINK = "color:#3d6a96;text-decoration:none"
+# The email is the shared layout (tools/email_layout.py) with the teaser's
+# own tiles, roles and stack inside it: see docs/email.md.
+_LINK = mail.LINK
+OPT_OUT = "Sent to {who} by TICK. Not useful? Reply \u201cno thanks\u201d and we won't send another."
 
 
 def render_email(c: dict) -> str:
     cx = c["cites"]
-    sec = lambda t: (f'<p style="margin:0 0 10px;{_FH};font-weight:600;font-size:19px;color:#17212b">'
-                     f'{t}</p>')
+    last = len(c["kpis"]) - 1
     cells = "".join(
-        f'<td style="padding:12px 14px;background:#f5f7fa;border-right:1px solid #e3e8ee;{_F}">'
-        f'<div style="font-size:11px;font-weight:600;color:#64717f">{_e(k["label"])}</div>'
-        f'<div style="font-size:24px;font-weight:600;color:#17212b">{k["value"]}'
-        + (f'<span style="font-size:13px;color:{"#2f8f5b" if k.get("up") else "#64717f"};margin-left:4px">'
+        f'<td style="padding:12px 14px;background:{mail.PANEL};'
+        + ("" if i == last else f"border-right:1px solid {mail.BORDER};") + f'{mail.FONT}">'
+        f'<div style="font-size:11px;font-weight:600;color:{mail.TEXT3}">{_e(k["label"])}</div>'
+        f'<div style="font-size:24px;font-weight:600;color:{mail.TEXT}">{k["value"]}'
+        + (f'<span style="font-size:13px;color:{mail.LIVE if k.get("up") else mail.TEXT3};margin-left:4px">'
            f'{k["delta"]}</span>' if k.get("delta") else "")
-        + "</div></td>" for k in c["kpis"])
-    move = ""
+        + "</div></td>" for i, k in enumerate(c["kpis"]))
+    rows = [mail.row(mail.h1(_e(c["headline"])) + mail.para(_e(LEDE.format(name=c["company"])), 15),
+                     "32px 32px 0"),
+            mail.row(mail.table(f"<tr>{cells}</tr>", f"border:1px solid {mail.BORDER};border-radius:8px"),
+                     "20px 32px 0"),
+            mail.row(mail.label(c["brief_label"])
+                     + mail.para(cx.html(c["excerpt"], _LINK), 15, mail.TEXT))]
     if c["move"]:
         m = c["move"]
-        quote = (f'<p style="margin:8px 0 0;padding-left:12px;border-left:3px solid #3d6a96;font-style:italic;'
-                 f'font-size:13px;color:#4b5866">“{_e(m["quote"])}”</p>') if m["quote"] else ""
-        move = (f'<tr><td style="padding:8px 32px 0"><table role="presentation" width="100%" cellpadding="0" '
-                f'cellspacing="0" border="0" style="background:#edf3f9;border:1px solid #d3e1ee;border-radius:8px">'
-                f'<tr><td style="padding:14px 16px;{_F}">'
-                f'<div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#3d6a96">ONE MOVE TO MAKE</div>'
-                f'<div style="{_FH};font-size:18px;font-weight:600;color:#17212b;margin:2px 0 6px">{_e(m["title"])}</div>'
-                f'<div style="font-size:13px;line-height:1.55;color:#4b5866">{cx.html(m["why"], _LINK)}</div>'
-                f'{quote}</td></tr></table></td></tr>')
+        quote = (f'<p style="margin:8px 0 0;padding-left:12px;border-left:3px solid {mail.ACCENT};'
+                 f'font-style:italic;font-size:13px;color:{mail.TEXT2}">\u201c{_e(m["quote"])}\u201d</p>'
+                 ) if m["quote"] else ""
+        rows.append(mail.row(mail.card(
+            mail.label("One move to make", mail.ACCENT, "0 0 2px")
+            + f'<div style="{mail.FONT_HEAD};font-size:18px;font-weight:600;color:{mail.TEXT};margin:0 0 6px">'
+            f'{_e(m["title"])}</div>'
+            f'<div style="font-size:13px;line-height:1.55;color:{mail.TEXT2}">{cx.html(m["why"], _LINK)}</div>'
+            + quote, tint=True, padding="14px 16px"), "12px 32px 0"))
     roles = "".join(
-        f'<tr><td style="padding:8px 0;border-bottom:1px solid #e3e8ee;{_F}">'
-        + (f'<a href="{_e(r["url"])}" style="font-weight:600;font-size:14px;color:#17212b;text-decoration:none">'
+        f'<tr><td style="padding:8px 0;border-bottom:1px solid {mail.BORDER};{mail.FONT}">'
+        + (f'<a href="{_e(r["url"])}" style="font-weight:600;font-size:14px;color:{mail.TEXT};text-decoration:none">'
            if r["url"] else '<span style="font-weight:600;font-size:14px">') + _e(r["title"])
-        + (f' <span style="color:#64717f;font-weight:500">×{r["count"]}</span>' if r["count"] > 1 else "")
+        + (f' <span style="color:{mail.TEXT3};font-weight:500">\u00d7{r["count"]}</span>' if r["count"] > 1 else "")
         + ("</a>" if r["url"] else "</span>")
-        + f'<div style="font-size:12px;color:#64717f">{_e(_role_meta(r))}'
-        + ("".join(f' · <span style="color:{"#2f8f5b" if t["new"] else "#4b5866"}">{_e(t["term"])}</span>'
-                   for t in r["terms"]))
+        + f'<div style="font-size:12px;color:{mail.TEXT3}">{_e(_role_meta(r))}'
+        + "".join(f' \u00b7 <span style="color:{mail.LIVE if t["new"] else mail.TEXT2}">{_e(t["term"])}</span>'
+                  for t in r["terms"])
         + "</div></td></tr>" for r in c["roles"])
-    roles_block = (f'<tr><td style="padding:24px 32px 0">{sec(c["roles_label"])}'
-                   f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{roles}'
-                   f'</table></td></tr>') if roles else ""
-    stack = "".join(f'<tr><td style="padding:4px 0;border-bottom:1px solid #e3e8ee;font-size:13px;{_F}">{_e(t)}</td>'
-                    f'<td align="right" style="padding:4px 0;border-bottom:1px solid #e3e8ee;font-size:13px;'
-                    f'color:#64717f;{_F}">{_e(v)}</td></tr>' for t, v in c["stack"])
-    stack_block = (f'<tr><td style="padding:24px 32px 0">'
-                   f'{sec("Stack on the board" if c["overview"] else "Stack on the rise")}'
-                   f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">{stack}'
-                   f'</table></td></tr>') if stack else ""
-    excerpt = cx.html(c["excerpt"], _LINK)
-    notes = unlinked_notes(cx)
-    return f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light only"><title>TICK · {_e(c["company"])}</title></head>
-<body style="margin:0;padding:0;background:#f2f2f3">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f2f2f3">
-<tr><td align="center" style="padding:32px 16px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border:1px solid #e3e8ee;border-radius:12px;overflow:hidden;{_F};color:#17212b">
-<tr><td style="background:#080d12;padding:20px 32px;border-bottom:3px solid #3d6a96">
-  <span style="{_FH};font-weight:700;font-size:24px;letter-spacing:.16em;color:#eef2f5">TICK</span>
-  <div style="font-size:12px;color:#9aa9b8;margin-top:4px">Prepared for <b style="color:#eef2f5">{_e(c["prepared_for"])}</b> · {_e(c["period"])}</div>
-</td></tr>
-<tr><td style="padding:28px 32px 0">
-  <h1 style="margin:0 0 8px;{_FH};font-weight:600;font-size:30px;line-height:1.15;color:#17212b">{_e(c["headline"])}</h1>
-  <p style="margin:0;font-size:15px;line-height:1.6;color:#4b5866">{_e(LEDE.format(name=c["company"]))}</p>
-</td></tr>
-<tr><td style="padding:20px 32px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e3e8ee;border-radius:8px"><tr>{cells}</tr></table></td></tr>
-<tr><td style="padding:24px 32px 0">{sec(c["brief_label"])}<p style="margin:0;font-size:15px;line-height:1.6;color:#17212b">{excerpt}</p></td></tr>
-{move}{roles_block}{stack_block}
-<tr><td style="padding:28px 32px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#080d12;border-radius:8px"><tr><td style="padding:18px 20px;{_F}">
-  <div style="{_FH};font-weight:600;font-size:19px;color:#eef2f5">{CTA_TITLE}</div>
-  <div style="font-size:14px;color:#c9d4de;margin:2px 0 14px">{CTA_TEXT}</div>
-  <a href="{SITE}/" style="display:inline-block;background:#3d6a96;color:#ffffff;font-weight:600;font-size:14px;padding:10px 18px;border-radius:8px;text-decoration:none">{CTA_BUTTON}</a>
-</td></tr></table></td></tr>
-<tr><td style="padding:20px 32px 28px;font-size:11.5px;line-height:1.6;color:#64717f">Every number in the text links to the public {_e(c["company"])} posting it cites. {notes}</td></tr>
-</table>
-</td></tr></table>
-</body></html>
-"""
+    if roles:
+        rows.append(mail.row(mail.label(c["roles_label"]) + mail.table(roles)))
+    stack = "".join(f'<tr><td style="padding:4px 0;border-bottom:1px solid {mail.BORDER};font-size:13px;{mail.FONT}">'
+                    f'{_e(t)}</td><td align="right" style="padding:4px 0;border-bottom:1px solid {mail.BORDER};'
+                    f'font-size:13px;color:{mail.TEXT3};{mail.FONT}">{_e(v)}</td></tr>' for t, v in c["stack"])
+    if stack:
+        rows.append(mail.row(mail.label("Stack on the board" if c["overview"] else "Stack on the rise")
+                             + mail.table(stack)))
+    rows.append(mail.row(mail.dark_panel(CTA_TITLE, CTA_TEXT, f"{SITE}/", CTA_BUTTON), "28px 32px 0"))
+    note = f"Every number in the text links to the public {_e(c['company'])} posting it cites. {unlinked_notes(cx)}"
+    return mail.document(f"TICK \u00b7 {c['company']}", c["headline"], rows, note=note.strip(),
+                         aside=f'Prepared for <b style="color:{mail.ON_INK}">{_e(c["prepared_for"])}</b>'
+                               f' \u00b7 {_e(c["period"])}',
+                         reason=OPT_OUT.format(who=c["prepared_for"]))
 
 
 # ------------------------------------------------------------------ cli

@@ -44,6 +44,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
+import email_layout                 # tools/email_layout.py: the layout every email shares
 import persona as persona_schema   # tools/persona.py: what a persona may hold
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,6 +53,9 @@ COGNITO_CSS = os.path.join(ROOT, "infra", "cognito-ui.css")
 BANNER_HTML = os.path.join(STATIC, "branding", "cognito-banner.html")
 BANNER_PNG = os.path.join(STATIC, "branding", "cognito-banner.png")
 LOCAL_CONFIGS = os.path.join(ROOT, "configs")
+# Drafts of emails to users, for review before `users send-email`. Gitignored:
+# they hold a user's address and real lake numbers.
+DRAFTS = os.path.join(ROOT, "local-data", "emails")
 CHROME = os.environ.get("CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 
 STACK = os.environ.get("TICK_STACK", "tick-collector")
@@ -706,7 +710,7 @@ def cmd_users_invite(ops: Ops, args) -> int:
     waitlist = ops.aws("dynamodb", "get-item", "--table-name", ops.output("JoinRequestsTableName"),
                        "--key", json.dumps({"email": {"S": email}})).get("Item")
     home, publish = _home_plan(ops, groups, slugs)
-    plan = [f"create {email} and email them a temporary password, valid 7 days",
+    plan = [f"create {email} and email them a temporary password, valid {email_layout.PASSWORD_DAYS} days",
             f"add them to {' and '.join(groups)}",
             "let them see " + ("every account" if args.admin else ", ".join(slugs) or "no accounts yet")]
     if waitlist and plain(waitlist).get("status") == "pending":
@@ -737,8 +741,11 @@ def _change_accounts(ops: Ops, args, grant: bool) -> int:
     slugs = parse_slugs(args.slugs)
     before = user["accounts"]
     after = sorted(set(before) | set(slugs)) if grant else sorted(set(before) - set(slugs))
+    drafting = grant and getattr(args, "email_draft", False)
     if after == before:
         print(f"{email} already {'has' if grant else 'lacks'} {', '.join(slugs)}. Nothing to do.")
+        if drafting:
+            draft_new_accounts(ops, email, slugs)
         return 0
     if grant:
         known_slugs(ops, slugs)
@@ -759,6 +766,8 @@ def _change_accounts(ops: Ops, args, grant: bool) -> int:
                 plan.append(f"note: {other['email']} already tracks {', '.join(shared)}; while two users "
                             f"track an account, its brief is written for the default reader")
     home, publish = _home_plan(ops, user["groups"], after)
+    if drafting:
+        home.append("draft an email telling them, for you to review: nothing is sent")
     if not ops.confirm(plan + home):
         return 1
     ops.aws("cognito-idp", "admin-update-user-attributes", "--user-pool-id", ops.output("UserPoolId"),
@@ -767,6 +776,8 @@ def _change_accounts(ops: Ops, args, grant: bool) -> int:
         publish_pages(ops)
     if not ops.dry_run:
         print(f"{email} now sees: {', '.join(after) or 'no accounts'}.")
+    if drafting:
+        draft_new_accounts(ops, email, slugs)
     return 0
 
 
@@ -826,11 +837,94 @@ def cmd_users_resend(ops: Ops, args) -> int:
     if user["status"] != "FORCE_CHANGE_PASSWORD":
         fail(f"{email} has already chosen a password ({user['status']}); they can reset it from "
              f"the sign-in page's 'Forgot your password?'")
-    if not ops.confirm([f"email {email} a new temporary password, valid 7 days"]):
+    if not ops.confirm([f"email {email} a new temporary password, valid {email_layout.PASSWORD_DAYS} days"]):
         return 1
     ops.aws("cognito-idp", "admin-create-user", "--user-pool-id", ops.output("UserPoolId"),
             "--username", email, "--message-action", "RESEND", "--desired-delivery-mediums", "EMAIL",
             change=True)
+    return 0
+
+
+# ---------------------------------------------------------------------- emails
+#
+# An email to a user is drafted to local-data/emails/ first and only sent by
+# `users send-email`, after a person has read it: a grant can be a correction
+# or a trial, and not every one deserves a message. See docs/email.md.
+
+def account_facts(ops: Ops, slugs: list[str]) -> list[dict]:
+    """What the new-account email says about each account: its name, and the
+    board's size at the newest crawl (None before the first one)."""
+    bucket = ops.output("DataBucketName")
+    names = {slug_of(c): (c.get("config") or {}).get("company_name") for c in live_configs(ops)}
+    out = []
+    for slug in slugs:
+        facts = {"slug": slug, "name": names.get(slug) or slug, "open_roles": None, "tech_roles": None,
+                 "crawled_on": None}
+        keys = sorted(o["Key"] for o in list_objects(ops, bucket, f"curated/company={slug}/dt=")
+                      if o["Key"].endswith("/postings.jsonl"))
+        if keys:
+            text = ops.aws("s3", "cp", f"s3://{bucket}/{keys[-1]}", "-", parse=False)
+            rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+            facts.update(open_roles=len(rows), tech_roles=sum(1 for r in rows if r.get("is_tech_role")),
+                         crawled_on=re.search(r"dt=([0-9-]+)", keys[-1]).group(1))
+        out.append(facts)
+    return out
+
+
+def draft_new_accounts(ops: Ops, email: str, slugs: list[str]) -> str:
+    """Write the new-account email for review; its folder."""
+    site = ops.output("SiteUrl")
+    subject, body, text = email_layout.new_accounts(account_facts(ops, slugs), site)
+    stamp = datetime.now(timezone.utc)
+    folder = os.path.join(DRAFTS, f"{stamp:%Y-%m-%d-%H%M%S}-{re.sub(r'[^a-z0-9]+', '-', email)}-accounts")
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "email.html"), "w") as f:
+        f.write(body)
+    with open(os.path.join(folder, "email.txt"), "w") as f:
+        f.write(text)
+    with open(os.path.join(folder, "message.json"), "w") as f:
+        json.dump({"to": email, "subject": subject, "kind": "new-accounts", "accounts": slugs,
+                   "drafted_at": stamp.strftime("%Y-%m-%dT%H:%M:%SZ")}, f, indent=1)
+        f.write("\n")
+    rel = os.path.relpath(folder)
+    print(f"Drafted \"{subject}\" to {email}. Nothing is sent yet.\n"
+          f"  Review: {rel}/email.html (and email.txt, its plain-text part)\n"
+          f"  Send:   tools/tick.py users send-email {rel}")
+    return folder
+
+
+def cmd_users_send_email(ops: Ops, args) -> int:
+    folder = args.draft.rstrip("/")
+    try:
+        with open(os.path.join(folder, "message.json")) as f:
+            meta = json.load(f)
+        with open(os.path.join(folder, "email.html")) as f:
+            body = f.read()
+        with open(os.path.join(folder, "email.txt")) as f:
+            text = f.read()
+    except (OSError, ValueError) as exc:
+        fail(f"{folder} is not a draft from `users grant --email`: {exc}")
+    sent = os.path.join(folder, "sent.json")
+    if os.path.exists(sent):
+        fail(f"this draft was already sent ({open(sent).read().strip()}); draft a new one to send again")
+    to = check_email(meta["to"])
+    sender = f"TICK <{ops.output('SenderAddress')}>"
+    if not ops.confirm([f"email {to} \"{meta['subject']}\" from {sender}",
+                        f"as written in {os.path.relpath(folder)}/email.html and email.txt"]):
+        return 1
+    content = {"Simple": {"Subject": {"Data": meta["subject"]},
+                          "Body": {"Html": {"Data": body}, "Text": {"Data": text}}}}
+    result = ops.aws("sesv2", "send-email", "--from-email-address", sender,
+                     "--destination", json.dumps({"ToAddresses": [to]}),
+                     "--reply-to-addresses", ops.output("SenderAddress"),
+                     "--content", json.dumps(content), change=True)
+    if result is None:
+        return 0
+    with open(sent, "w") as f:
+        json.dump({"message_id": result.get("MessageId"),
+                   "sent_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, f)
+        f.write("\n")
+    print(f"Sent to {to}.")
     return 0
 
 
@@ -1281,6 +1375,11 @@ def parser() -> argparse.ArgumentParser:
         p = leaf(g, name, func, f"{verb} accounts, keeping the rest of their list")
         p.add_argument("email")
         p.add_argument("slugs", nargs="+", metavar="slug")
+        if name == "grant":
+            p.add_argument("--email", dest="email_draft", action="store_true",
+                           help="also draft an email telling them, for review; `users send-email` sends it")
+    p = leaf(g, "send-email", cmd_users_send_email, "send an email drafted by `users grant --email`")
+    p.add_argument("draft", help="the draft's folder, as `users grant --email` printed it")
     p = leaf(g, "admin", cmd_users_admin, "make a user an admin (sees every account), or --remove")
     p.add_argument("email")
     p.add_argument("--remove", action="store_true", help="take admin away")

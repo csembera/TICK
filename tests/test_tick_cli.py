@@ -14,6 +14,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import types
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -29,7 +30,8 @@ OUTPUTS = {"DataBucketName": "data", "SiteBucketName": "site", "SiteDistribution
            "PublisherFunctionName": "tick-collector-publisher",
            "DispatcherFunctionName": "tick-collector-dispatcher",
            "JoinRequestsTableName": "joins", "AccountRequestsTableName": "account-requests",
-           "SiteUrl": "https://tick.example", "SiteLoginDomain": "https://login.example"}
+           "SiteUrl": "https://tick.example", "SiteLoginDomain": "https://login.example",
+           "SenderAddress": "support@tick.example"}
 DM = {"company_name": "Dunder Mifflin", "company_slug": "dunder-mifflin", "ats": "workday",
       "schema_map": {"posting_id": "id"}}
 INITECH = {"company_name": "Initech", "company_slug": "initech", "ats": "greenhouse",
@@ -42,8 +44,11 @@ class FakeAws:
     """Answers AWS CLI calls from a small fake account and records them."""
 
     def __init__(self, user_accounts="dunder-mifflin", groups=("tick-viewers",), homes=(),
-                 configs=None, invoke_result=None, function_error=None):
+                 configs=None, invoke_result=None, function_error=None, curated=None):
         self.calls = []
+        # slug -> the rows of its newest crawl, at curated/company=<slug>/dt=.../postings.jsonl
+        self.curated = {f"curated/company={slug}/dt=2026-11-09/postings.jsonl": rows
+                        for slug, rows in (curated or {}).items()}
         self.user_accounts, self.groups, self.homes = user_accounts, list(groups), set(homes)
         self.configs = dict(CONFIGS if configs is None else configs)
         self.invoke_result = invoke_result if invoke_result is not None else {"pages": 3}
@@ -57,12 +62,17 @@ class FakeAws:
                                                         for k, v in OUTPUTS.items()]}]})
         if op == "list-objects-v2":
             prefix = cmd[cmd.index("--prefix") + 1]
-            keys = list(self.configs) if prefix == "configs/" else []
+            keys = list(self.configs) if prefix == "configs/" else \
+                [k for k in self.curated if k.startswith(prefix)]
             return json.dumps({"Contents": [{"Key": k, "LastModified": "2026-11-02T03:01:00+00:00"}
                                             for k in keys]})
-        if op == "s3 cp" and cmd[3].startswith("s3://"):      # reading a config
+        if op == "s3 cp" and cmd[3].startswith("s3://"):      # reading a config or a crawl
             key = cmd[3].split("/", 3)[3]
+            if key in self.curated:
+                return "".join(json.dumps(r) + "\n" for r in self.curated[key])
             return json.dumps(self.configs[key])
+        if op == "send-email":
+            return json.dumps({"MessageId": "m-1"})
         if op == "admin-get-user":
             if cmd[cmd.index("--username") + 1] == "nobody@example.com":
                 raise tick.AwsError("An error occurred (UserNotFoundException)")
@@ -165,6 +175,86 @@ class Users(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("already has an account", err)
         self.assertFalse(fake.ops("admin-create-user"))
+
+
+class Emails(unittest.TestCase):
+    """`users grant --email` drafts; only `users send-email` sends."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.patch = mock.patch.object(tick, "DRAFTS", self.tmp.name)
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        self.tmp.cleanup()
+
+    def draft(self, fake, *extra):
+        code, out, _ = run(["users", "grant", "pam@example.com", "initech", "--email", "--yes", *extra], fake)
+        self.assertEqual(code, 0)
+        folders = os.listdir(self.tmp.name)
+        self.assertEqual(len(folders), 1)
+        return os.path.join(self.tmp.name, folders[0]), out
+
+    def test_a_grant_sends_nothing_without_the_flag(self):
+        fake = FakeAws()
+        run(["users", "grant", "pam@example.com", "initech", "--yes"], fake)
+        self.assertEqual(os.listdir(self.tmp.name), [])
+        self.assertFalse(fake.ops("send-email"))
+
+    def test_the_flag_drafts_but_does_not_send(self):
+        fake = FakeAws(curated={"initech": [{"posting_id": "1", "is_tech_role": True},
+                                            {"posting_id": "2", "is_tech_role": False}]})
+        folder, out = self.draft(fake)
+        self.assertFalse(fake.ops("send-email"))
+        self.assertIn("users send-email", out)
+        with open(os.path.join(folder, "email.html")) as f:
+            body = f.read()
+        self.assertIn("Initech is in your TICK.", body)
+        self.assertIn("2 roles open", body)
+        self.assertIn("1 tech role among them", body)
+        self.assertIn('href="https://tick.example/initech/dashboard.html"', body)
+        with open(os.path.join(folder, "message.json")) as f:
+            meta = json.load(f)
+        self.assertEqual((meta["to"], meta["subject"]), ("pam@example.com", "Initech is now in your TICK"))
+
+    def test_an_account_not_yet_crawled_says_so(self):
+        folder, _ = self.draft(FakeAws())
+        with open(os.path.join(folder, "email.html")) as f:
+            body = f.read()
+        self.assertIn("first crawl runs tonight", body)
+        self.assertNotIn("dashboard.html", body)
+
+    def test_an_account_already_held_can_still_be_drafted(self):
+        folder, out = self.draft(FakeAws(user_accounts="initech"))
+        self.assertIn("Nothing to do", out)
+        self.assertTrue(os.path.exists(os.path.join(folder, "email.html")))
+
+    def test_send_sends_the_reviewed_draft_once(self):
+        folder, _ = self.draft(FakeAws())
+        with open(os.path.join(folder, "email.html"), "a") as f:
+            f.write("<!-- edited in review -->")
+        fake = FakeAws()
+        code, out, _ = run(["users", "send-email", folder, "--yes"], fake)
+        self.assertEqual(code, 0)
+        call = fake.ops("send-email")[0]
+        self.assertEqual(call[call.index("--from-email-address") + 1], "TICK <support@tick.example>")
+        self.assertEqual(json.loads(call[call.index("--destination") + 1]), {"ToAddresses": ["pam@example.com"]})
+        content = json.loads(call[call.index("--content") + 1])["Simple"]
+        self.assertIn("edited in review", content["Body"]["Html"]["Data"])
+        self.assertIn("Initech", content["Body"]["Text"]["Data"])
+        code, _, err = run(["users", "send-email", folder, "--yes"], fake)
+        self.assertEqual(code, 1)
+        self.assertIn("already sent", err)
+        self.assertEqual(len(fake.ops("send-email")), 1)
+
+    def test_a_dry_run_send_sends_nothing(self):
+        folder, _ = self.draft(FakeAws())
+        fake = FakeAws()
+        code, out, _ = run(["users", "send-email", folder, "--dry-run"], fake)
+        self.assertEqual(code, 0)
+        self.assertIn("would run: aws sesv2 send-email", out)
+        self.assertFalse(os.path.exists(os.path.join(folder, "sent.json")))
 
 
 class Collect(unittest.TestCase):
