@@ -12,8 +12,8 @@ sends both, from bodies in infra/template.yaml), the waitlist confirmation
 (tools/teaser.py). docs/email.md says what each one is for and how to add one.
 
 Gmail and Outlook drop <style>, web fonts and SVG, so everything here is
-tables and inline styles, the mark is a hosted PNG beside a text wordmark,
-and Barlow falls back to Helvetica/Arial. Outlook desktop ignores padding and background on <a>,
+tables and inline styles, the brand is a text wordmark, and Barlow falls back
+to Helvetica/Arial. Outlook desktop ignores padding and background on <a>,
 which is why button() paints the cell around the link instead.
 
 Cognito cannot import Python, so its two bodies are copied into the template
@@ -36,12 +36,6 @@ POSTAL_ADDRESS = ""
 # tests/test_emails.py checks it.
 PASSWORD_DAYS = 7
 WIDTH = 600
-# The tick mark beside the wordmark. Email clients drop SVG, so it is the
-# site's SVG mark rendered to a 48px PNG (2x), served from /docs/, which the
-# edge leaves public and `tools/tick.py publish static` uploads; `verify`
-# checks it serves. Clients that block images show the wordmark alone.
-MARK_PATH = "/docs/email/tick-mark.png"
-MARK_URL = SITE + MARK_PATH
 
 INK, SURFACE, PAGE, PANEL = "#080d12", "#ffffff", "#f2f2f3", "#f5f7fa"
 TEXT, TEXT2, TEXT3, FAINT = "#17212b", "#4b5866", "#64717f", "#8b97a4"
@@ -114,16 +108,15 @@ def document(title: str, preheader: str, rows: list[str], note: str = "", aside:
     rows: the card's bands, each from row().
     note: the small print closing the card (how to get help, what to do if
       this was unexpected), already HTML.
-    aside: a line under the wordmark, such as who a teaser was prepared
-      for, already HTML.
+    aside: a line in the header's right-hand corner, such as who it was
+      prepared for, already HTML.
     reason: why this address received it, below the card, plain text.
     """
-    # the teaser's header: the mark and wordmark, the accent rule as its border
-    head = (f'<img src="{MARK_URL}" width="24" height="24" alt="" style="display:inline-block;border:0;'
-            f'outline:none;vertical-align:-3px;margin-right:10px">'
-            f'<span style="{FONT_HEAD};font-weight:700;font-size:24px;letter-spacing:.16em;color:{ON_INK}">TICK</span>')
+    head = (f'<span style="{FONT_HEAD};font-weight:700;font-size:24px;letter-spacing:.16em;color:{ON_INK}">TICK</span>'
+            f'<span style="display:inline-block;margin-left:10px;padding:2px 8px;border:1px solid #2b3c4d;'
+            f'border-radius:999px;font-size:11px;letter-spacing:.08em;color:#86aace;vertical-align:4px">BETA</span>')
     if aside:
-        head += f'<div style="font-size:12px;color:{ON_INK3};margin-top:4px">{aside}</div>'
+        head += f'<div style="font-size:12px;line-height:1.5;color:{ON_INK3};margin-top:6px">{aside}</div>'
     foot = row(f'<div style="border-top:1px solid {BORDER};padding-top:20px;font-size:13px;line-height:1.6;'
                f'color:{TEXT3}">{note}</div>', "28px 32px 32px") if note else row("", "0 0 32px")
     small = " · ".join(e(x) for x in (SENDER_LINE, POSTAL_ADDRESS) if x)
@@ -138,7 +131,8 @@ def document(title: str, preheader: str, rows: list[str], note: str = "", aside:
 <table {_TABLE} style="background:{PAGE}">
 <tr><td align="center" style="padding:32px 16px">
 <table {_TABLE} style="max-width:{WIDTH}px;background:{SURFACE};border:1px solid {BORDER};border-radius:12px;overflow:hidden;{FONT};color:{TEXT}">
-<tr><td style="background:{INK};padding:20px 32px;border-bottom:3px solid {ACCENT}">{head}</td></tr>
+<tr><td style="background:{INK};padding:22px 32px">{head}</td></tr>
+<tr><td style="height:3px;background:{ACCENT};line-height:3px;font-size:0">&nbsp;</td></tr>
 {body}
 {foot}
 </table>

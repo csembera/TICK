@@ -83,19 +83,6 @@ class EveryEmailTest(unittest.TestCase):
             self.assertIn("display:none", body, f"{name}: no preheader")
 
 
-class HeaderTest(unittest.TestCase):
-    def test_every_email_shows_the_mark(self):
-        for name, body in every_email().items():
-            self.assertIn(f'<img src="{mail.MARK_URL}" width="24" height="24" alt=""', body, name)
-
-    def test_the_mark_ships_with_the_public_pages(self):
-        # /docs/ is public at the edge and synced by `publish static`
-        self.assertTrue(mail.MARK_PATH.startswith("/docs/"))
-        path = os.path.join(ROOT, "infra", "site-static", mail.MARK_PATH.lstrip("/"))
-        with open(path, "rb") as f:
-            self.assertEqual(f.read(8), b"\x89PNG\r\n\x1a\n")
-
-
 class WaitlistTest(unittest.TestCase):
     def test_has_a_text_part_and_says_why(self):
         subject, body, text = mail.waitlist_confirmation()
