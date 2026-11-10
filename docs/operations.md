@@ -221,7 +221,7 @@ first.
 ```bash
 python3 tools/preview.py --refresh                              # today's lake, into local-data/lake
 python3 tools/teaser.py sysco --list                            # number the brief's paragraphs and moves
-python3 tools/teaser.py sysco --for "Jordan Lee, Northwind" --paragraph 2 --action 1 --pdf
+python3 tools/teaser.py sysco --paragraph 2 --action 1 --pdf
 ```
 
 It writes `local-data/teasers/<slug>-<brief>/`: `teaser.html` and, with
