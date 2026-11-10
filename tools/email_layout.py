@@ -108,15 +108,14 @@ def document(title: str, preheader: str, rows: list[str], note: str = "", aside:
     rows: the card's bands, each from row().
     note: the small print closing the card (how to get help, what to do if
       this was unexpected), already HTML.
-    aside: a line in the header's right-hand corner, such as who it was
-      prepared for, already HTML.
+    aside: a line under the wordmark, such as who a teaser was prepared
+      for, already HTML.
     reason: why this address received it, below the card, plain text.
     """
-    head = (f'<span style="{FONT_HEAD};font-weight:700;font-size:24px;letter-spacing:.16em;color:{ON_INK}">TICK</span>'
-            f'<span style="display:inline-block;margin-left:10px;padding:2px 8px;border:1px solid #2b3c4d;'
-            f'border-radius:999px;font-size:11px;letter-spacing:.08em;color:#86aace;vertical-align:4px">BETA</span>')
+    # the teaser's header: the wordmark alone, the accent rule as its border
+    head = f'<span style="{FONT_HEAD};font-weight:700;font-size:24px;letter-spacing:.16em;color:{ON_INK}">TICK</span>'
     if aside:
-        head += f'<div style="font-size:12px;line-height:1.5;color:{ON_INK3};margin-top:6px">{aside}</div>'
+        head += f'<div style="font-size:12px;color:{ON_INK3};margin-top:4px">{aside}</div>'
     foot = row(f'<div style="border-top:1px solid {BORDER};padding-top:20px;font-size:13px;line-height:1.6;'
                f'color:{TEXT3}">{note}</div>', "28px 32px 32px") if note else row("", "0 0 32px")
     small = " · ".join(e(x) for x in (SENDER_LINE, POSTAL_ADDRESS) if x)
@@ -131,8 +130,7 @@ def document(title: str, preheader: str, rows: list[str], note: str = "", aside:
 <table {_TABLE} style="background:{PAGE}">
 <tr><td align="center" style="padding:32px 16px">
 <table {_TABLE} style="max-width:{WIDTH}px;background:{SURFACE};border:1px solid {BORDER};border-radius:12px;overflow:hidden;{FONT};color:{TEXT}">
-<tr><td style="background:{INK};padding:22px 32px">{head}</td></tr>
-<tr><td style="height:3px;background:{ACCENT};line-height:3px;font-size:0">&nbsp;</td></tr>
+<tr><td style="background:{INK};padding:20px 32px;border-bottom:3px solid {ACCENT}">{head}</td></tr>
 {body}
 {foot}
 </table>

@@ -15,9 +15,10 @@ covered here.
 
 ## The layout
 
-- **Frame:** a 600px card on a grey page, an ink header with the `TICK`
-  wordmark and `BETA` pill, a 3px accent rule, then the bands of the body.
-  An optional right-hand line in the header names who a teaser is for.
+- **Frame:** a 600px card on a grey page. The header is the teaser's
+  original: ink, the `TICK` wordmark alone, and a 3px accent rule as its
+  bottom border. Under the wordmark, an optional line names who a teaser
+  is for. Then come the bands of the body.
 - **Preheader:** every email sets the hidden line an inbox shows after the
   subject.
 - **Type:** a 30px condensed `h1`, 16px body text (15px in the teaser),
