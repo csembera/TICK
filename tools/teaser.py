@@ -443,7 +443,7 @@ def email_rows(c: dict, nested: bool = False) -> list[str]:
         + "</div></td>" for i, k in enumerate(c["kpis"]))
     if nested:
         top = mail.row(mail.label(f"A first look at {_e(c['company'])}", margin="0 0 6px")
-                       + mail.h2(_e(c["headline"])), "32px 32px 0")
+                       + mail.h1(_e(c["headline"])), "36px 32px 0")
     else:
         top = mail.row(mail.h1(_e(c["headline"])) + mail.para(_e(LEDE.format(name=c["company"])), 15),
                        "32px 32px 0")

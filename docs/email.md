@@ -97,10 +97,10 @@ they hold a user's address and real numbers.
 `users invite --teaser <slug>` writes a welcome email that also gives a
 first look at one of the new user's accounts. It contains:
 
-- the welcome: the sign-in details and the button;
-- the teaser's body: the headline, the numbers, a quoted brief paragraph and
-  move, the new roles and the stack;
-- the welcome's "What you'll find".
+1. the teaser's body, first: the headline, the numbers, a quoted brief
+   paragraph and move, the new roles and the stack;
+2. the welcome: "You're in." and "What you'll find";
+3. the sign-in details and the **Sign in to TICK** button, last.
 
 The teaser's "Prepared for" line and its "Start with one account" pitch are
 left out, because the email is addressed to the recipient and they already
