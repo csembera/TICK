@@ -114,8 +114,10 @@ tools/tick.py users invite pam@example.com --accounts geha,sysco
 tools/tick.py users invite jan@example.com --admin            # sees every account
 ```
 
-They get an email from `TICK <support@sembasolutions.com>` with a temporary
-password, valid 7 days, and choose their own at `/login`. The CLI refuses an
+They get a welcome email from `TICK <support@sembasolutions.com>` with a
+temporary password, valid 7 days, and choose their own at `/login`. The email
+is HTML in the user pool's `InviteMessageTemplate` in `infra/template.yaml`, so
+changing it is a template deploy; replies go to the support address. The CLI refuses an
 account slug that is not tracked, renders their accounts home if no viewer had
 that set of accounts before, and marks their waitlist request granted if they
 had one. If the invite expires: `tools/tick.py users resend <email>`.
