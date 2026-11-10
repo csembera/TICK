@@ -24,8 +24,9 @@ pipeline uses it). `tools/tick.py <command> --help` documents each command.
 | `publish login` | Apply the sign-in page's CSS and banner | yes |
 | `users list` | Every user, their status and what they can see | no |
 | `users invite <email> [--accounts a,b] [--admin]` | Create a user, email a temporary password, set their accounts | yes |
+| `users invite <email> --accounts a,b --teaser a` | Draft a welcome email with a first look at account `a`; creates nothing until `users send-email` | local files only |
 | `users grant` / `revoke <email> <slug>...` | Add or remove accounts, keeping the rest of the list. `grant --email` also drafts an email telling them | yes |
-| `users send-email <draft>` | Send a draft from `users grant --email`, after you have read it | yes |
+| `users send-email <draft>` | Send a draft from `users grant --email` or `users invite --teaser`, after you have read it (an invite draft creates the user too) | yes |
 | `users admin <email> [--remove]` | Let a user see every account, or take that away | yes |
 | `users disable` / `enable` / `resend <email>` | Stop sign-in, allow it again, re-send an expired invite | yes |
 | `personas list [--json]` | Each account, the user who tracks it, and who its brief is written for | no |
@@ -124,6 +125,11 @@ is built by `tools/email_layout.py` and copied into the user pool's
 account slug that is not tracked, renders their accounts home if no viewer had
 that set of accounts before, and marks their waitlist request granted if they
 had one. If the invite expires: `tools/tick.py users resend <email>`.
+
+To welcome them with a first look at one of their accounts, add
+`--teaser <slug>`. That only drafts the email to `local-data/emails/`; once
+you have read it, `tools/tick.py users send-email <draft>` creates the user
+and sends it in place of Cognito's welcome ([email.md](email.md#the-welcome-email-with-a-first-look-at-an-account)).
 
 ### Change what someone sees
 

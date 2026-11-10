@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import sys
@@ -697,39 +698,64 @@ def cmd_users_list(ops: Ops, args) -> int:
     return 0
 
 
-def cmd_users_invite(ops: Ops, args) -> int:
-    email = check_email(args.email)
+def _invite_plan(ops: Ops, email: str, slugs: list[str], is_admin: bool, mail_line: str) -> dict:
+    """Everything an invite will do, read before anything is done: shared by
+    `users invite` and `users send-email` of an invite draft."""
     if get_user(ops, email):
         fail(f"{email} already has an account: `users grant` changes their accounts, "
              f"`users resend` re-sends the invite")
-    slugs = parse_slugs(args.accounts)
     if slugs:
         known_slugs(ops, slugs)
     viewer, admin = ops.output("ViewerGroup"), ops.output("AdminGroup")
-    groups = [viewer] + ([admin] if args.admin else [])
+    groups = [viewer] + ([admin] if is_admin else [])
     waitlist = ops.aws("dynamodb", "get-item", "--table-name", ops.output("JoinRequestsTableName"),
                        "--key", json.dumps({"email": {"S": email}})).get("Item")
+    pending = bool(waitlist) and plain(waitlist).get("status") == "pending"
     home, publish = _home_plan(ops, groups, slugs)
-    plan = [f"create {email} and email them a temporary password, valid {email_layout.PASSWORD_DAYS} days",
-            f"add them to {' and '.join(groups)}",
-            "let them see " + ("every account" if args.admin else ", ".join(slugs) or "no accounts yet")]
-    if waitlist and plain(waitlist).get("status") == "pending":
-        plan.append("mark their waitlist request granted")
-    if not ops.confirm(plan + home):
-        return 1
-    pool = ops.output("UserPoolId")
+    steps = [f"create {email}; {mail_line}",
+             f"add them to {' and '.join(groups)}",
+             "let them see " + ("every account" if is_admin else ", ".join(slugs) or "no accounts yet")]
+    if pending:
+        steps.append("mark their waitlist request granted")
+    return {"email": email, "slugs": slugs, "groups": groups, "pending": pending, "publish": publish,
+            "steps": steps + home}
+
+
+def _create_invited(ops: Ops, plan: dict, password: str | None = None) -> None:
+    """Make the user an invite plan describes. With a password, Cognito sends
+    nothing: the caller emails the password itself."""
+    email, pool = plan["email"], ops.output("UserPoolId")
     attrs = [{"Name": "email", "Value": email}, {"Name": "email_verified", "Value": "true"}]
-    if slugs:
-        attrs.append({"Name": "custom:accounts", "Value": ",".join(slugs)})
+    if plan["slugs"]:
+        attrs.append({"Name": "custom:accounts", "Value": ",".join(plan["slugs"])})
+    mail = (["--message-action", "SUPPRESS", "--temporary-password", password] if password else
+            ["--desired-delivery-mediums", "EMAIL"])
     ops.aws("cognito-idp", "admin-create-user", "--user-pool-id", pool, "--username", email,
-            "--user-attributes", json.dumps(attrs), "--desired-delivery-mediums", "EMAIL", change=True)
-    for group in groups:
+            "--user-attributes", json.dumps(attrs), *mail, change=True)
+    for group in plan["groups"]:
         ops.aws("cognito-idp", "admin-add-user-to-group", "--user-pool-id", pool, "--username", email,
                 "--group-name", group, change=True)
-    if waitlist and plain(waitlist).get("status") == "pending":
+    if plan["pending"]:
         close_request(ops, ops.output("JoinRequestsTableName"), {"email": {"S": email}}, "granted")
-    if publish:
+    if plan["publish"]:
         publish_pages(ops)
+
+
+def cmd_users_invite(ops: Ops, args) -> int:
+    email = check_email(args.email)
+    slugs = parse_slugs(args.accounts)
+    if args.teaser:
+        teaser_slug = args.teaser.strip().lower()
+        if teaser_slug not in slugs and not args.admin:
+            fail(f"--teaser {teaser_slug} must be one of their --accounts, so they can open it")
+        _invite_plan(ops, email, slugs, args.admin, "")   # refuse now, not at send time
+        draft_invite(ops, email, slugs, args.admin, teaser_slug, args)
+        return 0
+    plan = _invite_plan(ops, email, slugs, args.admin,
+                        f"Cognito emails them a temporary password, valid {email_layout.PASSWORD_DAYS} days")
+    if not ops.confirm(plan["steps"]):
+        return 1
+    _create_invited(ops, plan)
     if not ops.dry_run:
         print(f"Invited {email}. They sign in at /login and choose a password.")
     return 0
@@ -871,19 +897,17 @@ def account_facts(ops: Ops, slugs: list[str]) -> list[dict]:
     return out
 
 
-def draft_new_accounts(ops: Ops, email: str, slugs: list[str]) -> str:
-    """Write the new-account email for review; its folder."""
-    site = ops.output("SiteUrl")
-    subject, body, text = email_layout.new_accounts(account_facts(ops, slugs), site)
+def write_draft(email: str, label: str, subject: str, body: str, text: str, meta: dict) -> str:
+    """Write an email for review under DRAFTS; its folder."""
     stamp = datetime.now(timezone.utc)
-    folder = os.path.join(DRAFTS, f"{stamp:%Y-%m-%d-%H%M%S}-{re.sub(r'[^a-z0-9]+', '-', email)}-accounts")
+    folder = os.path.join(DRAFTS, f"{stamp:%Y-%m-%d-%H%M%S}-{re.sub(r'[^a-z0-9]+', '-', email)}-{label}")
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, "email.html"), "w") as f:
         f.write(body)
     with open(os.path.join(folder, "email.txt"), "w") as f:
         f.write(text)
     with open(os.path.join(folder, "message.json"), "w") as f:
-        json.dump({"to": email, "subject": subject, "kind": "new-accounts", "accounts": slugs,
+        json.dump({"to": email, "subject": subject, **meta,
                    "drafted_at": stamp.strftime("%Y-%m-%dT%H:%M:%SZ")}, f, indent=1)
         f.write("\n")
     rel = os.path.relpath(folder)
@@ -891,6 +915,55 @@ def draft_new_accounts(ops: Ops, email: str, slugs: list[str]) -> str:
           f"  Review: {rel}/email.html (and email.txt, its plain-text part)\n"
           f"  Send:   tools/tick.py users send-email {rel}")
     return folder
+
+
+def draft_new_accounts(ops: Ops, email: str, slugs: list[str]) -> str:
+    """Write the new-account email for review; its folder."""
+    subject, body, text = email_layout.new_accounts(account_facts(ops, slugs), ops.output("SiteUrl"))
+    return write_draft(email, "accounts", subject, body, text, {"kind": "new-accounts", "accounts": slugs})
+
+
+def account_lake(ops: Ops, slug: str) -> dict:
+    """One account's briefs and crawls, read through the AWS CLI, in the
+    shape the renderer's open_lake gives (keys, get, get_text)."""
+    bucket = ops.output("DataBucketName")
+    keys = [o["Key"] for prefix in (f"briefs/company={slug}/", f"curated/company={slug}/")
+            for o in list_objects(ops, bucket, prefix)]
+    get_text = lambda k: ops.aws("s3", "cp", f"s3://{bucket}/{k}", "-", parse=False)
+    return {"keys": keys, "get": lambda k: json.loads(get_text(k)), "get_text": get_text}
+
+
+def draft_invite(ops: Ops, email: str, slugs: list[str], is_admin: bool, slug: str, args) -> str:
+    """Write the welcome email with a first look at one account, for review.
+    Nothing is created: `users send-email` makes the user and sends it."""
+    import teaser   # tools/teaser.py, and through it the renderer: only an invite with a teaser needs them
+    lake = account_lake(ops, slug)
+    try:
+        entry = teaser.pick_brief(teaser.report.list_briefs(lake, slug), args.brief)
+        brief, evidence = lake["get"](entry["brief_key"]), lake["get"](entry["evidence_key"])
+        c = teaser.build(brief, evidence, email, args.paragraph, args.action, teaser.board_rows(lake, slug))
+    except SystemExit as exc:   # the teaser's refusals: no brief, a persona's brief, a bad --paragraph
+        if isinstance(exc.code, str):
+            fail(f"{slug}: {exc.code}")
+        raise
+    rows = teaser.email_rows(c, nested=True)
+    subject, body, text = email_layout.invite_with_teaser(email, c["company"], rows, teaser.email_text(c),
+                                                          teaser.cite_note(c))
+    return write_draft(email, "invite", subject, body, text,
+                       {"kind": "invite", "accounts": slugs, "admin": is_admin, "teaser": slug,
+                        "brief": entry["id"]})
+
+
+PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"   # no 0/O, 1/l/I
+
+
+def temporary_password() -> str:
+    """A temporary password the pool's policy accepts (8+, upper, lower, a
+    number), with no characters that read alike."""
+    while True:
+        p = "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(14))
+        if any(ch.isupper() for ch in p) and any(ch.islower() for ch in p) and any(ch.isdigit() for ch in p):
+            return p
 
 
 def cmd_users_send_email(ops: Ops, args) -> int:
@@ -903,15 +976,30 @@ def cmd_users_send_email(ops: Ops, args) -> int:
         with open(os.path.join(folder, "email.txt")) as f:
             text = f.read()
     except (OSError, ValueError) as exc:
-        fail(f"{folder} is not a draft from `users grant --email`: {exc}")
+        fail(f"{folder} is not a draft from `users grant --email` or `users invite --teaser`: {exc}")
     sent = os.path.join(folder, "sent.json")
     if os.path.exists(sent):
         fail(f"this draft was already sent ({open(sent).read().strip()}); draft a new one to send again")
     to = check_email(meta["to"])
     sender = f"TICK <{ops.output('SenderAddress')}>"
-    if not ops.confirm([f"email {to} \"{meta['subject']}\" from {sender}",
-                        f"as written in {os.path.relpath(folder)}/email.html and email.txt"]):
+    steps = [f"email {to} \"{meta['subject']}\" from {sender}",
+             f"as written in {os.path.relpath(folder)}/email.html and email.txt"]
+    invite = None
+    if meta.get("kind") == "invite":
+        if body.count("{####}") != 1 or text.count("{####}") != 1:
+            fail("the draft must keep {####} exactly once in email.html and in email.txt: "
+                 "it is where the temporary password goes")
+        invite = _invite_plan(ops, to, meta.get("accounts") or [], bool(meta.get("admin")),
+                              f"no email from Cognito: a temporary password valid "
+                              f"{email_layout.PASSWORD_DAYS} days goes in this one")
+        steps = invite["steps"] + steps
+    if not ops.confirm(steps):
         return 1
+    if invite:
+        # made here and never written down: it exists only in Cognito and the email
+        password = "<generated>" if ops.dry_run else temporary_password()
+        _create_invited(ops, invite, password)
+        body, text = body.replace("{####}", password), text.replace("{####}", password)
     content = {"Simple": {"Subject": {"Data": meta["subject"]},
                           "Body": {"Html": {"Data": body}, "Text": {"Data": text}}}}
     result = ops.aws("sesv2", "send-email", "--from-email-address", sender,
@@ -924,7 +1012,7 @@ def cmd_users_send_email(ops: Ops, args) -> int:
         json.dump({"message_id": result.get("MessageId"),
                    "sent_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, f)
         f.write("\n")
-    print(f"Sent to {to}.")
+    print(f"Sent to {to}." + (" They sign in at /login and choose a password." if invite else ""))
     return 0
 
 
@@ -1371,6 +1459,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("email")
     p.add_argument("--accounts", help="comma-separated company slugs they may open")
     p.add_argument("--admin", action="store_true", help="let them see every account")
+    p.add_argument("--teaser", metavar="SLUG",
+                   help="draft a welcome email with a first look at this account, for review; "
+                        "`users send-email` then invites them and sends it")
+    p.add_argument("--brief", help='with --teaser: "weekly", "overview" or a brief id (default: the current one)')
+    p.add_argument("--paragraph", type=int, default=1, help="with --teaser: which paragraph to quote (from 1)")
+    p.add_argument("--action", type=int, default=1, help="with --teaser: which move to show (from 1)")
     for name, func, verb in (("grant", cmd_users_grant, "add"), ("revoke", cmd_users_revoke, "remove")):
         p = leaf(g, name, func, f"{verb} accounts, keeping the rest of their list")
         p.add_argument("email")
@@ -1378,7 +1472,8 @@ def parser() -> argparse.ArgumentParser:
         if name == "grant":
             p.add_argument("--email", dest="email_draft", action="store_true",
                            help="also draft an email telling them, for review; `users send-email` sends it")
-    p = leaf(g, "send-email", cmd_users_send_email, "send an email drafted by `users grant --email`")
+    p = leaf(g, "send-email", cmd_users_send_email,
+             "send a reviewed draft from `users grant --email` or `users invite --teaser`")
     p.add_argument("draft", help="the draft's folder, as `users grant --email` printed it")
     p = leaf(g, "admin", cmd_users_admin, "make a user an admin (sees every account), or --remove")
     p.add_argument("email")

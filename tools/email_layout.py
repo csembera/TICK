@@ -73,6 +73,12 @@ def para(text: str, size: int = 16, color: str = TEXT2, margin: str = "0") -> st
     return f'<p style="margin:{margin};font-size:{size}px;line-height:1.6;color:{color}">{text}</p>'
 
 
+def h2(text: str) -> str:
+    """A heading inside an email that already has its h1."""
+    return (f'<h2 style="margin:0;{FONT_HEAD};font-weight:600;font-size:24px;line-height:1.2;'
+            f'color:{TEXT}">{text}</h2>')
+
+
 def label(text: str, color: str = TEXT3, margin: str = "0 0 10px") -> str:
     """The small capitals that title every section."""
     return (f'<p style="margin:{margin};font-size:12px;font-weight:600;letter-spacing:.08em;'
@@ -150,12 +156,25 @@ def text_document(lines: list[str], reason: str = "") -> str:
 
 # ------------------------------------------------------------------- the emails
 
-def invite() -> str:
-    """The welcome email Cognito sends with a temporary password. Cognito
-    fills {username} and {####} unescaped."""
+INVITE_SUBJECT = "Welcome to TICK: your sign-in details"   # also the template's EmailSubject (tested)
+_INVITE_LEDE = ("TICK watches the job boards of the companies you sell to and turns what they post into a "
+                "dashboard and a weekly brief, so a new program reaches you while it is still being staffed.")
+_INVITE_DAYS = f"It works for {PASSWORD_DAYS} days. You choose your own password the first time you sign in."
+_INVITE_NOTE = ("Password expired, or not expecting this? Just reply and we'll sort it out.<br>"
+                f'<a href="{SITE}/docs" style="{LINK}">How TICK works</a>')
+_FOUND = [("Your accounts.", "Each company's open roles, what opened and closed this week, and how its "
+           "hiring is trending."),
+          ("The weekly brief.", "Written every Sunday night: what moved, what the company is staffing "
+           "for, and what to do about it."),
+          ("Your profile.", "Tell TICK what you sell and the brief is written for you.")]
+
+
+def _invite_parts(username: str = "{username}") -> tuple[list[str], str]:
+    """The welcome's opening bands (greeting, sign-in details, button) and
+    its closing one (what you'll find). {####} is left for the password."""
     details = table(
         f'<tr><td style="padding:18px 20px 6px">{label("Email", margin="0")}</td></tr>'
-        f'<tr><td style="padding:0 20px 14px;font-size:16px;color:{TEXT}">{{username}}</td></tr>'
+        f'<tr><td style="padding:0 20px 14px;font-size:16px;color:{TEXT}">{username}</td></tr>'
         f'<tr><td style="padding:0 20px"><div style="border-top:1px solid {BORDER};font-size:0;line-height:0">&nbsp;</div></td></tr>'
         f'<tr><td style="padding:14px 20px 6px">{label("Temporary password", margin="0")}</td></tr>'
         f'<tr><td style="padding:0 20px 18px;{FONT_MONO};font-size:20px;letter-spacing:.06em;color:{TEXT}">{{####}}</td></tr>',
@@ -163,25 +182,43 @@ def invite() -> str:
     item = lambda n, head, text, pad: (
         f'<tr><td valign="top" style="width:28px;padding:0 0 {pad}px;color:{ACCENT};font-weight:700">{n}</td>'
         f'<td style="padding:0 0 {pad}px"><b>{head}</b> <span style="color:{TEXT2}">{text}</span></td></tr>')
-    found = table(
-        item(1, "Your accounts.", "Each company's open roles, what opened and closed this week, and how its "
-             "hiring is trending.", 12)
-        + item(2, "The weekly brief.", "Written every Sunday night: what moved, what the company is staffing "
-               "for, and what to do about it.", 12)
-        + item(3, "Your profile.", "Tell TICK what you sell and the brief is written for you.", 4),
-        f"font-size:15px;line-height:1.55;color:{TEXT}")
-    return document(
-        "Welcome to TICK", f"Your temporary password is inside. It works for {PASSWORD_DAYS} days.",
-        [row(h1("You're in.") + para(
-            "TICK watches the job boards of the companies you sell to and turns what they post into a "
-            "dashboard and a weekly brief, so a new program reaches you while it is still being staffed."),
-            "36px 32px 8px"),
-         row(details + para(f"It works for {PASSWORD_DAYS} days. You choose your own password the first "
-                            "time you sign in.", 13, TEXT3, "10px 0 0"), "24px 32px 4px"),
-         row(button(f"{SITE}/login", "Sign in to TICK"), "24px 32px 8px"),
-         row(label("What you'll find", margin="0 0 14px") + found, "28px 32px 8px")],
-        note=("Password expired, or not expecting this? Just reply and we'll sort it out.<br>"
-              f'<a href="{SITE}/docs" style="{LINK}">How TICK works</a>'))
+    found = table("".join(item(n, head, text, 4 if n == len(_FOUND) else 12)
+                          for n, (head, text) in enumerate(_FOUND, 1)),
+                  f"font-size:15px;line-height:1.55;color:{TEXT}")
+    opening = [row(h1("You're in.") + para(_INVITE_LEDE), "36px 32px 8px"),
+               row(details + para(_INVITE_DAYS, 13, TEXT3, "10px 0 0"), "24px 32px 4px"),
+               row(button(f"{SITE}/login", "Sign in to TICK"), "24px 32px 8px")]
+    return opening, row(label("What you'll find", margin="0 0 14px") + found, "28px 32px 8px")
+
+
+def invite() -> str:
+    """The welcome email Cognito sends with a temporary password. Cognito
+    fills {username} and {####} unescaped."""
+    opening, closing = _invite_parts()
+    return document("Welcome to TICK", f"Your temporary password is inside. It works for {PASSWORD_DAYS} days.",
+                    opening + [closing], note=_INVITE_NOTE)
+
+
+def invite_with_teaser(email: str, company: str, teaser_rows: list[str], teaser_text: list[str],
+                       cite_note: str = "") -> tuple[str, str, str]:
+    """(subject, html, text) of the welcome email with a first look at one
+    account inside it, which `tools/tick.py users invite --teaser` sends in
+    place of Cognito's. teaser_rows and teaser_text come from tools/teaser.py
+    (email_rows(c, nested=True), email_text(c)). {####} is left in both for
+    the temporary password, which is only made when the email is sent."""
+    opening, closing = _invite_parts(e(email))
+    rule = row(f'<div style="border-top:1px solid {BORDER};font-size:0;line-height:0">&nbsp;</div>', "32px 32px 0")
+    subject = f"{INVITE_SUBJECT} and a first look at {company}"
+    note = (f"{cite_note}<br><br>" if cite_note else "") + _INVITE_NOTE
+    body = document("Welcome to TICK",
+                    f"Your temporary password is inside, with a first look at {company}.",
+                    opening + [rule] + teaser_rows + [closing], note=note)
+    text = text_document(
+        ["You're in.", _INVITE_LEDE, f"Email: {email}\nTemporary password: {{####}}\n{_INVITE_DAYS}",
+         f"Sign in: {SITE}/login", f"A FIRST LOOK AT {company.upper()}", *teaser_text,
+         "What you'll find:\n" + "\n".join(f"- {h} {t}" for h, t in _FOUND),
+         "Password expired, or not expecting this? Just reply and we'll sort it out."])
+    return subject, body, text
 
 
 def verification() -> str:

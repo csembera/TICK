@@ -426,7 +426,11 @@ _LINK = mail.LINK
 OPT_OUT = "Sent to {who} by TICK. Not useful? Reply \u201cno thanks\u201d and we won't send another."
 
 
-def render_email(c: dict) -> str:
+def email_rows(c: dict, nested: bool = False) -> list[str]:
+    """The teaser's body as bands of the shared layout, without its call to
+    action. nested: the bands sit inside another email (the welcome email of
+    `tools/tick.py users invite --teaser`), so they open with a section
+    label and a smaller heading instead of the page's own headline."""
     cx = c["cites"]
     last = len(c["kpis"]) - 1
     cells = "".join(
@@ -437,8 +441,13 @@ def render_email(c: dict) -> str:
         + (f'<span style="font-size:13px;color:{mail.LIVE if k.get("up") else mail.TEXT3};margin-left:4px">'
            f'{k["delta"]}</span>' if k.get("delta") else "")
         + "</div></td>" for i, k in enumerate(c["kpis"]))
-    rows = [mail.row(mail.h1(_e(c["headline"])) + mail.para(_e(LEDE.format(name=c["company"])), 15),
-                     "32px 32px 0"),
+    if nested:
+        top = mail.row(mail.label(f"A first look at {_e(c['company'])}", margin="0 0 6px")
+                       + mail.h2(_e(c["headline"])), "32px 32px 0")
+    else:
+        top = mail.row(mail.h1(_e(c["headline"])) + mail.para(_e(LEDE.format(name=c["company"])), 15),
+                       "32px 32px 0")
+    rows = [top,
             mail.row(mail.table(f"<tr>{cells}</tr>", f"border:1px solid {mail.BORDER};border-radius:8px"),
                      "20px 32px 0"),
             mail.row(mail.label(c["brief_label"])
@@ -472,9 +481,33 @@ def render_email(c: dict) -> str:
     if stack:
         rows.append(mail.row(mail.label("Stack on the board" if c["overview"] else "Stack on the rise")
                              + mail.table(stack)))
+    return rows
+
+
+def cite_note(c: dict) -> str:
+    return f"Every number in the text links to the public {_e(c['company'])} posting it cites. " \
+           f"{unlinked_notes(c['cites'])}".strip()
+
+
+def email_text(c: dict) -> list[str]:
+    """The teaser's body as plain-text paragraphs, its citations dropped:
+    the brief's words still come through whole."""
+    plain = lambda t: _CITE_RUN.sub("", t).strip()
+    lines = [c["headline"], f"{c['brief_label']}:\n{plain(c['excerpt'])}"]
+    if c["move"]:
+        lines.append(f"One move to make: {c['move']['title']}\n{plain(c['move']['why'])}")
+    if c["roles"]:
+        lines.append(c["roles_label"] + ":\n" + "\n".join(
+            f"- {r['title']}" + (f" \u00d7{r['count']}" if r["count"] > 1 else "")
+            + (f" ({_role_meta(r)})" if _role_meta(r) else "") for r in c["roles"]))
+    return lines
+
+
+def render_email(c: dict) -> str:
+    rows = email_rows(c)
     rows.append(mail.row(mail.dark_panel(CTA_TITLE, CTA_TEXT, f"{SITE}/", CTA_BUTTON), "28px 32px 0"))
-    note = f"Every number in the text links to the public {_e(c['company'])} posting it cites. {unlinked_notes(cx)}"
-    return mail.document(f"TICK \u00b7 {c['company']}", c["headline"], rows, note=note.strip(),
+    note = cite_note(c)
+    return mail.document(f"TICK \u00b7 {c['company']}", c["headline"], rows, note=note,
                          aside=f'Prepared for <b style="color:{mail.ON_INK}">{_e(c["prepared_for"])}</b>'
                                f' \u00b7 {_e(c["period"])}',
                          reason=OPT_OUT.format(who=c["prepared_for"]))

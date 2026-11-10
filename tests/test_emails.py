@@ -29,8 +29,17 @@ ACCOUNTS = [{"name": "Initech", "slug": "initech", "open_roles": 12, "tech_roles
              "crawled_on": None}]
 
 
+def invite_with_teaser() -> tuple[str, str, str]:
+    import teaser
+    import test_teaser
+    brief, evidence = test_teaser.weekly()
+    c = teaser.build(brief, evidence, "pam@example.com", 2, 1)
+    return mail.invite_with_teaser("pam@example.com", c["company"], teaser.email_rows(c, nested=True),
+                                   teaser.email_text(c), teaser.cite_note(c))
+
+
 def every_email() -> dict[str, str]:
-    return {"invite": mail.invite(), "verification": mail.verification(),
+    return {"invite with teaser": invite_with_teaser()[1], "invite": mail.invite(), "verification": mail.verification(),
             "waitlist": mail.waitlist_confirmation()[1], "new account": mail.new_accounts(ACCOUNTS[:1])[1],
             "new accounts": mail.new_accounts(ACCOUNTS)[1]}
 
@@ -81,6 +90,24 @@ class EveryEmailTest(unittest.TestCase):
         for name, body in every_email().items():
             self.assertIn(mail.SENDER_LINE, body, name)
             self.assertIn("display:none", body, f"{name}: no preheader")
+
+
+class InviteWithTeaserTest(unittest.TestCase):
+    def test_keeps_the_welcome_and_adds_the_first_look(self):
+        subject, body, text = invite_with_teaser()
+        self.assertEqual(subject, f"{mail.INVITE_SUBJECT} and a first look at Initech")
+        for part in (body, text):
+            self.assertEqual(part.count("{####}"), 1)
+            self.assertIn("pam@example.com", part)
+        self.assertIn('href="https://tick.sembasolutions.com/login"', body)
+        self.assertIn("A first look at Initech", body)
+        self.assertEqual(body.count("<h1"), 1)
+        self.assertNotIn("Prepared for", body)
+        self.assertNotIn("Start with one account", body)
+        self.assertNotIn("[[", text)
+
+    def test_subject_matches_the_cognito_invite(self):
+        self.assertEqual(mail.template_subject(TEMPLATE, "invite"), mail.INVITE_SUBJECT)
 
 
 class WaitlistTest(unittest.TestCase):

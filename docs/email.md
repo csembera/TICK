@@ -8,6 +8,7 @@ covered here.
 | Email | Sent by | When | Body lives in |
 |---|---|---|---|
 | Welcome (`Welcome to TICK: your sign-in details`) | Cognito | `users invite`, `users resend` | `invite()`, copied into `InviteMessageTemplate` in `infra/template.yaml` |
+| Welcome with a first look (`Welcome to TICK: your sign-in details and a first look at <Company>`) | `tools/tick.py`, SES | only when you send a draft from `users invite --teaser` | `invite_with_teaser()`, wrapping `email_rows(c, nested=True)` from `tools/teaser.py` |
 | Code (`Your TICK verification code`) | Cognito | "Forgot your password?", email confirmation | `verification()`, copied into `VerificationMessageTemplate` |
 | Waitlist (`You're on the TICK list`) | join Lambda, SES | the first time an address joins the waitlist | `waitlist_confirmation()`, through the symlink `infra/src/join/email_layout.py` |
 | New account (`<Company> is now in your TICK`) | `tools/tick.py`, SES | only when you send a draft from `users grant --email` | `new_accounts()` |
@@ -90,3 +91,46 @@ writes `sent.json` so a draft can't be sent twice. It sends as
 If the user already has the account, `--email` still drafts, so a forgotten
 flag can be made up for. Drafts are gitignored under `local-data/`, because
 they hold a user's address and real numbers.
+
+## The welcome email with a first look at an account
+
+`users invite --teaser <slug>` writes a welcome email that also gives a
+first look at one of the new user's accounts. It contains:
+
+- the welcome: the sign-in details and the button;
+- the teaser's body: the headline, the numbers, a quoted brief paragraph and
+  move, the new roles and the stack;
+- the welcome's "What you'll find".
+
+The teaser's "Prepared for" line and its "Start with one account" pitch are
+left out, because the email is addressed to the recipient and they already
+have access.
+
+```bash
+tools/tick.py users invite pam@example.com --accounts sysco,geha --teaser sysco
+#   [--brief weekly|overview|<id>] [--paragraph N] [--action N], as for tools/teaser.py
+#   Drafted "Welcome to TICK: your sign-in details and a first look at Sysco" ... Nothing is sent yet.
+tools/tick.py users send-email local-data/emails/<when>-pam-example-com-invite
+```
+
+Drafting creates nothing, so a draft you throw away leaves no user behind.
+The invite runs at `send-email`:
+
+- It checks again that no user has the address.
+- It creates them with Cognito's own email turned off
+  (`--message-action SUPPRESS`) and a temporary password it generates.
+- It sets their groups and accounts, closes their waitlist request, and
+  re-renders their accounts home if no one had that set before.
+- It sends the draft with the password in place of `{####}`.
+
+The password exists only in Cognito and in the sent email: the draft keeps
+`{####}`, and `--dry-run` shows the password as `<generated>`. A draft that
+no longer has `{####}` exactly once in each part is refused.
+
+The teaser account must be one of their `--accounts`, unless they're an
+admin. Its brief is read from the data bucket through the AWS CLI, with the
+same rules as `tools/teaser.py`. In particular, a brief written for another
+user's persona is refused, so pick another with `--brief`. If the password
+expires, `users resend` sends Cognito's standard welcome without the teaser.
+Without `--teaser`, `users invite` is unchanged: Cognito sends the welcome
+at once.
