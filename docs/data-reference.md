@@ -39,7 +39,7 @@ verbatim by the collector.
 | Field | Meaning |
 |---|---|
 | `company_name`, `company_slug` | Display name; the key for every partition and page URL (lowercase letters, digits, hyphens; not a reserved name) |
-| `ats` | `workday`, `greenhouse`, `lever`, `ashby`, `adp`, `dayforce`, `taleo`, `successfactors` (its XML job feed) or `other` (a custom JSON board) |
+| `ats` | `workday`, `greenhouse`, `lever`, `ashby`, `adp`, `dayforce`, `taleo`, `successfactors` (its XML job feed), `apple` (jobs.apple.com) or `other` (a custom JSON board) |
 | `tier` | 1 direct ATS JSON, 2 aggregator, 3 web search or headless render |
 | `endpoint`, `http_method`, `request_body`, `request_headers` | The verified listing request |
 | `pagination` | How to page: `offset`, `page_param`, `none`, ... |
@@ -48,6 +48,9 @@ verbatim by the collector.
 | `description_field` | A field path to a description already in the listing payload (no extra request) |
 | `description_format` | What the evaluator learned about the board's descriptions: heading `aliases` per section and `boilerplate` rules (`kind` with `starts_with` or `contains`) |
 | `portals` | Taleo only: every career section to crawl |
+| `exclude_teams` | Apple only: team codes whose rows are dropped (`APPST`, Apple Retail) |
+| `reuse_descriptions` | Copy a still-open posting's description from the previous run instead of fetching it again; for boards too large to fetch whole nightly |
+| `detail_budget_s`, `detail_workers` | Apple only: seconds to spend fetching new descriptions per run, and how many at once |
 | `schema_map` | Source field (or `{field}` URL template) for `posting_id`, `title`, `location`, `url`, `team`, `posted_on` |
 | `timeout_s` | Per-request timeout for slow boards |
 | `date_trust` | `high`, `low` or `lowest`: how far the board's own dates can be believed |

@@ -101,7 +101,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub ${AWS::StackName}-collect
-      VisibilityTimeout: 1800         # 6x collector timeout per AWS guidance
+      VisibilityTimeout: 5400         # 6x collector timeout per AWS guidance
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt CollectDLQ.Arn
         maxReceiveCount: 3
@@ -143,7 +143,7 @@ Resources:
       FunctionName: !Sub ${AWS::StackName}-collector
       CodeUri: src/collector/
       Handler: app.handler
-      Timeout: 300                    # board page + ~140 per-posting detail GETs
+      Timeout: 900                    # Apple: ~230 search pages + a 600 s detail budget
       Environment:
         Variables:
           BUCKET_NAME: !Ref DataBucket

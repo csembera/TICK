@@ -161,6 +161,26 @@ Field rules that cost real data when broken:
   collector unwraps. Set `detail_endpoint` and `schema_map.url` to
   `https://<tenant>.taleo.net/careersection/{careerSection}/jobdetail.ftl?job={contestNo}&lang=en`:
   descriptions are read from that page.
+- **Apple** (`jobs.apple.com`, its own system): `ats: "apple"`. Endpoint
+  `https://jobs.apple.com/api/v1/search`, `POST`, `pagination: "page"`, no
+  `request_headers`: the collector's apple.py loads the search page for its
+  cookie and sends the CSRF token `/api/v1/CSRFToken` returns, and without
+  them, or without the body's `format` block, the search answers 0. Body
+  `{"query": "", "filters": {"homeOffice": false, "locations": ["postLocation-USA"],
+  "teams": [], "products": [], "languages": [], "keywords": [], "hiringManagers": [],
+  "jobLevels": [], "retailRoles": []}, "locale": "en-us", "sort": "newest",
+  "format": {"longDate": "MMMM D, YYYY", "mediumDate": "MMM D, YYYY"}}`; an
+  empty `locations` also answers 0. `exclude_teams: ["APPST"]` drops Apple
+  Retail. The search lists a position once per location; the collector
+  groups rows by position, so map the grouped record: `posting_id`
+  `positionId` (never `reqId` or `id`, which carry a per-location suffix),
+  `title` `postingTitle`, `location` `Location`, `team` `Team`, `posted_on`
+  `PostedOn`, `url`
+  `https://jobs.apple.com/en-us/details/{positionId}/{transformedPostingTitle}`.
+  `detail_endpoint` `https://jobs.apple.com/api/v1/jobDetails/{posting_id}`
+  holds the description; set `reuse_descriptions: true`, `detail_budget_s: 600`
+  and `detail_workers: 4`, since a detail takes about two seconds and the US
+  board has thousands of positions.
 - **SuccessFactors** (a career site whose pages load `rmkcdn.successfactors.com`
   and link `/job/<slug>/<id>/`): `ats: "successfactors"`. Its search pages
   are HTML, 25 at a time, and its JSON search
@@ -289,8 +309,9 @@ headers, not the browser set the discovery tools send (some boards answer a
 browser `Accept-Language` with an empty posting list), for ADP each
 posting's detail merged in before `schema_map` is checked, for Taleo
 every page of every career section, for Dayforce the feed grouped into
-requisitions, and for SuccessFactors the feed read item by item, each with
-the collector's own code. A Taleo
+requisitions, for SuccessFactors the feed read item by item, and for Apple
+every search page inside the collector's own session, each with the
+collector's own code. A Taleo
 section that returns fewer postings than it reports fails the gate, as it
 would fail the collector's run.
 

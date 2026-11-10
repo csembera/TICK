@@ -16,9 +16,11 @@ exactly as the collector will apply it.
 Taleo boards page across career sections, and their descriptions sit in each
 job page. Both are read with the collector's own taleo.py, imported the same
 way, so the gate pages a Taleo board exactly as the collector does. Dayforce
-job feeds are grouped into requisitions by the collector's dayforce.py, and
-SuccessFactors job feeds are read by its successfactors.py, for the same
-reason.
+job feeds are grouped into requisitions by the collector's dayforce.py,
+SuccessFactors job feeds are read by its successfactors.py, and Apple's
+search is paged, grouped and described by its apple.py, for the same reason.
+apple.py owns its HTTP (the search needs a cookie session and a CSRF token),
+so for Apple the gate sends the collector's requests by calling it.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ from typing import Any, Callable, Optional
 
 sys.path.insert(0, os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "infra", "src", "collector")))
+import apple  # noqa: E402  the collector's jobs.apple.com session, paging and details
 import dayforce  # noqa: E402  the collector's job-feed grouping
 import description  # noqa: E402  the collector's parser, not a copy
 import successfactors  # noqa: E402  the collector's SuccessFactors feed reader
@@ -59,6 +62,7 @@ FINGERPRINTS: list[tuple[str, str]] = [
     ("adp",            r"myjobs\.adp\.com/([A-Za-z0-9\-_]+)"),
     ("dayforce",       r"jobs\.dayforcehcm\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9\-_]+)/([A-Za-z0-9\-_]+)"),
     ("taleo",          r"([a-z0-9\-]+)\.taleo\.net/careersection/(?!rest/)([A-Za-z0-9\-_+%.]+)/"),
+    ("apple",          r"jobs\.apple\.com/(?:[a-z]{2}-[a-z]{2}/)?"),
     ("successfactors", r"rmkcdn\.successfactors\.(?:com|eu)|career\d*\.successfactors\.(?:com|eu)(?:/career\?company=([A-Za-z0-9_]+))?"),
 ]
 
@@ -160,6 +164,8 @@ def description_html(cfg: dict, posting: dict, get_json: GetJson,
         return posting.get(dayforce.DESCRIPTION_KEY)
     if cfg.get("ats") == "successfactors":
         return posting.get(successfactors.DESCRIPTION_KEY)
+    if cfg.get("ats") == "apple":
+        return apple.fetch_description(cfg, posting)
     if cfg.get("ats") == "taleo" and cfg.get("detail_endpoint") and get_text:
         return taleo.description(get_text(taleo.detail_url(cfg["detail_endpoint"], posting)))
     return None
@@ -181,6 +187,12 @@ def collect_successfactors(cfg: dict, get_text: GetText) -> tuple[list, int]:
     """A SuccessFactors job feed's postings and their count, read by the
     collector's own code."""
     return successfactors.fetch_all(cfg, get_text)
+
+
+def collect_apple(cfg: dict) -> tuple[list, int]:
+    """Apple's positions and the rows its search reported, through the
+    collector's own session, paging and grouping."""
+    return apple.fetch_all(cfg)
 
 
 def merge_detail(cfg: dict, posting: dict, get_json: GetJson) -> dict:

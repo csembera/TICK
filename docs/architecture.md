@@ -54,7 +54,8 @@ Four ideas carry the design:
 The [tick-evaluator skill](../.claude/skills/tick-evaluator/SKILL.md) is how a
 company is onboarded. Working in Claude Code, it fingerprints the company's
 careers page to find its applicant-tracking system (Workday, Greenhouse, Lever,
-Ashby, ADP, Dayforce, Taleo, SuccessFactors, or a custom JSON board), probes the endpoint, and
+Ashby, ADP, Dayforce, Taleo, SuccessFactors, Apple's own careers site, or a custom JSON board),
+probes the endpoint, and
 drafts a SourceConfig. Then `verify.py` re-executes that config in code and
 overrides the tier and confidence the model claimed with what actually came
 back: a config that never returned a posting cannot be emitted as verified.
@@ -86,7 +87,8 @@ fetch (paginate) -> raw/  -> normalize via schema_map -> enrich (descriptions, k
 ### Failure semantics
 
 - One company failing never affects the others: each is its own invocation.
-- A failing message is retried after the queue's 30-minute visibility timeout,
+- A failing message is retried after the queue's 90-minute visibility timeout
+  (six times the collector's 15-minute timeout, which Apple's board needs),
   three attempts in all (`maxReceiveCount: 3`). Then it moves to the DLQ, kept
   14 days, and raises the `tick-collector-collect-failures` alarm, which emails
   `AlertEmail`.
@@ -133,6 +135,23 @@ paragraphs and lists before parsing. A SuccessFactors career site's job feed
 which [successfactors.py](../infra/src/collector/successfactors.py) unescapes.
 The original HTML is kept in `raw/` for
 every ATS, so descriptions can be re-parsed without refetching.
+
+Apple ([apple.py](../infra/src/collector/apple.py)) is the one board too large
+to fetch whole every night: about 3,300 US positions, each detail taking about
+two seconds. Its search needs a session (the search page's cookie, then the
+CSRF token `/api/v1/CSRFToken` returns in a header), lists a position once per
+location (grouped into one posting per `positionId`), and drops Apple Retail's
+store roles (`exclude_teams`). Its config sets `reuse_descriptions`: a posting
+still open copies its description from the previous run's curated row, and
+only new positions are fetched, four at a time until `detail_budget_s` (600 s)
+runs out or the invocation nears its own 15-minute limit (90 s are kept back
+for writing), whichever comes first, so slow paging costs that night's
+descriptions rather than the run. Each run's summary log line records how
+many seconds paging, descriptions and writing took. Positions left without one are fetched on the next run, so a first
+crawl takes several nights to fill in. An edit to an open posting's text is
+not picked up, and `raw/` holds HTML only for the descriptions fetched that
+run, so a new `description_format` reaches reused rows only once they are
+fetched again.
 
 [description.py](../infra/src/collector/description.py) files each description
 into labelled sections: summary, responsibilities, qualifications, preferred

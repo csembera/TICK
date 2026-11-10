@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover
     sys.exit(0)
 
 from tick_common import (BROWSER_HEADERS, BUNDLE_PATTERNS, FINGERPRINTS, _UA,
-                         collect_dayforce, collect_successfactors, collect_taleo,
+                         collect_apple, collect_dayforce, collect_successfactors, collect_taleo,
                          collector_headers, description_html, format_report, locate_postings,
                          spread)
 
@@ -211,6 +211,8 @@ def cmd_descriptions(a) -> dict:
                 postings = collect_dayforce(cfg, get_json)[0]
             elif cfg.get("ats") == "successfactors":
                 postings = collect_successfactors(cfg, get_text)[0]
+            elif cfg.get("ats") == "apple":
+                postings = collect_apple(cfg)[0]
             else:
                 data = get_json(cfg["endpoint"], cfg.get("http_method") or "GET", cfg.get("request_body"))
                 postings = (data.get(cfg["postings_key"]) if cfg.get("postings_key") and isinstance(data, dict)
