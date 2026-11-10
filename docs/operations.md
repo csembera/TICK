@@ -212,6 +212,28 @@ publish; a brief leaves only if its files are deleted from the data bucket's
 `briefs/` prefix, which the next nightly publish then reflects (the old page
 object stays in the site bucket until deleted by hand).
 
+### Send a prospect a teaser
+
+A one-page glimpse of an account, for outreach to someone who sells to it:
+the board's numbers, one paragraph and one move from its current brief, the
+roles that opened, and the stack terms on the move. The account has to be
+tracked and have a brief; for a new company, add it and write its overview
+first.
+
+```bash
+python3 tools/preview.py --refresh                              # today's lake, into local-data/lake
+python3 tools/teaser.py sysco --list                            # number the brief's paragraphs and moves
+python3 tools/teaser.py sysco --for "Jordan Lee, Northwind" --paragraph 2 --action 1 --pdf
+```
+
+It writes `local-data/teasers/<slug>-<brief>/`: `teaser.html` and, with
+`--pdf`, `teaser.pdf` (headless Chrome; set `CHROME` if it lives elsewhere)
+to attach, and `email.html`, the same content in email-safe HTML to paste
+into a message. The brief's words are quoted whole, never edited, so choose
+the paragraph that speaks to the prospect rather than trimming one. A brief
+written for a user's persona is refused: it was written for them. The page
+links every cited role to its posting; nothing is uploaded or published.
+
 ### Change the public pages or the sign-in page
 
 Edit `infra/site-static/` (the marketing page, `/docs`, `/demo`) or
