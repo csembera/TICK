@@ -12,8 +12,8 @@ sends both, from bodies in infra/template.yaml), the waitlist confirmation
 (tools/teaser.py). docs/email.md says what each one is for and how to add one.
 
 Gmail and Outlook drop <style>, web fonts and SVG, so everything here is
-tables and inline styles, the brand is a text wordmark, and Barlow falls back
-to Helvetica/Arial. Outlook desktop ignores padding and background on <a>,
+tables and inline styles, the mark is a hosted PNG beside a text wordmark,
+and Barlow falls back to Helvetica/Arial. Outlook desktop ignores padding and background on <a>,
 which is why button() paints the cell around the link instead.
 
 Cognito cannot import Python, so its two bodies are copied into the template
@@ -36,6 +36,12 @@ POSTAL_ADDRESS = ""
 # tests/test_emails.py checks it.
 PASSWORD_DAYS = 7
 WIDTH = 600
+# The tick mark beside the wordmark. Email clients drop SVG, so it is the
+# site's SVG mark rendered to a 48px PNG (2x), served from /docs/, which the
+# edge leaves public and `tools/tick.py publish static` uploads; `verify`
+# checks it serves. Clients that block images show the wordmark alone.
+MARK_PATH = "/docs/email/tick-mark.png"
+MARK_URL = SITE + MARK_PATH
 
 INK, SURFACE, PAGE, PANEL = "#080d12", "#ffffff", "#f2f2f3", "#f5f7fa"
 TEXT, TEXT2, TEXT3, FAINT = "#17212b", "#4b5866", "#64717f", "#8b97a4"
@@ -112,8 +118,10 @@ def document(title: str, preheader: str, rows: list[str], note: str = "", aside:
       for, already HTML.
     reason: why this address received it, below the card, plain text.
     """
-    # the teaser's header: the wordmark alone, the accent rule as its border
-    head = f'<span style="{FONT_HEAD};font-weight:700;font-size:24px;letter-spacing:.16em;color:{ON_INK}">TICK</span>'
+    # the teaser's header: the mark and wordmark, the accent rule as its border
+    head = (f'<img src="{MARK_URL}" width="24" height="24" alt="" style="display:inline-block;border:0;'
+            f'outline:none;vertical-align:-3px;margin-right:10px">'
+            f'<span style="{FONT_HEAD};font-weight:700;font-size:24px;letter-spacing:.16em;color:{ON_INK}">TICK</span>')
     if aside:
         head += f'<div style="font-size:12px;color:{ON_INK3};margin-top:4px">{aside}</div>'
     foot = row(f'<div style="border-top:1px solid {BORDER};padding-top:20px;font-size:13px;line-height:1.6;'

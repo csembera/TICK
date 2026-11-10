@@ -16,8 +16,12 @@ covered here.
 ## The layout
 
 - **Frame:** a 600px card on a grey page. The header is the teaser's
-  original: ink, the `TICK` wordmark alone, and a 3px accent rule as its
-  bottom border. Under the wordmark, an optional line names who a teaser
+  original: ink, the tick mark and `TICK` wordmark, and a 3px accent rule as
+  its bottom border. The mark is `infra/site-static/docs/email/tick-mark.png`,
+  the site's SVG mark rendered at 48px (shown at 24) because email clients
+  drop SVG. It's served from `/docs/`, which the edge leaves public, and
+  `tools/tick.py verify` checks it. Clients that block images show the
+  wordmark alone. Under the wordmark, an optional line names who a teaser
   is for. Then come the bands of the body.
 - **Preheader:** every email sets the hidden line an inbox shows after the
   subject.
@@ -32,8 +36,9 @@ covered here.
   to people who already have an account.
 - **Plain text:** anything sent through SES also gets a text part from
   `text_document()`.
-- **Never:** no `<style>` blocks, web fonts, SVG or images. Gmail and Outlook
-  drop them, so the fonts fall back to Helvetica/Arial.
+- **Never:** no `<style>` blocks, web fonts or SVG, which Gmail and Outlook
+  drop, so the fonts fall back to Helvetica/Arial. The mark is the only
+  image, so an email reads the same when images are blocked.
 - **Subjects:** sentence case, naming TICK and what the email is about. The
   `TICK:` prefix is for operator alerts only.
 

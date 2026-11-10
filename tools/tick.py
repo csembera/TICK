@@ -73,7 +73,8 @@ STATIC_PREFIXES = ("docs", "demo")
 
 # What `verify` requests, with no cookie. A 200 on a guarded path is a
 # client-data leak, not a cosmetic bug.
-PUBLIC_PATHS = ["/", "/docs", "/demo", "/demo/dunder-mifflin/brief"]
+# the last is the mark in every email's header (tools/email_layout.py), so it must stay public
+PUBLIC_PATHS = ["/", "/docs", "/demo", "/demo/dunder-mifflin/brief", "/docs/email/tick-mark.png"]
 GUARDED_PATHS = ["/accounts", "/profile", "/login", "/dunder-mifflin/dashboard.html",
                  "/dunder-mifflin/brief.html", "/dunder-mifflin/briefs"]
 
