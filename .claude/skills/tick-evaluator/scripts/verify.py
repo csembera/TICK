@@ -37,7 +37,8 @@ except ImportError as e:  # pragma: no cover
     print(f"missing dependency ({e}) — run: .venv/bin/pip install httpx pydantic", file=sys.stderr)
     sys.exit(1)
 
-from tick_common import (URL_TOKEN, collect_dayforce, collect_successfactors, collect_taleo,
+from tick_common import (URL_TOKEN, apple, collect_apple, collect_dayforce,
+                         collect_successfactors, collect_taleo,
                          collector_headers, dayforce, description_html, format_report,
                          locate_postings, merge_detail, prune_format, resolve_field, spread)
 
@@ -48,11 +49,12 @@ CONFIDENCE_REVIEW_THRESHOLD = 0.7
 # as null on every config would change what the collector does, so they are
 # written only when the draft set them.
 PASSTHROUGH_IF_SET = ("postings_key", "timeout_s", "description_field", "description_format",
-                      "portals", "synthetic")
+                      "portals", "exclude_teams", "reuse_descriptions", "detail_budget_s",
+                      "detail_workers", "synthetic")
 
 ATS = Literal[
     "workday", "greenhouse", "lever", "ashby", "workable",
-    "smartrecruiters", "adp", "dayforce", "taleo", "successfactors", "other",
+    "smartrecruiters", "adp", "dayforce", "taleo", "successfactors", "apple", "other",
 ]
 
 
@@ -114,6 +116,11 @@ class SourceConfigDraft(BaseModel):
     timeout_s: Optional[float] = None
     description_field: Optional[str] = None
     portals: Optional[list[TaleoPortal]] = None
+    # Apple: teams whose rows are dropped, and how descriptions are fetched
+    exclude_teams: Optional[list[str]] = None
+    reuse_descriptions: Optional[bool] = None
+    detail_budget_s: Optional[float] = None
+    detail_workers: Optional[int] = None
     schema_map: Optional[SchemaMap] = None
     description_format: Optional[DescriptionFormat] = None
     careers_url: Optional[str] = None
@@ -179,6 +186,7 @@ def verify_draft(draft: SourceConfigDraft, sample: int = 25, desc_sample: int = 
     postings = (_collect_taleo(draft, hdrs, v) if draft.ats == "taleo"
                 else _collect_dayforce(draft, hdrs, v) if draft.ats == "dayforce"
                 else _collect_successfactors(draft, hdrs, v) if draft.ats == "successfactors"
+                else _collect_apple(draft, v) if draft.ats == "apple"
                 else _collect_one(draft, hdrs, v))
     v.postings_found = len(postings)
     if not postings:
@@ -357,6 +365,25 @@ def _collect_successfactors(draft: SourceConfigDraft, hdrs: dict, v: Verificatio
         v.findings.append("the job feed listed no postings")
         return []
     v.findings.append(f"{len(postings)} postings in the job feed")
+    return postings
+
+
+def _collect_apple(draft: SourceConfigDraft, v: Verification) -> list:
+    """Every page of the search, grouped into positions by the collector's
+    apple.py, which also makes the requests: the session it needs is its own."""
+    try:
+        postings, reported = collect_apple(draft.model_dump())
+    except Exception as e:
+        v.findings.append(f"apple search failed: {type(e).__name__}: {e}")
+        return []
+
+    v.status, v.content_type, v.parsed_json = 200, "application/json", True
+    if not postings:
+        v.findings.append("the search listed no positions outside the excluded teams")
+        return []
+    rows = sum(len(p[apple.ROWS_KEY]) for p in postings)
+    v.findings.append(f"{len(postings)} positions, grouped from {rows} search rows "
+                      f"(the search reported {reported}, excluded teams included)")
     return postings
 
 

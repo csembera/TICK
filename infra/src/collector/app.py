@@ -22,10 +22,15 @@ a run that fails partway leaves it untouched, and the retry recomputes the
 same changes.
 
 Descriptions keep their structure: raw/ holds each posting's original HTML
-(for Workday and Taleo, fetched per posting and attached before raw/ is
+(for Workday, Taleo and Apple, fetched per posting and attached before raw/ is
 written), and every curated row carries `description`, its labelled sections
-(see description.py). The flat `description_raw` text is written only when parsing
-fails; readers go through the renderer's parsed_description()/full_text_of().
+(see description.py). A config with reuse_descriptions copies each still-open
+posting's description from the previous run's curated rows instead of
+fetching it again, for boards too large to fetch whole every day (Apple): an
+edit to an open posting's text is then not picked up, and raw/ holds HTML
+only for the descriptions fetched that run. The flat `description_raw` text
+is written only when parsing fails; readers go through the renderer's
+parsed_description()/full_text_of().
 Keywords come from the title and the role text, not the board's boilerplate.
 
 Local dry run (no AWS): set LOCAL_OUTPUT_DIR to write files to disk:
@@ -41,6 +46,7 @@ import time
 import urllib.request
 from datetime import date, datetime, timezone
 
+import apple
 import dayforce
 import description
 import successfactors
@@ -54,6 +60,9 @@ MAX_PAGES = 100
 _UA = "Mozilla/5.0 (tick-collector)"
 _DETAIL_DELAY_S = 0.1  # politeness gap between per-posting detail GETs
 _TIMEOUT_S = 30  # per-request default; a slow source overrides via timeout_s
+# Kept back from the Lambda's deadline for parsing and writing the run's files
+# (about 20 s for Apple's 3,300 rows), so a slow night costs descriptions, not the run.
+_WRITE_RESERVE_S = 90
 
 # Envelope key holding the posting array, per ATS. None means the payload IS
 # the array. A source with no entry here supplies its own postings_key.
@@ -201,6 +210,10 @@ def fetch_all(config: dict) -> tuple[list, int]:
         # successfactors.py.
         return successfactors.fetch_all(
             config, lambda url: _http_text(url, headers, timeout))
+
+    if ats == "apple":
+        # jobs.apple.com's search, behind a session, grouped by position: see apple.py.
+        return apple.fetch_all(config)
 
     data = _http_json(endpoint, config.get("http_method", "GET"),
                       config.get("request_body"), headers, timeout)
@@ -400,7 +413,8 @@ def extract_keywords(text: str) -> dict[str, list[str]]:
     }
 
 
-def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
+def enrich(postings: list[dict], rows: list[dict], config: dict,
+           prior: dict | None = None, stop_at: float | None = None) -> int:
     """Attach description (or, if parsing fails, description_raw) and keyword
     fields to rows in place.
 
@@ -408,9 +422,18 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
     title + description, so rows still get title-level keywords when a detail
     fetch fails (or for ATSes without a detail path yet). The description's
     HTML stays on the posting, so raw/ keeps it for every ATS.
+
+    prior maps posting_id to an earlier run's description fields (see
+    previous_descriptions); a posting in it is not fetched again. stop_at
+    (time.monotonic) is when fetching must end for the run to finish.
     """
     fetched = 0
+    prior = prior or {}
     ats = config.get("ats")
+    if ats == "apple" and FETCH_DESCRIPTIONS:
+        # fetched up front, a few at a time under a time budget: see apple.py
+        apple.fetch_descriptions(config, [p for p, r in zip(postings, rows)
+                                          if r["posting_id"] not in prior], stop_at=stop_at)
     workday = ats == "workday" and FETCH_DESCRIPTIONS
     # ADP descriptions arrive with the detail payload fetch_all already merged,
     # so there is nothing extra to fetch (and nothing to sleep between).
@@ -418,7 +441,8 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
     # Dayforce's and SuccessFactors' feeds carry the description, already made
     # HTML by dayforce.py (from plain text) and successfactors.py (unescaped).
     feed_key = ({"dayforce": dayforce.DESCRIPTION_KEY,
-                 "successfactors": successfactors.DESCRIPTION_KEY}.get(ats)
+                 "successfactors": successfactors.DESCRIPTION_KEY,
+                 "apple": apple.DESCRIPTION_KEY}.get(ats)
                 if FETCH_DESCRIPTIONS else None)
     taleo_pages = ats == "taleo" and FETCH_DESCRIPTIONS and bool(config.get("detail_endpoint"))
     # description_field is a resolve_field expr naming a description already in
@@ -428,7 +452,11 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
     fmt = config.get("description_format")
     for posting, row in zip(postings, rows):
         raw_html = None
-        if desc_expr:
+        earlier = prior.get(row["posting_id"])
+        if earlier:
+            row["description"] = earlier.get("description")
+            row["description_raw"] = earlier.get("description_raw")
+        elif desc_expr:
             raw_html = resolve_field(posting, desc_expr)
         elif workday:
             raw_html = fetch_workday_description(config, posting.get("externalPath"))
@@ -444,7 +472,7 @@ def enrich(postings: list[dict], rows: list[dict], config: dict) -> int:
             if raw_html:
                 posting["jobDescription"] = raw_html   # so raw/ keeps it
             time.sleep(_DETAIL_DELAY_S)
-        text = _html_text(raw_html) if isinstance(raw_html, str) else None
+        text = None if earlier else _html_text(raw_html) if isinstance(raw_html, str) else None
         if text:
             try:
                 row["description"] = description.parse(raw_html, fmt)
@@ -497,6 +525,24 @@ def build_tech_summary(rows: list[dict], config: dict, today: str, ts: str) -> d
         "stack": stack,        # {category: {term: [posting_id, ...]}}
         "postings": evidence,  # {posting_id: {title, location, url, is_tech_role}}
     }
+
+
+def previous_descriptions(slug: str, state: dict) -> dict:
+    """{posting_id: {description, description_raw}} from the latest run's
+    curated rows: the day the newest state entry was last seen, today on a
+    same-day re-run. Rows without a description are left out, so a posting
+    whose detail was not fetched in time is fetched on the next run."""
+    last = max((e.get("last_seen") or "" for e in state.values()), default="")
+    if not last:
+        return {}
+    out = {}
+    for line in (_read(f"curated/company={slug}/dt={last}/postings.jsonl") or "").splitlines():
+        if line.strip():
+            rec = json.loads(line)
+            if rec.get("description") or rec.get("description_raw"):
+                out[rec["posting_id"]] = {"description": rec.get("description"),
+                                          "description_raw": rec.get("description_raw")}
+    return out
 
 
 # --------------------------------------------------------------------- diff
@@ -565,17 +611,24 @@ def apply_diff(state: dict, rows: list[dict], today: str) -> dict:
 
 # ---------------------------------------------------------------- main flow
 
-def collect_company(config: dict) -> dict:
+def collect_company(config: dict, deadline: float | None = None) -> dict:
+    """deadline (time.monotonic) is when the invocation is killed; None runs
+    without one, as locally."""
     slug = config["company_slug"]
     today = date.today().isoformat()
     ts = datetime.now(timezone.utc).isoformat()
 
+    t0 = time.monotonic()
     postings, total_reported = fetch_all(config)
     rows = [normalize(p, config, today) for p in postings]
-    descriptions_fetched = enrich(postings, rows, config)
+    t1 = time.monotonic()
 
     state_key = f"derived/state/company={slug}/state.json"
     state = json.loads(_read(state_key) or "{}")
+    prior = previous_descriptions(slug, state) if config.get("reuse_descriptions") else {}
+    descriptions_fetched = enrich(postings, rows, config, prior,
+                                  stop_at=deadline - _WRITE_RESERVE_S if deadline else None)
+    t2 = time.monotonic()
     open_before = sum(1 for e in state.values() if not e.get("closed_on"))
 
     # Sanity guard: an empty result against a previously active board means
@@ -623,6 +676,9 @@ def collect_company(config: dict) -> dict:
     return {"company_slug": slug, "collected": len(rows),
             "total_reported": total_reported,
             "descriptions_fetched": descriptions_fetched,
+            "descriptions_reused": sum(1 for r in rows if r["posting_id"] in prior),
+            "without_description": sum(1 for r in rows
+                                       if not r.get("description") and not r.get("description_raw")),
             # share of description text filed under a known section, averaged;
             # a drop is the sign the board's layout moved and the evaluator's
             # description_format needs relearning
@@ -633,14 +689,18 @@ def collect_company(config: dict) -> dict:
             # this run's changes; the day's record holds every run's
             "new": len(diff["new"]),
             "closed": len(diff["closed"]), "reopened": len(diff["reopened"]),
-            "runs_today": len(runs)}
+            "runs_today": len(runs),
+            # where the run's time went: a slow night shows which phase
+            "seconds": {"fetch": round(t1 - t0), "descriptions": round(t2 - t1),
+                        "write": round(time.monotonic() - t2)}}
 
 
 def handler(event, context):
     # BatchSize=1 -> exactly one record; a raise retries only this company.
     for record in event["Records"]:
         msg = json.loads(record["body"])
-        summary = collect_company(msg["config"])
+        summary = collect_company(
+            msg["config"], time.monotonic() + context.get_remaining_time_in_millis() / 1000)
         print(json.dumps(summary))
     return {"ok": True}
 
