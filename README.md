@@ -15,7 +15,7 @@ is built around keeping that history.
 
 ```
 evaluator ──► SourceConfig ──► nightly crawl ──► S3 lake ──► publisher ──► site
-(once per      (verified,       (03:00 UTC,      (raw,        (03:30 UTC,    (dashboard and
+(once per      (verified,       (03:00 UTC,      (raw,        (06:45 UTC,    (dashboard and
  company)       in the bucket)   one company      curated,     static HTML)   brief per account,
                                  per Lambda)      derived)                    behind sign-in)
                                                      ▲

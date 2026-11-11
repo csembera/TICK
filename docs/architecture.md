@@ -20,7 +20,7 @@ and [CLAUDE.md](../CLAUDE.md) holds the rules every change must keep.
 │ skill: find the    │──►│            ─► Collector ×N (2 at a time)   │   │ evidence.py ─► model ─►   │
 │ board, verify it,  │   │            ─► S3 lake  (raw/ curated/       │◄──│ check.py ─► publish.py    │
 │ learn its format   │   │                         derived/)           │   │ ─► briefs/ in the lake    │
-└───────────────────┘   │ 03:30 UTC  Publisher ─► site bucket (HTML)  │   └──────────────────────────┘
+└───────────────────┘   │ 06:45 UTC  Publisher ─► site bucket (HTML)  │   └──────────────────────────┘
   SourceConfig JSON      └───────────────────────────────────────────┘
   in s3://<data>/configs/                 │
                                           ▼
@@ -202,8 +202,10 @@ Field-by-field formats are in [data-reference.md](data-reference.md).
 ## Publishing
 
 The publisher ([src/publisher/app.py](../infra/src/publisher/app.py)) runs at
-03:30 UTC, half an hour behind the dispatcher so every company has finished,
-and follows the same `ScheduleState`. It renders with
+06:45 UTC (`NightlyPublishSchedule`), and follows the same `ScheduleState`.
+Every crawl is done by about 03:30, but one that times out is retried twice,
+90 minutes apart, so its last attempt can end about 06:30; publishing after
+that shows a night's data even when a crawl needed its retries. It renders with
 [tools/tick_insights_report.py](../tools/tick_insights_report.py), the same file
 the local CLI runs, symlinked into the Lambda as `report.py` so there is no
 second copy to drift.

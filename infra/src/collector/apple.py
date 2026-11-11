@@ -36,7 +36,7 @@ import http.cookiejar
 import json
 import time
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from urllib.parse import urlsplit
 
 # Added to each grouped posting. Apple's own keys are camelCase, so these
@@ -53,7 +53,10 @@ UA = "Mozilla/5.0 (tick-collector)"   # the collector's, as in app._http_json
 PAGE_SIZE = 20       # fixed by the site
 MAX_PAGES = 400      # 8,000 rows: a US board is ~4,500
 TIMEOUT_S = 30
-DETAIL_TIMEOUT_S = 15   # a straggler holds up its whole batch; most answer in 2-5 s
+# A batch waits this long for its slowest detail and no longer. The socket
+# timeout alone cannot cap it: it applies to each read, so a response that
+# trickles in can take minutes. Most details answer in 2-5 s.
+DETAIL_TIMEOUT_S = 15
 DEFAULT_BUDGET_S = 600
 DEFAULT_WORKERS = 4
 PAGE_TRIES = 3       # one slow page in ~230 must not fail the night's run
@@ -248,13 +251,23 @@ def fetch_descriptions(config: dict, postings: list, session: Session | None = N
             return None
 
     got = 0
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
         for i in range(0, len(postings), workers):
             if clock() >= deadline:
                 break
             batch = postings[i:i + workers]
-            for p, h in zip(batch, pool.map(one, batch)):
-                if h:
-                    p[DESCRIPTION_KEY] = h
+            futures = {pool.submit(one, p): p for p in batch}
+            done, late = wait(futures, timeout=DETAIL_TIMEOUT_S)
+            for f in done:
+                if h := f.result():
+                    futures[f][DESCRIPTION_KEY] = h
                     got += 1
+            if late:
+                # a straggler keeps its worker; start afresh rather than queue behind it
+                pool.shutdown(wait=False, cancel_futures=True)
+                pool = ThreadPoolExecutor(max_workers=workers)
+    finally:
+        # never wait on a straggler: the run's deadline matters more than its answer
+        pool.shutdown(wait=False, cancel_futures=True)
     return got

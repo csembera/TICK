@@ -108,7 +108,7 @@ Run everything from the project root.
    (`--dry-run` first shows what would go). It re-runs check.py and uploads
    each passing brief with its evidence to
    `s3://<DataBucketName>/briefs/company=<slug>/week=<week-end>/`. The site
-   shows it after the next nightly publish (03:30 UTC), as the account's
+   shows it after the next nightly publish (06:45 UTC), as the account's
    brief and at its own address in the brief archive. `tools/tick.py
    publish pages` shows it at once, but that is production: ask first.
 

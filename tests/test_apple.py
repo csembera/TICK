@@ -17,6 +17,8 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import types
 import unittest
 from datetime import date
@@ -211,6 +213,29 @@ class FetchDescriptions(unittest.TestCase):
         # the run must stop by t=50; less one detail timeout (15 s), fetching ends at t=35
         got = apple.fetch_descriptions(cfg, postings, site.session(), clock=clock, stop_at=50)
         self.assertEqual(got, 4)   # checks at t=20 and t=30 pass, t=40 is past it
+
+
+    def test_a_detail_that_never_answers_is_abandoned_after_one_timeout(self):
+        postings = apple.group([row(str(100 + i), "1", "Scranton") for i in range(4)])
+        site = FakeSite([], {str(100 + i): DETAIL for i in range(4)})
+        release = threading.Event()
+        real = site.open
+
+        def stuck(req, timeout=None):
+            if req.full_url.endswith("/101"):
+                release.wait(5)   # trickles in long past any per-read timeout
+            return real(req, timeout)
+        site.open = stuck
+        try:
+            with mock.patch.object(apple, "DETAIL_TIMEOUT_S", 0.2):
+                started = time.monotonic()
+                got = apple.fetch_descriptions({**CONFIG, "detail_workers": 4}, postings, site.session())
+                waited = time.monotonic() - started
+        finally:
+            release.set()
+        self.assertLess(waited, 2)
+        self.assertEqual(got, 3)
+        self.assertEqual([apple.DESCRIPTION_KEY in p for p in postings], [True, False, True, True])
 
 
 class CollectorReuse(unittest.TestCase):

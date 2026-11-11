@@ -622,6 +622,9 @@ def collect_company(config: dict, deadline: float | None = None) -> dict:
     postings, total_reported = fetch_all(config)
     rows = [normalize(p, config, today) for p in postings]
     t1 = time.monotonic()
+    # a run killed at its timeout prints no summary; these lines say how far it got
+    print(json.dumps({"company_slug": slug, "phase": "fetched", "postings": len(rows),
+                      "seconds": round(t1 - t0)}))
 
     state_key = f"derived/state/company={slug}/state.json"
     state = json.loads(_read(state_key) or "{}")
@@ -629,6 +632,8 @@ def collect_company(config: dict, deadline: float | None = None) -> dict:
     descriptions_fetched = enrich(postings, rows, config, prior,
                                   stop_at=deadline - _WRITE_RESERVE_S if deadline else None)
     t2 = time.monotonic()
+    print(json.dumps({"company_slug": slug, "phase": "described",
+                      "fetched": descriptions_fetched, "seconds": round(t2 - t1)}))
     open_before = sum(1 for e in state.values() if not e.get("closed_on"))
 
     # Sanity guard: an empty result against a previously active board means
