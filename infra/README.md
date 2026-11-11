@@ -55,9 +55,9 @@ site-static/ ── tools/tick.py publish static ──► the same bucket
 |---|---|
 | `DataBucket` | The lake and the SourceConfigs. Versioned, and **retained** if the stack is deleted |
 | `DispatcherFunction` (`tick-collector-dispatcher`) | Queues one crawl per config, on `ScheduleExpression` |
-| `CollectQueue`, `CollectDLQ`, `DLQAlarm`, `AlertTopic` | The crawl queue (30-minute visibility, 3 attempts), the dead-letter queue (14 days), the alarm on it, and the email topic for `AlertEmail` |
+| `CollectQueue`, `CollectDLQ`, `DLQAlarm`, `AlertTopic` | The crawl queue (90-minute visibility, 3 attempts), the dead-letter queue (14 days), the alarm on it, and the email topic for `AlertEmail` |
 | `CollectorFunction` (`tick-collector-collector`) | Crawls one company per invocation, at most two at a time |
-| `PublisherFunction` (`tick-collector-publisher`) | Renders the lake into the site bucket, on `PublishScheduleExpression` |
+| `PublisherFunction` (`tick-collector-publisher`) | Renders the lake into the site bucket, on `NightlyPublishSchedule` |
 | `SiteBucket`, `SiteDistribution`, `SiteAuthFunction` | The private site bucket, CloudFront in front of it, and the edge function that checks sessions |
 | `AuthFunction` (`tick-collector-auth`) | `/auth/*`: the Cognito code exchange; mints the session cookie |
 | `JoinFunction` (`tick-collector-join`), `JoinRequestsTable`, `AccountRequestsTable` | `/api/*`: the public waitlist, viewers' account requests, and each viewer's persona (`/api/profile`, read and write on the data bucket's `profiles/*` only). Both tables **retained**, with point-in-time recovery |
@@ -189,7 +189,7 @@ not synced — `tools/tick.py cognito banner` re-renders the PNG from it after a
 | Parameter | Default | |
 |---|---|---|
 | `ScheduleExpression` | `cron(0 3 * * ? *)` | When the dispatcher fires (UTC) |
-| `PublishScheduleExpression` | `cron(30 3 * * ? *)` | When the publisher fires: keep it after the crawls |
+| `NightlyPublishSchedule` | `cron(45 6 * * ? *)` | When the publisher fires: keep it after a failed crawl's last retry (about 06:30). Renamed from `PublishScheduleExpression`, so the move reached the stack |
 | `ScheduleState` | `ENABLED` | `DISABLED` stops both schedules |
 | `AlertEmail` | empty | Where the DLQ alarm and request notifications go. **Empty deletes the subscription** |
 | `SessionSecret` | none | The session cookie's HMAC key, shared with the edge function. **Required on every deploy** |

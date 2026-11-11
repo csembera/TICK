@@ -25,10 +25,16 @@ Parameters:
     Type: String
     Default: ''
     Description: Optional email for DLQ alarms (empty = no subscription)
-  PublishScheduleExpression:
+  # Renamed from PublishScheduleExpression (cron(30 3 * * ? *)) when the publish
+  # moved: the deploy reuses every deployed parameter value, so a changed
+  # default on the old name would never have reached the stack.
+  NightlyPublishSchedule:
     Type: String
-    Default: cron(30 3 * * ? *)   # 30 min after the collectors start
-    Description: When the site is re-rendered from the lake
+    Default: cron(45 6 * * ? *)   # after a timed-out crawl's last retry (~06:30 UTC)
+    Description: >-
+      When the site is re-rendered from the lake. A crawl that fails is
+      retried twice, 90 minutes apart (the queue's visibility timeout), so the
+      last attempt can end about 06:30 UTC.
   SiteDomainName:
     Type: String
     Default: tick.sembasolutions.com
@@ -144,6 +150,7 @@ Resources:
       CodeUri: src/collector/
       Handler: app.handler
       Timeout: 900                    # Apple: ~230 search pages + a 600 s detail budget
+      MemorySize: 512                 # Apple holds ~3,300 reused descriptions; 251 MB at 256
       Environment:
         Variables:
           BUCKET_NAME: !Ref DataBucket
@@ -840,7 +847,7 @@ Resources:
         AfterDailyCollection:
           Type: ScheduleV2
           Properties:
-            ScheduleExpression: !Ref PublishScheduleExpression
+            ScheduleExpression: !Ref NightlyPublishSchedule
             State: !Ref ScheduleState
 
   # ---------------------------------------------------------------- alerting

@@ -40,8 +40,8 @@ pipeline uses it). `tools/tick.py <command> --help` documents each command.
 
 | When (UTC) | What runs | What to check |
 |---|---|---|
-| 03:00 nightly | The dispatcher queues every company; collectors crawl them, two at a time | A failure retries every 30 minutes, three times, then emails the alert address |
-| 03:30 nightly | The publisher re-renders the site | `status` shows the last publish |
+| 03:00 nightly | The dispatcher queues every company; collectors crawl them, two at a time | A failure is retried 90 minutes later, three attempts in all, then emails the alert address |
+| 06:45 nightly | The publisher re-renders the site, after the last retry a failed crawl can get | `status` shows the last publish |
 | Weekly | You run the tick-brief skill; briefs publish once you approve them | `status` shows each company's latest brief |
 
 `tools/tick.py status` is the morning check. It ends **All good.** or with a
@@ -280,7 +280,7 @@ is crawled again tonight.
 Its last crawl is more than 26 hours old. Check, in order:
 
 - the **Schedules** lines: a `DISABLED` collect schedule stops every crawl;
-- **Queue**: a crawl still in flight is retrying, every 30 minutes;
+- **Queue**: a crawl still in flight is retrying, every 90 minutes;
 - **DLQ**: it failed three times (above);
 - `tools/tick.py logs collector --since 1d --grep <slug>` for anything else.
 
