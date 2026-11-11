@@ -77,7 +77,8 @@ class TeaserTest(unittest.TestCase):
         self.assertIn("&lt;streaming&gt;", text)
         self.assertIn(f'platform<sup><a href="{URL}I-1">1</a>,<a href="{URL}I-2">2</a></sup>', text)
         self.assertIn("seat<sup>3</sup>", text)         # a standing role: no URL in the pack
-        self.assertIn("board<sup>4</sup>", text)
+        self.assertIn("on a growing board.", text)      # [[BOARD]] is no posting: no number, no note
+        self.assertEqual(teaser.unlinked_notes(c["cites"]), "3 Director, Platform")
         self.assertIn('<a href="' + URL + 'I-1">1</a>', c["cites"].html(c["move"]["why"]))
 
     def test_board_fills_a_standing_roles_link(self):
@@ -85,7 +86,7 @@ class TeaserTest(unittest.TestCase):
         c = teaser.build(brief, evidence, 1, 1, {"I-9": {"url": URL + "I-9", "title": "Director, Platform"},
                                                         "I-1": {}, "I-2": {}, "I-3": {}})
         self.assertIn(f'seat<sup><a href="{URL}I-9">3</a></sup>', c["cites"].html(c["excerpt"]))
-        self.assertEqual(teaser.unlinked_notes(c["cites"]), "4 Initech&#x27;s open board, week of Nov 2 – 8, 2026")
+        self.assertEqual(teaser.unlinked_notes(c["cites"]), "")   # the board's citation is dropped
 
     def test_persona_brief_is_refused(self):
         brief, evidence = weekly()
