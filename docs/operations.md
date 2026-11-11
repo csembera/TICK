@@ -24,7 +24,9 @@ pipeline uses it). `tools/tick.py <command> --help` documents each command.
 | `publish login` | Apply the sign-in page's CSS and banner | yes |
 | `users list` | Every user, their status and what they can see | no |
 | `users invite <email> [--accounts a,b] [--admin]` | Create a user, email a temporary password, set their accounts | yes |
-| `users grant` / `revoke <email> <slug>...` | Add or remove accounts, keeping the rest of the list | yes |
+| `users invite <email> --accounts a,b --teaser a` | Draft a welcome email with a first look at account `a`; creates nothing until `users send-email` | local files only |
+| `users grant` / `revoke <email> <slug>...` | Add or remove accounts, keeping the rest of the list. `grant --email` also drafts an email telling them | yes |
+| `users send-email <draft>` | Send a draft from `users grant --email` or `users invite --teaser`, after you have read it (an invite draft creates the user too) | yes |
 | `users admin <email> [--remove]` | Let a user see every account, or take that away | yes |
 | `users disable` / `enable` / `resend <email>` | Stop sign-in, allow it again, re-send an expired invite | yes |
 | `personas list [--json]` | Each account, the user who tracks it, and who its brief is written for | no |
@@ -65,7 +67,8 @@ scheduler.
    ```bash
    tools/tick.py collect <slug> --publish
    ```
-4. Let viewers see it: `tools/tick.py users grant <email> <slug>`.
+4. Let viewers see it: `tools/tick.py users grant <email> <slug>`, with
+   `--email` to draft a note telling them (sent with `users send-email`).
 
 The dashboard appears after the first crawl; change figures and weekly
 briefs start with the second. Once it has crawled, write its overview (below)
@@ -116,11 +119,17 @@ tools/tick.py users invite jan@example.com --admin            # sees every accou
 
 They get a welcome email from `TICK <support@sembasolutions.com>` with a
 temporary password, valid 7 days, and choose their own at `/login`. The email
-is HTML in the user pool's `InviteMessageTemplate` in `infra/template.yaml`, so
-changing it is a template deploy; replies go to the support address. The CLI refuses an
+is built by `tools/email_layout.py` and copied into the user pool's
+`InviteMessageTemplate`, so changing it is a template deploy (see
+[email.md](email.md)); replies go to the support address. The CLI refuses an
 account slug that is not tracked, renders their accounts home if no viewer had
 that set of accounts before, and marks their waitlist request granted if they
 had one. If the invite expires: `tools/tick.py users resend <email>`.
+
+To welcome them with a first look at one of their accounts, add
+`--teaser <slug>`. That only drafts the email to `local-data/emails/`; once
+you have read it, `tools/tick.py users send-email <draft>` creates the user
+and sends it in place of Cognito's welcome ([email.md](email.md#the-welcome-email-with-a-first-look-at-an-account)).
 
 ### Change what someone sees
 
@@ -130,6 +139,10 @@ tools/tick.py users revoke pam@example.com sysco       # removes only sysco
 tools/tick.py users admin  pam@example.com             # every account (--remove to undo)
 tools/tick.py users list                               # who sees what
 ```
+
+To tell them, add `--email` to the grant. It drafts the new-account email to
+`local-data/emails/` and prints where; nothing is sent until you have read it
+and run `tools/tick.py users send-email <draft>` ([email.md](email.md)).
 
 A change applies at their next sign-in. A revoked account stays visible to a
 session they already have for up to 12 hours; see
@@ -159,7 +172,7 @@ tools/tick.py requests close <email> --as declined     # or declines it
 
 tools/tick.py requests list --accounts --pending       # account requests
 #   onboard the company (above), then:
-tools/tick.py users grant <requester email> <slug>
+tools/tick.py users grant <requester email> <slug> --email   # review the draft, then users send-email
 tools/tick.py requests close <id> --as done            # the first characters of the id are enough
 ```
 
@@ -228,8 +241,9 @@ python3 tools/teaser.py sysco --for "Jordan Lee, Northwind" --paragraph 2 --acti
 
 It writes `local-data/teasers/<slug>-<brief>/`: `teaser.html` and, with
 `--pdf`, `teaser.pdf` (headless Chrome; set `CHROME` if it lives elsewhere)
-to attach, and `email.html`, the same content in email-safe HTML to paste
-into a message. The brief's words are quoted whole, never edited, so choose
+to attach, and `email.html`, the same content in the shared email layout
+([email.md](email.md)) to paste into a message. Its footer names the
+recipient and invites a "no thanks" reply. The brief's words are quoted whole, never edited, so choose
 the paragraph that speaks to the prospect rather than trimming one. A brief
 written for a user's persona is refused: it was written for them. The page
 links every cited role to its posting; nothing is uploaded or published.

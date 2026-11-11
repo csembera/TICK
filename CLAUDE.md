@@ -18,13 +18,14 @@ File formats are in [docs/data-reference.md](docs/data-reference.md).
 | `infra/src/collector/` | Fetches, normalizes, diffs one company. Also runs locally (`LOCAL_OUTPUT_DIR`). `description.py` parses each description into labelled sections |
 | `infra/src/publisher/` | Renders the whole lake to static HTML in the site bucket, then invalidates. `report.py`, `description.py` and `persona.py` are symlinks to the renderer, the collector's parser and `tools/persona.py` |
 | `infra/src/auth/` | Cognito code exchange; mints the HMAC session cookie |
-| `infra/src/join/` | `/api/join` waitlist, `/api/account-request`, and `/api/profile` (each viewer's own persona). `persona.py` is a symlink to `tools/persona.py` |
+| `infra/src/join/` | `/api/join` waitlist, `/api/account-request`, and `/api/profile` (each viewer's own persona). `persona.py` and `email_layout.py` are symlinks into `tools/` |
 | `infra/site-static/` | Hand-authored public pages (`/`, `/docs`, `/demo`), deployed by `tools/tick.py publish static` |
 | `tools/tick_insights_report.py` | The renderer. `infra/src/publisher/report.py` is a **symlink** to it |
+| `tools/email_layout.py` | The one layout every email to a person is built from: the invite and code (copied into `template.yaml` by `cognito --write`), the waitlist reply (symlinked into the join Lambda), the new-account email and the teaser. See `docs/email.md` |
 | `tools/persona.py` | What a user's persona may hold, bounded and normalised. Edit it here, never through its symlinks in the join and publisher Lambdas |
 | `tools/tick.py` | The operations CLI: status, publishing, crawls, companies, users, requests, DLQ, logs, edge checks. The pipeline's deploy steps run it too |
 | `tools/evaluator.py` | The evaluator as a standalone Strands agent; onboarding normally runs through the tick-evaluator skill |
-| `docs/` | `architecture.md`, `operations.md` (the runbook), `data-reference.md`, `development.md`. Update them in the same PR as the change they describe |
+| `docs/` | `architecture.md`, `operations.md` (the runbook), `data-reference.md`, `development.md`, `email.md`. Update them in the same PR as the change they describe |
 | `tests/` | `python3 -m unittest discover tests`; stdlib only, synthetic fixtures (the repo is public) |
 | `configs/` | Gitignored local copy of the SourceConfigs. The data bucket's `configs/` prefix is the source of truth |
 | `.claude/skills/` | `tick-evaluator` (onboard a company; learn its description format), `tick-brief` (write, check and publish every account's weekly brief; tune its prompt) |

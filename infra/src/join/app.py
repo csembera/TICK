@@ -34,7 +34,7 @@ notifies — the alerts topic, and a confirmation to the requester.
 The confirmation goes to an address anyone can type into a public form, so it
 never echoes what they submitted (name, company): it can't be turned into a way
 to send arbitrary text from the company domain, and each address gets at most
-one, ever.
+one, ever. Its words and layout are in tools/email_layout.py (symlinked here).
 """
 
 import hashlib
@@ -48,6 +48,7 @@ import uuid
 import boto3
 from botocore.exceptions import ClientError
 
+import email_layout   # tools/email_layout.py: the layout every email shares
 import persona
 
 TABLE = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
@@ -104,25 +105,14 @@ def notify(item: dict) -> None:
     )
 
 
-CONFIRM_SUBJECT = "You're on the TICK list"
-CONFIRM_TEXT = (
-    "Thanks for your interest in TICK.\n\n"
-    "We've received your request for access. TICK is in beta and we're adding "
-    "accounts by hand, so we'll email you when yours is ready.\n\n"
-    "In the meantime, the demo is open: https://tick.sembasolutions.com/demo\n\n"
-    "— TICK, Semba Solutions\n"
-    "You're receiving this because this address was entered at "
-    "tick.sembasolutions.com. If that wasn't you, ignore it — you won't hear from us again.\n"
-)
-
-
 def confirm(email: str) -> None:
+    subject, body, text = email_layout.waitlist_confirmation()
     SES.send_email(
         FromEmailAddress=SENDER,
         Destination={"ToAddresses": [email]},
         Content={"Simple": {
-            "Subject": {"Data": CONFIRM_SUBJECT},
-            "Body": {"Text": {"Data": CONFIRM_TEXT}},
+            "Subject": {"Data": subject},
+            "Body": {"Html": {"Data": body}, "Text": {"Data": text}},
         }},
     )
 

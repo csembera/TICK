@@ -24,6 +24,7 @@ on:
     paths:
       - 'infra/**'
       - 'tools/tick_insights_report.py'
+      - 'tools/email_layout.py'        # symlinked into the join Lambda; its Cognito copy is in the template
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
