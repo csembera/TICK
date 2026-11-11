@@ -941,7 +941,7 @@ def draft_invite(ops: Ops, email: str, slugs: list[str], is_admin: bool, slug: s
     try:
         entry = teaser.pick_brief(teaser.report.list_briefs(lake, slug), args.brief)
         brief, evidence = lake["get"](entry["brief_key"]), lake["get"](entry["evidence_key"])
-        c = teaser.build(brief, evidence, email, args.paragraph, args.action, teaser.board_rows(lake, slug))
+        c = teaser.build(brief, evidence, args.paragraph, args.action, teaser.board_rows(lake, slug))
     except SystemExit as exc:   # the teaser's refusals: no brief, a persona's brief, a bad --paragraph
         if isinstance(exc.code, str):
             fail(f"{slug}: {exc.code}")

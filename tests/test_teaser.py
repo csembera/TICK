@@ -72,7 +72,7 @@ def overview():
 class TeaserTest(unittest.TestCase):
     def test_citations_are_numbered_merged_and_linked(self):
         brief, evidence = weekly()
-        c = teaser.build(brief, evidence, "Pam, Vance Refrigeration", 1, 1)
+        c = teaser.build(brief, evidence, 1, 1)
         text = c["cites"].html(c["excerpt"])
         self.assertIn("&lt;streaming&gt;", text)
         self.assertIn(f'platform<sup><a href="{URL}I-1">1</a>,<a href="{URL}I-2">2</a></sup>', text)
@@ -82,7 +82,7 @@ class TeaserTest(unittest.TestCase):
 
     def test_board_fills_a_standing_roles_link(self):
         brief, evidence = weekly()
-        c = teaser.build(brief, evidence, "Pam", 1, 1, {"I-9": {"url": URL + "I-9", "title": "Director, Platform"},
+        c = teaser.build(brief, evidence, 1, 1, {"I-9": {"url": URL + "I-9", "title": "Director, Platform"},
                                                         "I-1": {}, "I-2": {}, "I-3": {}})
         self.assertIn(f'seat<sup><a href="{URL}I-9">3</a></sup>', c["cites"].html(c["excerpt"]))
         self.assertEqual(teaser.unlinked_notes(c["cites"]), "4 Initech&#x27;s open board, week of Nov 2 – 8, 2026")
@@ -91,26 +91,26 @@ class TeaserTest(unittest.TestCase):
         brief, evidence = weekly()
         brief["persona_ref"] = "abc123"
         with self.assertRaises(SystemExit):
-            teaser.build(brief, evidence, "Pam", 1, 1)
+            teaser.build(brief, evidence, 1, 1)
 
     def test_paragraph_out_of_range_is_refused(self):
         brief, evidence = weekly()
         with self.assertRaises(SystemExit):
-            teaser.build(brief, evidence, "Pam", 3, 1)
+            teaser.build(brief, evidence, 3, 1)
 
     def test_weekly_numbers_and_headline(self):
         brief, evidence = weekly()
-        c = teaser.build(brief, evidence, "Pam", 1, 1)
+        c = teaser.build(brief, evidence, 1, 1)
         self.assertEqual([(k["label"], k["value"]) for k in c["kpis"]],
                          [("Open roles", 44), ("Closed this week", 2), ("Tech roles open", 9),
                           ("Leadership seats open", 1)])
         self.assertEqual(c["kpis"][0]["delta"], "+4")
         self.assertEqual(c["headline"], "Initech opened 6 roles last week. Here's what they're building.")
-        self.assertEqual(c["period"], "Week of Nov 2 – 8, 2026")
+        self.assertEqual(teaser.period(evidence), "Week of Nov 2 – 8, 2026")
 
     def test_overview_drops_zero_tiles(self):
         brief, evidence = overview()
-        c = teaser.build(brief, evidence, "Pam", 1, 1)
+        c = teaser.build(brief, evidence, 1, 1)
         self.assertEqual([k["label"] for k in c["kpis"]], ["Open roles", "Tech roles open"])
         self.assertEqual(c["headline"], "Initech has 30 roles open. Here's what they're hiring for.")
         self.assertEqual(c["stack"], [("python", "7 roles")])   # excel is baseline
@@ -118,7 +118,7 @@ class TeaserTest(unittest.TestCase):
 
     def test_roles_put_cited_first_group_titles_and_skip_closed(self):
         brief, evidence = weekly()
-        c = teaser.build(brief, evidence, "Pam", 2, 1)        # cites I-3, the move cites I-1
+        c = teaser.build(brief, evidence, 2, 1)        # cites I-3, the move cites I-1
         rows = c["roles"]
         self.assertEqual([(r["title"], r["count"]) for r in rows],
                          [("TPS Report Analyst", 1), ("Data Engineer", 2)])
@@ -127,7 +127,7 @@ class TeaserTest(unittest.TestCase):
 
     def test_a_cited_standing_role_makes_it_on_the_board(self):
         brief, evidence = weekly()
-        c = teaser.build(brief, evidence, "Pam", 1, 1)
+        c = teaser.build(brief, evidence, 1, 1)
         self.assertIn("Director, Platform", [r["title"] for r in c["roles"]])
         self.assertEqual(c["roles_label"], "On the board")
 
@@ -143,17 +143,16 @@ class TeaserTest(unittest.TestCase):
                 self.assertEqual(teaser.main(["initech", "--lake", lake, "--list"]), 0)
             self.assertIn("--paragraph 2: TPS reports are back.…", listing.getvalue())
             with redirect_stdout(io.StringIO()):
-                teaser.main(["initech", "--lake", lake, "--for", "Pam <Vance>", "--out", out])
+                teaser.main(["initech", "--lake", lake, "--out", out])
             with open(os.path.join(out, "teaser.html")) as f:
                 page = f.read()
             with open(os.path.join(out, "email.html")) as f:
                 email = f.read()
-        self.assertIn("Prepared for <b>Pam &lt;Vance&gt;</b>", page)
+        self.assertNotIn("Prepared for", page)
         self.assertIn("Pitch Kafka &amp; ops", page)
         self.assertIn("“real-time pipelines”", page)
         self.assertNotIn("<style", email)
         self.assertNotIn("<svg", email)
-        self.assertIn("Pam &lt;Vance&gt;", email)
         self.assertIn(f'<a href="{URL}I-1"', email)
 
 

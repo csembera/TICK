@@ -236,14 +236,14 @@ first.
 ```bash
 python3 tools/preview.py --refresh                              # today's lake, into local-data/lake
 python3 tools/teaser.py sysco --list                            # number the brief's paragraphs and moves
-python3 tools/teaser.py sysco --for "Jordan Lee, Northwind" --paragraph 2 --action 1 --pdf
+python3 tools/teaser.py sysco --paragraph 2 --action 1 --pdf
 ```
 
 It writes `local-data/teasers/<slug>-<brief>/`: `teaser.html` and, with
 `--pdf`, `teaser.pdf` (headless Chrome; set `CHROME` if it lives elsewhere)
 to attach, and `email.html`, the same content in the shared email layout
-([email.md](email.md)) to paste into a message. Its footer names the
-recipient and invites a "no thanks" reply. The brief's words are quoted whole, never edited, so choose
+([email.md](email.md)) to paste into a message. Its footer invites a
+"no thanks" reply. The brief's words are quoted whole, never edited, so choose
 the paragraph that speaks to the prospect rather than trimming one. A brief
 written for a user's persona is refused: it was written for them. The page
 links every cited role to its posting; nothing is uploaded or published.
