@@ -14,8 +14,9 @@ PDF through headless Chrome), and email.html, the same content in the shared
 email layout (tools/email_layout.py) for pasting into an email.
 
 The brief's words are quoted whole, never trimmed or rewritten: a brief is
-written by a model, never by code. Its [[id]] citations become numbered links
-to the postings. A brief written for one user's persona is refused, since it
+written by a model, never by code. Its [[id]] citations of postings become
+numbered links to them; citations of the board, the stack or the persona lead
+nowhere a reader can follow, so they are dropped. A brief written for one user's persona is refused, since it
 is tailored to someone else. Output lands in local-data/teasers/, which is
 gitignored, because it holds real lake data.
 """
@@ -103,26 +104,28 @@ def board_rows(lake_io: dict, slug: str) -> dict[str, dict]:
     return {r["posting_id"]: r for r in rows}
 
 
+# Citations of the pack's own sections rather than a posting. A reader cannot
+# follow them anywhere, so the teaser leaves them out: no number, no footnote.
+NOT_POSTINGS = ("BOARD", "STACK", "PERSONA")
+
+
 class Citations:
-    """Numbers the brief's [[id]] citations in reading order, one number per
-    id, and keeps the footnotes they point to."""
+    """Numbers the brief's posting citations in reading order, one number per
+    id, and keeps the footnotes they point to. Citations of the board, the
+    stack or the persona are dropped (NOT_POSTINGS)."""
 
     def __init__(self, evidence: dict, board: dict[str, dict] | None = None):
         self.postings = postings_of(evidence)
         for pid, row in (board or {}).items():
             if pid in self.postings and not self.postings[pid].get("url"):
                 self.postings[pid] = dict(self.postings[pid], url=row.get("url"))
-        self.name = evidence["company"]["name"]
-        self.period = period(evidence)
         self.notes: list[dict] = []
         self.number: dict[str, int] = {}
 
     def note(self, cid: str) -> dict:
         if cid not in self.number:
             p = self.postings.get(cid) or {}
-            label = {"BOARD": f"{self.name}'s open board, {self.period[0].lower()}{self.period[1:]}",
-                     "STACK": "Stack terms across the open board",
-                     "PERSONA": "The reader's profile"}.get(cid) or p.get("title") or cid
+            label = p.get("title") or cid
             self.notes.append({"n": len(self.notes) + 1, "label": label, "url": p.get("url")})
             self.number[cid] = len(self.notes)
         return self.notes[self.number[cid] - 1]
@@ -131,13 +134,17 @@ class Citations:
         """The model's text escaped, its citations as numbered superscripts."""
         style = f' style="{link_style}"' if link_style else ""
 
-        def mark(cid: str) -> str:
+        def mark(cid: str) -> str | None:
+            if cid.strip() in NOT_POSTINGS:
+                return None
             n = self.note(cid.strip())
             return f'<a href="{html.escape(n["url"])}"{style}>{n["n"]}</a>' if n["url"] else str(n["n"])
 
         def sup(m: re.Match) -> str:
-            # a run of citations is one superscript, "1,2", not "12"
-            return "<sup>" + ",".join(dict.fromkeys(mark(c) for c in _CITE.findall(m.group(0)))) + "</sup>"
+            # a run of citations is one superscript, "1,2", not "12"; a run of
+            # only section citations leaves nothing behind
+            marks = [x for x in dict.fromkeys(mark(c) for c in _CITE.findall(m.group(0))) if x]
+            return "<sup>" + ",".join(marks) + "</sup>" if marks else ""
         # escaping first leaves [[...]] untouched, so the markers still match
         return _CITE_RUN.sub(sup, html.escape(text, quote=False))
 
@@ -355,9 +362,9 @@ def _e(s) -> str:
 
 
 def unlinked_notes(cx: Citations) -> str:
-    """The citations a reader cannot follow by clicking (the board, the stack),
-    spelled out; every posting's number is already a link, and listing those
-    too pushes the page onto a second sheet."""
+    """The postings a reader cannot follow by clicking (one with no URL in the
+    pack or on the board), spelled out; every other number is already a link,
+    and listing those too pushes the page onto a second sheet."""
     return " · ".join(f'{n["n"]} {_e(n["label"])}' for n in cx.notes if not n["url"])
 
 
