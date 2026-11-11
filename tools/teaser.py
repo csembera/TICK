@@ -1,8 +1,8 @@
 """
 A one-page teaser of one account, for outreach to a prospect who sells to it.
 
-    python3 tools/teaser.py <slug> --for "Jordan Lee, Northwind Consulting"
-    python3 tools/teaser.py <slug> --for "..." --paragraph 2 --action 1 --pdf
+    python3 tools/teaser.py <slug>
+    python3 tools/teaser.py <slug> --paragraph 2 --action 1 --pdf
     python3 tools/teaser.py <slug> --list            # number the brief's paragraphs and moves
 
 It reads the account's current brief and the evidence pack it was written from
@@ -17,7 +17,7 @@ The brief's words are quoted whole, never trimmed or rewritten: a brief is
 written by a model, never by code. Its [[id]] citations become numbered links
 to the postings. A brief written for one user's persona is refused, since it
 is tailored to someone else. Output lands in local-data/teasers/, which is
-gitignored, because it holds a prospect's name and real lake data.
+gitignored, because it holds real lake data.
 """
 
 import argparse
@@ -238,7 +238,7 @@ def stack_rows(evidence: dict) -> list[tuple[str, str]]:
     return out
 
 
-def build(brief: dict, evidence: dict, prepared_for: str, paragraph: int, action: int,
+def build(brief: dict, evidence: dict, paragraph: int, action: int,
           board: dict[str, dict] | None = None) -> dict:
     """Everything the teaser shows, in reading order, with the brief's text
     already escaped and its citations numbered."""
@@ -263,7 +263,7 @@ def build(brief: dict, evidence: dict, prepared_for: str, paragraph: int, action
                 "opened": source.get("opened_on")}
     rows = roles(evidence, _CITE.findall(excerpt + " " + (move or {}).get("why", "")), board)
     return {"company": evidence["company"]["name"], "slug": evidence["company"]["slug"],
-            "prepared_for": prepared_for, "period": period(evidence), "overview": overview,
+            "overview": overview,
             "headline": headline(evidence), "kpis": kpis(evidence), "excerpt": excerpt, "move": move,
             "roles": rows, "roles_label": "New on the board" if rows and all(r["when"] for r in rows)
             else "On the board", "stack": stack_rows(evidence), "cites": cx, "board": board or {},
@@ -293,8 +293,6 @@ a{color:var(--accent);text-decoration:none}
 .top{background:var(--ink);color:#eef2f5;padding:22px 40px 20px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:3px solid var(--accent)}
 .brand{display:flex;align-items:center;gap:10px;font-family:var(--h);font-weight:700;font-size:24px;letter-spacing:.16em}
 .brand svg{width:24px;height:24px;color:#86aace}
-.for{font-size:12px;color:#9aa9b8;text-align:right;line-height:1.4}
-.for b{color:#eef2f5;font-weight:600}
 .hero{padding:28px 40px 6px}
 h1{font-family:var(--h);font-weight:600;font-size:34px;line-height:1.1;margin:0 0 8px;letter-spacing:-.005em}
 .lede{margin:0;color:var(--t2);font-size:15px;max-width:640px}
@@ -402,8 +400,7 @@ def render_page(c: dict) -> str:
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
 <style>{_PAGE_STYLE}</style></head><body>
 <div class="page">
-<div class="top"><div class="brand">{_MARK}TICK</div>
-<div class="for">Prepared for <b>{_e(c["prepared_for"])}</b><br>{_e(c["period"])}</div></div>
+<div class="top"><div class="brand">{_MARK}TICK</div></div>
 <div class="hero"><h1>{_e(c["headline"])}</h1><p class="lede">{_e(LEDE.format(name=c["company"]))}</p></div>
 <div class="kpis">{kpis}</div>
 <div class="grid">
@@ -423,7 +420,7 @@ def render_page(c: dict) -> str:
 # The email is the shared layout (tools/email_layout.py) with the teaser's
 # own tiles, roles and stack inside it: see docs/email.md.
 _LINK = mail.LINK
-OPT_OUT = "Sent to {who} by TICK. Not useful? Reply \u201cno thanks\u201d and we won't send another."
+OPT_OUT = "Sent by TICK. Not useful? Reply \u201cno thanks\u201d and we won't send another."
 
 
 def email_rows(c: dict, nested: bool = False) -> list[str]:
@@ -506,11 +503,7 @@ def email_text(c: dict) -> list[str]:
 def render_email(c: dict) -> str:
     rows = email_rows(c)
     rows.append(mail.row(mail.dark_panel(CTA_TITLE, CTA_TEXT, f"{SITE}/", CTA_BUTTON), "28px 32px 0"))
-    note = cite_note(c)
-    return mail.document(f"TICK \u00b7 {c['company']}", c["headline"], rows, note=note,
-                         aside=f'Prepared for <b style="color:{mail.ON_INK}">{_e(c["prepared_for"])}</b>'
-                               f' \u00b7 {_e(c["period"])}',
-                         reason=OPT_OUT.format(who=c["prepared_for"]))
+    return mail.document(f"TICK \u00b7 {c['company']}", c["headline"], rows, note=cite_note(c), reason=OPT_OUT)
 
 
 # ------------------------------------------------------------------ cli
@@ -528,7 +521,6 @@ def save_pdf(page: str, pdf: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="A one-page teaser of one account, for a prospect.")
     ap.add_argument("slug", help="the account's company_slug")
-    ap.add_argument("--for", dest="prepared_for", help='who it is for: "Name, Company"')
     ap.add_argument("--lake", default=LAKE, help="lake root: a local copy (default) or s3://bucket")
     ap.add_argument("--brief", help='"weekly", "overview" or a brief id; default: the current brief')
     ap.add_argument("--paragraph", type=int, default=1, help="which paragraph of the brief to quote (from 1)")
@@ -548,9 +540,7 @@ def main(argv: list[str] | None = None) -> int:
         for i, m in enumerate(brief.get("action_items") or [], 1):
             print(f"  --action {i}: {m['title']}")
         return 0
-    if not args.prepared_for:
-        ap.error("--for is required")
-    c = build(brief, evidence, args.prepared_for, args.paragraph, args.action,
+    c = build(brief, evidence, args.paragraph, args.action,
               board_rows(lake_io, args.slug))
     out = args.out or os.path.join(OUT, f"{args.slug}-{entry['id']}")
     os.makedirs(out, exist_ok=True)

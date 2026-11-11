@@ -18,7 +18,6 @@ covered here.
 
 - **Frame:** a 600px card on a grey page, an ink header with the `TICK`
   wordmark and `BETA` pill, a 3px accent rule, then the bands of the body.
-  An optional right-hand line in the header names who a teaser is for.
 - **Preheader:** every email sets the hidden line an inbox shows after the
   subject.
 - **Type:** a 30px condensed `h1`, 16px body text (15px in the teaser),
@@ -102,9 +101,8 @@ first look at one of the new user's accounts. It contains:
 2. the welcome: "You're in." and "What you'll find";
 3. the sign-in details and the **Sign in to TICK** button, last.
 
-The teaser's "Prepared for" line and its "Start with one account" pitch are
-left out, because the email is addressed to the recipient and they already
-have access.
+The teaser's "Start with one account" pitch is left out, because the
+recipient already has access.
 
 ```bash
 tools/tick.py users invite pam@example.com --accounts sysco,geha --teaser sysco

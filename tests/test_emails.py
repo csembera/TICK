@@ -33,7 +33,7 @@ def invite_with_teaser() -> tuple[str, str, str]:
     import teaser
     import test_teaser
     brief, evidence = test_teaser.weekly()
-    c = teaser.build(brief, evidence, "pam@example.com", 2, 1)
+    c = teaser.build(brief, evidence, 2, 1)
     return mail.invite_with_teaser("pam@example.com", c["company"], teaser.email_rows(c, nested=True),
                                    teaser.email_text(c), teaser.cite_note(c))
 
