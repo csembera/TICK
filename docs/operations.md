@@ -318,6 +318,11 @@ the tick-evaluator skill, push the config, and re-crawl.
 every page before writing any, so a failed run leaves the site exactly as the
 last good run left it.
 
+`Runtime.OutOfMemory` means one account's lake no longer fits in the
+publisher's 512 MB. Sync the lake with `python3 tools/preview.py --refresh`,
+then measure each account's `load_lake` peak memory locally; macOS overstates
+it, so measure on Linux before deciding. Apple, the largest board, peaks near 270 MB.
+
 ### A deploy failed
 
 On the run's page in GitHub Actions:
