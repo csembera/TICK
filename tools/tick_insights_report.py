@@ -203,6 +203,9 @@ def open_lake(source: str) -> dict:
 
 
 _COMPANY_RE = re.compile(r"company=([^/]+)/")
+# The collector writes posting_id as each curated row's first key; a row that
+# doesn't match is parsed in full, so this only ever skips work.
+_CURATED_ID_RE = re.compile(r'\{"posting_id": "((?:[^"\\]|\\.)*)"')
 
 
 def lake_companies(lake_io: dict) -> list[str]:
@@ -307,11 +310,20 @@ def load_lake(source: str, company: str, lake_io: dict | None = None,
     # what "opened" and "closed" mean over a period, so neither is subtracted.
     diff = {"counts": dict(counts), "new": list(dict.fromkeys(opened)),
             "closed": list(dict.fromkeys(shut)), "days": len(window_diffs)}
-    def _read_curated(path):
+    def _read_curated(path, keep=None):
         out = {}
         for line in get_text(path).splitlines():
-            if line.strip():
-                rec = json.loads(line)
+            if not line.strip():
+                continue
+            if keep is not None:
+                # Skip unwanted rows before parsing them: the few rows kept from
+                # a full parse pin the allocator's arenas, so a whole older day
+                # stayed resident even once the day itself was dropped.
+                m = _CURATED_ID_RE.match(line)
+                if m and json.loads(f'"{m.group(1)}"') not in keep:
+                    continue
+            rec = json.loads(line)
+            if keep is None or rec["posting_id"] in keep:
                 out[rec["posting_id"]] = rec
         return out
 
@@ -331,8 +343,13 @@ def load_lake(source: str, company: str, lake_io: dict | None = None,
     # record TICK has for it. A posting's final appearance is the crawl dated its
     # last_seen, so that partition is where its description survives — reading
     # only the newest two would leave anything closed before last week blank.
-    # Each partition is read once however many closed reqs it holds.
-    closed_ids = {pid: st for pid, st in state.items() if st.get("closed_on")}
+    # Each partition is read once however many closed reqs it holds, and only
+    # its closed reqs are kept: holding every older day whole grew the publisher
+    # by a full board per crawl (Apple: ~50 MB a day) until it ran out of memory.
+    closed_by_dt: dict[str, list] = {}
+    for pid, st in state.items():
+        if st.get("closed_on") and st.get("last_seen"):
+            closed_by_dt.setdefault(st["last_seen"], []).append(pid)
     curated_by_dt = _partition_map(keys, "postings.jsonl", company)
     # a req that opened and closed between two runs on the same day is in that
     # day's departed.jsonl, not its postings.jsonl (see the collector)
@@ -343,16 +360,15 @@ def load_lake(source: str, company: str, lake_io: dict | None = None,
         if len(curateds) > 1:
             loaded[_DT_RE.search(curateds[-2]).group(1)] = curated_prev
     archive = {}
-    for dt in sorted({st.get("last_seen") for st in closed_ids.values()} - {None}):
+    for dt, pids in sorted(closed_by_dt.items()):
         if dt not in curated_by_dt:
             continue
-        if dt not in loaded:
-            loaded[dt] = _read_curated(curated_by_dt[dt])
-        day = loaded[dt]
+        keep = set(pids)
+        day = loaded[dt] if dt in loaded else _read_curated(curated_by_dt[dt], keep=keep)
         if dt in departed_by_dt:
-            day = {**_read_curated(departed_by_dt[dt]), **day}
-        for pid, st in closed_ids.items():
-            if st.get("last_seen") == dt and pid in day:
+            day = {**_read_curated(departed_by_dt[dt], keep=keep), **day}
+        for pid in pids:
+            if pid in day:
                 archive[pid] = day[pid]
     return {"curr": curr, "prev": prev, "series": series, "history": history,
             "diff": diff, "state": state, "curated": curated,
